@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-sans: "Inter", "Inter Fallback";
-  --font-mono: "JetBrains Mono", "JetBrains Mono Fallback";
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains);
 
   --color-background: #0d0f14;
   --color-foreground: #e0e4ee;
