@@ -16,6 +16,7 @@ interface ParamPanelProps {
   onToggleAll: (checked: boolean) => void;
   onToggleGroup: (paramNames: string[]) => void;
   onSelectParam: (name: string, value: string) => void;
+  headerAction?: React.ReactNode;
 }
 
 export function ParamPanel({
@@ -28,6 +29,7 @@ export function ParamPanel({
   onToggleAll,
   onToggleGroup,
   onSelectParam,
+  headerAction,
 }: ParamPanelProps) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
@@ -76,9 +78,10 @@ export function ParamPanel({
           className="h-4 w-4 rounded accent-foreground cursor-pointer"
           aria-label="Select all parameters"
         />
-        <span className="text-sm font-semibold text-foreground truncate">
+        <span className="flex-1 text-sm font-semibold text-foreground truncate">
           {title} ({params.length})
         </span>
+        {headerAction}
       </div>
 
       {/* Search */}

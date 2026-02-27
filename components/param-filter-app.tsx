@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useCallback } from "react";
-import { RefreshCw, FileText, ArrowLeft, ArrowRight, Download, Settings } from "lucide-react";
+import { useEffect, useCallback, useRef } from "react";
+import { RefreshCw, FileText, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
 import { writeParamFile } from "@/lib/param-engine";
@@ -11,10 +11,12 @@ import { ParamPanel } from "@/components/param-panel";
 import { DetailPanel } from "@/components/detail-panel";
 import { ConsolePanel } from "@/components/console-panel";
 import { ListEditorDialog } from "@/components/list-editor-dialog";
+import { UsernamePrompt } from "@/components/username-prompt";
 import { useState } from "react";
 
 export function ParamFilterApp() {
   const {
+    username,
     fileName,
     protectedParams,
     remainingParams,
@@ -35,11 +37,45 @@ export function ParamFilterApp() {
     selectParam,
     setParamDefs,
     setDefsLoading,
+    protectionLists,
+    setProtectionLists,
+    isProtectionModified,
+    setUser,
+    clearUser,
     log,
   } = useApp();
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  // "Save selection as list" dialog state
+  const [saveListOpen, setSaveListOpen] = useState(false);
+  const [saveListName, setSaveListName] = useState("");
+  const [saveListDesc, setSaveListDesc] = useState("");
+  const saveListInputRef = useRef<HTMLInputElement>(null);
+
+  const openSaveList = useCallback(() => {
+    setSaveListName("");
+    setSaveListDesc("");
+    setSaveListOpen(true);
+    setTimeout(() => saveListInputRef.current?.focus(), 50);
+  }, []);
+
+  const handleSaveList = useCallback(() => {
+    if (!saveListName.trim() || protectedParams.length === 0) return;
+    const rules = protectedParams.map((p) => ({
+      type: "exact" as const,
+      value: p.name,
+    }));
+    setProtectionLists([
+      ...protectionLists,
+      { name: saveListName.trim(), description: saveListDesc.trim(), rules },
+    ]);
+    log(
+      `Created protection list '${saveListName.trim()}' with ${rules.length} rule(s)`
+    );
+    setSaveListOpen(false);
+  }, [saveListName, saveListDesc, protectedParams, protectionLists, setProtectionLists, log]);
 
   // Load param definitions on mount
   useEffect(() => {
@@ -111,15 +147,24 @@ export function ParamFilterApp() {
             <span className="font-medium">{fileName}</span>
           </div>
         )}
+        {/* Username badge */}
+        {username && (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <User className="h-3.5 w-3.5" />
+            <span className="font-mono font-medium text-foreground">
+              {username}
+            </span>
+            <button
+              onClick={clearUser}
+              className="hover:text-foreground transition-colors"
+              title="Change username"
+            >
+              · change
+            </button>
+          </div>
+        )}
         <div className="flex-1" />
-        <ProtectionListSelect />
-        <button
-          onClick={() => setEditorOpen(true)}
-          className="flex items-center gap-1.5 rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground transition-colors hover:bg-accent"
-        >
-          <Settings className="h-4 w-4" />
-          Edit Lists
-        </button>
+        <ProtectionListSelect onEditLists={() => setEditorOpen(true)} />
         <button
           onClick={handleRefresh}
           disabled={refreshing}
@@ -137,8 +182,8 @@ export function ParamFilterApp() {
 
       {/* Main content */}
       <div className="flex flex-1 min-h-0">
-        {/* Left: Protected panel */}
-        <div className="flex flex-col w-[32%] min-w-0 p-2">
+        {/* Protected panel */}
+        <div className="flex flex-col flex-1 min-w-0 p-2">
           <ParamPanel
             title="PROTECTED — will be removed"
             headerColor="bg-protected-header"
@@ -149,6 +194,18 @@ export function ParamFilterApp() {
             onToggleAll={toggleAllProtected}
             onToggleGroup={toggleGroupProtected}
             onSelectParam={selectParam}
+            headerAction={
+              isProtectionModified ? (
+                <button
+                  onClick={openSaveList}
+                  className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-semibold text-foreground/80 hover:bg-black/20 transition-colors whitespace-nowrap"
+                  title="Save the current protected params as a new protection list"
+                >
+                  <BookmarkPlus className="h-3.5 w-3.5" />
+                  Save as list
+                </button>
+              ) : undefined
+            }
           />
         </div>
 
@@ -158,7 +215,7 @@ export function ParamFilterApp() {
             onClick={moveCheckedToProtected}
             disabled={checkedRemaining.size === 0}
             className={cn(
-              "flex flex-col items-center justify-center rounded-lg px-3 py-3 text-xs font-bold transition-colors",
+              "flex w-16 flex-col items-center justify-center rounded-lg py-3 text-xs font-bold transition-colors",
               "bg-protected-header text-foreground hover:bg-[#8b3a3a] disabled:opacity-30 disabled:cursor-not-allowed"
             )}
           >
@@ -169,7 +226,7 @@ export function ParamFilterApp() {
             onClick={moveCheckedToRemaining}
             disabled={checkedProtected.size === 0}
             className={cn(
-              "flex flex-col items-center justify-center rounded-lg px-3 py-3 text-xs font-bold transition-colors",
+              "flex w-16 flex-col items-center justify-center rounded-lg py-3 text-xs font-bold transition-colors",
               "bg-applied-header text-foreground hover:bg-[#3a7232] disabled:opacity-30 disabled:cursor-not-allowed"
             )}
           >
@@ -178,34 +235,30 @@ export function ParamFilterApp() {
           </button>
         </div>
 
-        {/* Right side: Applied + Detail */}
-        <div className="flex flex-col flex-1 min-w-0 p-2 gap-2">
-          <div className="flex flex-1 gap-2 min-h-0">
-            {/* Applied panel */}
-            <div className="flex flex-col flex-1 min-w-0">
-              <ParamPanel
-                title="WILL BE APPLIED"
-                headerColor="bg-applied-header"
-                params={remainingParams}
-                checkedNames={checkedRemaining}
-                pdefGroups={pdefGroups}
-                onToggleCheck={toggleCheckedRemaining}
-                onToggleAll={toggleAllRemaining}
-                onToggleGroup={toggleGroupRemaining}
-                onSelectParam={selectParam}
-              />
-            </div>
-            {/* Detail panel */}
-            <div className="hidden lg:flex lg:flex-col w-[260px] shrink-0 rounded-lg border border-border bg-card overflow-hidden">
-              <div className="border-b border-border px-3 py-2">
-                <h3 className="text-xs font-semibold text-foreground">
-                  Parameter Info
-                </h3>
-              </div>
-              <div className="flex-1 min-h-0 overflow-hidden">
-                <DetailPanel />
-              </div>
-            </div>
+        {/* Applied panel */}
+        <div className="flex flex-col flex-1 min-w-0 p-2">
+          <ParamPanel
+            title="WILL BE APPLIED"
+            headerColor="bg-applied-header"
+            params={remainingParams}
+            checkedNames={checkedRemaining}
+            pdefGroups={pdefGroups}
+            onToggleCheck={toggleCheckedRemaining}
+            onToggleAll={toggleAllRemaining}
+            onToggleGroup={toggleGroupRemaining}
+            onSelectParam={selectParam}
+          />
+        </div>
+
+        {/* Detail panel */}
+        <div className="hidden lg:flex lg:flex-col flex-1 min-w-0 m-2 rounded-lg border border-border bg-card overflow-hidden">
+          <div className="border-b border-border px-3 py-2">
+            <h3 className="text-xs font-semibold text-foreground">
+              Parameter Info
+            </h3>
+          </div>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <DetailPanel />
           </div>
         </div>
       </div>
@@ -241,6 +294,105 @@ export function ParamFilterApp() {
       {/* List Editor Dialog */}
       {editorOpen && (
         <ListEditorDialog onClose={() => setEditorOpen(false)} />
+      )}
+
+      {/* First-visit username prompt */}
+      {username === null && <UsernamePrompt onConfirm={setUser} />}
+
+      {/* Save selection as list dialog */}
+      {saveListOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-border bg-toolbar px-5 py-3.5">
+              <div className="flex items-center gap-2">
+                <BookmarkPlus className="h-4 w-4 text-primary" />
+                <h2 className="text-sm font-bold text-foreground">
+                  Save Selection as Protection List
+                </h2>
+              </div>
+              <button
+                onClick={() => setSaveListOpen(false)}
+                className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-5 flex flex-col gap-4">
+              {/* Name */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Name
+                </label>
+                <input
+                  ref={saveListInputRef}
+                  type="text"
+                  value={saveListName}
+                  onChange={(e) => setSaveListName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSaveList()}
+                  placeholder="e.g. Battery Parameters"
+                  className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
+                />
+              </div>
+
+              {/* Description */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Description{" "}
+                  <span className="normal-case text-muted-foreground/60 font-normal">
+                    (optional)
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  value={saveListDesc}
+                  onChange={(e) => setSaveListDesc(e.target.value)}
+                  placeholder="A short description"
+                  className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
+                />
+              </div>
+
+              {/* Preview of rules */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  {protectedParams.length} exact rule
+                  {protectedParams.length !== 1 ? "s" : ""} will be created
+                </label>
+                <div className="rounded-md border border-border bg-background/50 px-3 py-2 max-h-36 overflow-y-auto">
+                  {protectedParams.slice(0, 8).map((p) => (
+                    <p key={p.name} className="font-mono text-xs text-foreground py-0.5">
+                      <span className="text-muted-foreground/60 mr-1.5">ex:</span>
+                      {p.name}
+                    </p>
+                  ))}
+                  {protectedParams.length > 8 && (
+                    <p className="text-xs text-muted-foreground italic pt-1">
+                      …and {protectedParams.length - 8} more
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2 border-t border-border bg-toolbar px-5 py-3">
+              <button
+                onClick={() => setSaveListOpen(false)}
+                className="rounded-md border border-border px-4 py-2 text-sm text-foreground hover:bg-secondary transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveList}
+                disabled={!saveListName.trim()}
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-30"
+              >
+                Create List
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

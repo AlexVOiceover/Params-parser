@@ -7,7 +7,18 @@
       "WebFetch(domain:github.com)",
       "Bash(pip install customtkinter requests)",
       "Bash(python -c \":*)",
-      "Bash(python -c \"import py_compile; py_compile.compile\\(''main.py'', doraise=True\\); py_compile.compile\\(''ui/app.py'', doraise=True\\); print\\(''OK''\\)\")"
+      "Bash(python -c \"import py_compile; py_compile.compile\\(''main.py'', doraise=True\\); py_compile.compile\\(''ui/app.py'', doraise=True\\); print\\(''OK''\\)\")",
+      "Bash(git pull)",
+      "Bash(git add app/api/param-definitions/route.ts components/param-filter-app.tsx)",
+      "Bash(git add -u)",
+      "Bash(git reset HEAD .claude/settings.local.json package.json)",
+      "Bash(git commit:*)",
+      "Bash(git checkout main)",
+      "Bash(git merge app-preview-issue --no-ff -m \"Merge branch ''app-preview-issue'' into main\")",
+      "Bash(git add package.json)",
+      "Bash(npm install @vercel/kv)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npx next build)"
     ]
   }
 }

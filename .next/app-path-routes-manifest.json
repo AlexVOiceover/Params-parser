@@ -1,0 +1,6 @@
+{
+  "/api/lists/[username]/route": "/api/lists/[username]",
+  "/api/param-definitions/route": "/api/param-definitions",
+  "/_not-found/page": "/_not-found",
+  "/page": "/"
+}

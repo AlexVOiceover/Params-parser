@@ -5,6 +5,8 @@ import {
   useContext,
   useState,
   useCallback,
+  useEffect,
+  useRef,
   type ReactNode,
 } from "react";
 import type {
@@ -18,8 +20,44 @@ import {
   applyFilter,
   DEFAULT_PROTECTION_LISTS,
 } from "@/lib/param-engine";
+import {
+  getStoredUsername,
+  storeUsername,
+  clearStoredUsername,
+  sanitizeUsername,
+} from "@/lib/user-store";
+
+// ---------- helpers (module-level, no React deps) ----------
+
+async function apiFetchLists(username: string): Promise<ProtectionList[] | null> {
+  try {
+    const res = await fetch(`/api/lists/${encodeURIComponent(username)}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+async function apiSaveLists(username: string, lists: ProtectionList[]): Promise<void> {
+  try {
+    await fetch(`/api/lists/${encodeURIComponent(username)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(lists),
+    });
+  } catch {
+    // silent — local dev or transient error
+  }
+}
+
+// ---------- types ----------
 
 interface AppState {
+  // User
+  username: string | null;
+  listsLoading: boolean;
+
   // File
   fileName: string;
   allParams: Param[];
@@ -48,9 +86,14 @@ interface AppState {
 
   // Status
   statusMessage: string;
+
+  // Whether the user has manually moved params away from the auto-filtered baseline
+  isProtectionModified: boolean;
 }
 
 interface AppActions {
+  setUser: (name: string) => void;
+  clearUser: () => void;
   loadFile: (name: string, content: string) => void;
   setActiveList: (name: string) => void;
   toggleCheckedProtected: (name: string) => void;
@@ -75,35 +118,48 @@ interface AppActions {
 
 const AppContext = createContext<(AppState & AppActions) | null>(null);
 
+// ---------- provider ----------
+
 export function AppProvider({ children }: { children: ReactNode }) {
+  // --- user ---
+  const [username, setUsernameState] = useState<string | null>(null);
+  const [listsLoading, setListsLoading] = useState(false);
+  const usernameRef = useRef<string | null>(null);
+  // true once the initial per-user list fetch (or skip) is done — prevents
+  // saving defaults back to the server before we've loaded real data
+  const listsReadyRef = useRef(false);
+
+  // --- file ---
   const [fileName, setFileName] = useState("");
   const [allParams, setAllParams] = useState<Param[]>([]);
   const [protectedParams, setProtectedParams] = useState<Param[]>([]);
   const [remainingParams, setRemainingParams] = useState<Param[]>([]);
-  const [checkedProtected, setCheckedProtected] = useState<Set<string>>(
-    new Set()
-  );
-  const [checkedRemaining, setCheckedRemaining] = useState<Set<string>>(
-    new Set()
-  );
-  const [protectionLists, setProtectionLists] = useState<ProtectionList[]>(
+
+  // --- selection ---
+  const [checkedProtected, setCheckedProtected] = useState<Set<string>>(new Set());
+  const [checkedRemaining, setCheckedRemaining] = useState<Set<string>>(new Set());
+
+  // --- protection lists ---
+  const [protectionLists, setProtectionListsState] = useState<ProtectionList[]>(
     DEFAULT_PROTECTION_LISTS
   );
   const [activeListName, setActiveListName] = useState(
     DEFAULT_PROTECTION_LISTS[0]?.name ?? ""
   );
-  const [paramDefs, setParamDefsState] = useState<
-    Record<string, ParamDefinition>
-  >({});
+
+  // --- param defs ---
+  const [paramDefs, setParamDefsState] = useState<Record<string, ParamDefinition>>({});
   const [pdefGroups, setPdefGroups] = useState<string[]>([]);
   const [cacheAge, setCacheAge] = useState("No cache");
   const [defsLoading, setDefsLoading] = useState(true);
-  const [selectedParam, setSelectedParam] = useState<{
-    name: string;
-    value: string;
-  } | null>(null);
+
+  // --- ui ---
+  const [selectedParam, setSelectedParam] = useState<{ name: string; value: string } | null>(null);
   const [consoleEntries, setConsoleEntries] = useState<ConsoleEntry[]>([]);
   const [statusMessage, setStatusMessage] = useState("Ready");
+  const [baselineProtectedNames, setBaselineProtectedNames] = useState<Set<string>>(new Set());
+
+  // ---------- helpers ----------
 
   const log = useCallback(
     (message: string, level: "INFO" | "WARN" | "ERROR" = "INFO") => {
@@ -120,6 +176,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { protected: p, remaining: r } = applyFilter(params, rules);
       setProtectedParams(p);
       setRemainingParams(r);
+      setBaselineProtectedNames(new Set(p.map((x) => x.name)));
       setCheckedProtected(new Set());
       setCheckedRemaining(new Set());
       setSelectedParam(null);
@@ -130,6 +187,58 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     []
   );
+
+  // ---------- user management ----------
+
+  const loadListsForUser = useCallback(async (u: string) => {
+    setListsLoading(true);
+    const lists = await apiFetchLists(u);
+    setListsLoading(false);
+    if (lists && lists.length > 0) {
+      setProtectionListsState(lists);
+      setActiveListName((prev) =>
+        lists.some((l) => l.name === prev) ? prev : lists[0].name
+      );
+    }
+    listsReadyRef.current = true;
+  }, []);
+
+  // On mount: restore username from localStorage
+  useEffect(() => {
+    const stored = getStoredUsername();
+    if (stored) {
+      usernameRef.current = stored;
+      setUsernameState(stored);
+      loadListsForUser(stored);
+    } else {
+      // No user — use defaults immediately, no API fetch needed
+      listsReadyRef.current = true;
+    }
+  }, [loadListsForUser]);
+
+  const setUser = useCallback(
+    (name: string) => {
+      const clean = sanitizeUsername(name);
+      storeUsername(clean);
+      usernameRef.current = clean;
+      setUsernameState(clean);
+      listsReadyRef.current = false;
+      loadListsForUser(clean).then(() => {
+        log(`Signed in as '${clean}' — lists loaded from server`);
+      });
+    },
+    [loadListsForUser, log]
+  );
+
+  const clearUser = useCallback(() => {
+    clearStoredUsername();
+    usernameRef.current = null;
+    setUsernameState(null);
+    listsReadyRef.current = false;
+    log("Signed out — changes will not be persisted");
+  }, [log]);
+
+  // ---------- file ----------
 
   const loadFile = useCallback(
     (name: string, content: string) => {
@@ -144,6 +253,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [activeListName, protectionLists, doFilter, log]
   );
 
+  // ---------- list selection ----------
+
   const setActiveList = useCallback(
     (name: string) => {
       setActiveListName(name);
@@ -156,6 +267,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [allParams, protectionLists, doFilter, log]
   );
+
+  // ---------- checkboxes ----------
 
   const toggleCheckedProtected = useCallback((name: string) => {
     setCheckedProtected((prev) => {
@@ -197,11 +310,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCheckedProtected((prev) => {
       const next = new Set(prev);
       const allChecked = paramNames.every((n) => next.has(n));
-      if (allChecked) {
-        paramNames.forEach((n) => next.delete(n));
-      } else {
-        paramNames.forEach((n) => next.add(n));
-      }
+      if (allChecked) paramNames.forEach((n) => next.delete(n));
+      else paramNames.forEach((n) => next.add(n));
       return next;
     });
   }, []);
@@ -210,14 +320,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCheckedRemaining((prev) => {
       const next = new Set(prev);
       const allChecked = paramNames.every((n) => next.has(n));
-      if (allChecked) {
-        paramNames.forEach((n) => next.delete(n));
-      } else {
-        paramNames.forEach((n) => next.add(n));
-      }
+      if (allChecked) paramNames.forEach((n) => next.delete(n));
+      else paramNames.forEach((n) => next.add(n));
       return next;
     });
   }, []);
+
+  // ---------- move params ----------
 
   const moveCheckedToProtected = useCallback(() => {
     if (checkedRemaining.size === 0) return;
@@ -227,10 +336,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setProtectedParams((prev) => [...prev, ...toMove]);
     setCheckedRemaining(new Set());
     const preview =
-      toMove
-        .slice(0, 4)
-        .map((p) => p.name)
-        .join(", ") + (toMove.length > 4 ? " ..." : "");
+      toMove.slice(0, 4).map((p) => p.name).join(", ") +
+      (toMove.length > 4 ? " ..." : "");
     log(`Moved ${toMove.length} param(s) to Protected: ${preview}`);
   }, [checkedRemaining, remainingParams, log]);
 
@@ -242,23 +349,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRemainingParams((prev) => [...prev, ...toMove]);
     setCheckedProtected(new Set());
     const preview =
-      toMove
-        .slice(0, 4)
-        .map((p) => p.name)
-        .join(", ") + (toMove.length > 4 ? " ..." : "");
+      toMove.slice(0, 4).map((p) => p.name).join(", ") +
+      (toMove.length > 4 ? " ..." : "");
     log(`Moved ${toMove.length} param(s) to Will Be Applied: ${preview}`);
   }, [checkedProtected, protectedParams, log]);
+
+  // ---------- misc ----------
 
   const selectParam = useCallback((name: string, value: string) => {
     setSelectedParam({ name, value });
   }, []);
 
   const setParamDefs = useCallback(
-    (
-      defs: Record<string, ParamDefinition>,
-      groups: string[],
-      age: string
-    ) => {
+    (defs: Record<string, ParamDefinition>, groups: string[], age: string) => {
       setParamDefsState(defs);
       setPdefGroups(groups);
       setCacheAge(age);
@@ -270,19 +373,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setConsoleEntries([]);
   }, []);
 
+  // ---------- protection list mutations (auto-saves to KV) ----------
+
   const updateProtectionLists = useCallback(
     (lists: ProtectionList[]) => {
-      setProtectionLists(lists);
+      setProtectionListsState(lists);
       if (allParams.length > 0) {
         doFilter(allParams, activeListName, lists);
+      }
+      // Persist — only after the initial fetch completed, and only if signed in
+      if (listsReadyRef.current && usernameRef.current) {
+        apiSaveLists(usernameRef.current, lists);
       }
     },
     [allParams, activeListName, doFilter]
   );
 
+  // ---------- render ----------
+
   return (
     <AppContext.Provider
       value={{
+        username,
+        listsLoading,
         fileName,
         allParams,
         protectedParams,
@@ -298,6 +411,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         selectedParam,
         consoleEntries,
         statusMessage,
+        isProtectionModified:
+          protectedParams.length > 0 &&
+          (protectedParams.length !== baselineProtectedNames.size ||
+            protectedParams.some((p) => !baselineProtectedNames.has(p.name))),
+        setUser,
+        clearUser,
         loadFile,
         setActiveList,
         toggleCheckedProtected,
