@@ -157,7 +157,7 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-      <div className="flex w-full max-w-4xl h-175 flex-col rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
+      <div className="flex w-full max-w-4xl max-h-[90vh] flex-col rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
 
         {/* ── Header ── */}
         <div className="flex items-center gap-3 border-b border-border bg-toolbar px-5 py-3.5 shrink-0">
@@ -370,7 +370,7 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
 
                       {/* Suggestions dropdown */}
                       {showSuggestions && suggestions.length > 0 && (
-                        <div className="absolute left-0 right-0 top-full z-10 mt-1 rounded-md border border-border bg-card shadow-2xl overflow-hidden">
+                        <div className="absolute left-0 right-0 top-full z-10 mt-1 rounded-md border border-border bg-card shadow-2xl overflow-y-auto max-h-48">
                           {suggestions.map((s, i) => (
                             <button
                               key={s}
