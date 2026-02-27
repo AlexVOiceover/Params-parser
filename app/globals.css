@@ -1,97 +1,59 @@
 @import "tailwindcss";
 
-:root {
-  --background: #0d0f14;
-  --foreground: #e0e4ee;
-  --card: #141620;
-  --card-foreground: #e0e4ee;
-  --popover: #141620;
-  --popover-foreground: #e0e4ee;
-  --primary: #3b82f6;
-  --primary-foreground: #ffffff;
-  --secondary: #1e2230;
-  --secondary-foreground: #a0a8c0;
-  --muted: #1a1d2a;
-  --muted-foreground: #6b7394;
-  --accent: #1e2230;
-  --accent-foreground: #e0e4ee;
-  --destructive: #8b2a2a;
-  --destructive-foreground: #fca5a5;
-  --border: #252940;
-  --input: #252940;
-  --ring: #3b82f6;
-  --radius: 0.5rem;
-
-  /* App-specific tokens */
-  --protected: #6b2a2a;
-  --protected-header: #7f3333;
-  --protected-text: #fca5a5;
-  --applied: #1a4a2a;
-  --applied-header: #2a6b3a;
-  --applied-text: #86efac;
-  --console-bg: #0a0c10;
-  --console-text: #6ee77a;
-  --group-text: #8898c0;
-  --toolbar: #12141c;
-}
-
 @theme inline {
   --font-sans: "Inter", "Inter Fallback";
   --font-mono: "JetBrains Mono", "JetBrains Mono Fallback";
 
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --radius: var(--radius);
+  --color-background: #0d0f14;
+  --color-foreground: #e0e4ee;
+  --color-card: #141620;
+  --color-card-foreground: #e0e4ee;
+  --color-popover: #141620;
+  --color-popover-foreground: #e0e4ee;
+  --color-primary: #3b82f6;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #1e2230;
+  --color-secondary-foreground: #a0a8c0;
+  --color-muted: #1a1d2a;
+  --color-muted-foreground: #6b7394;
+  --color-accent: #1e2230;
+  --color-accent-foreground: #e0e4ee;
+  --color-destructive: #8b2a2a;
+  --color-destructive-foreground: #fca5a5;
+  --color-border: #252940;
+  --color-input: #252940;
+  --color-ring: #3b82f6;
 
-  --color-protected: var(--protected);
-  --color-protected-header: var(--protected-header);
-  --color-protected-text: var(--protected-text);
-  --color-applied: var(--applied);
-  --color-applied-header: var(--applied-header);
-  --color-applied-text: var(--applied-text);
-  --color-console-bg: var(--console-bg);
-  --color-console-text: var(--console-text);
-  --color-group-text: var(--group-text);
-  --color-toolbar: var(--toolbar);
+  --color-protected: #6b2a2a;
+  --color-protected-header: #7f3333;
+  --color-protected-text: #fca5a5;
+  --color-applied: #1a4a2a;
+  --color-applied-header: #2a6b3a;
+  --color-applied-text: #86efac;
+  --color-console-bg: #0a0c10;
+  --color-console-text: #6ee77a;
+  --color-group-text: #8898c0;
+  --color-toolbar: #12141c;
 }
 
 * {
-  border-color: var(--border);
+  border-color: var(--color-border);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans);
+  background: var(--color-background);
+  color: var(--color-foreground);
 }
 
-/* Custom scrollbar for dark theme */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--muted);
+  background: var(--color-muted);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: var(--color-border);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
