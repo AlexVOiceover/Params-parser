@@ -260,7 +260,7 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
 
       {/* New List sub-dialog */}
       {showNewList && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-background/70">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/70">
           <div className="w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-2xl">
             <h3 className="text-sm font-bold text-foreground mb-3">
               New Protection List
