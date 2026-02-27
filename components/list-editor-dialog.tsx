@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { X, Plus, Trash2 } from "lucide-react";
+import { X, Plus, Trash2, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
 import type { ProtectionList, Rule } from "@/lib/types";
@@ -86,9 +86,17 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
       <div className="flex w-full max-w-4xl h-[600px] flex-col rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
-          <h2 className="text-sm font-bold text-foreground">
-            Edit Protection Lists
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-foreground">
+              Edit Protection Lists
+            </h2>
+            <div className="group relative">
+              <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+              <div className="invisible group-hover:visible absolute left-1/2 -translate-x-1/2 top-full mt-1.5 z-10 w-56 rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md leading-relaxed">
+                Parameters matched by a protection list will be excluded from the final output file, keeping them protected from changes.
+              </div>
+            </div>
+          </div>
           <button
             onClick={onClose}
             className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
@@ -262,9 +270,12 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
       {showNewList && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/70">
           <div className="w-full max-w-sm rounded-xl border border-border bg-card p-5 shadow-2xl">
-            <h3 className="text-sm font-bold text-foreground mb-3">
+            <h3 className="text-sm font-bold text-foreground mb-2">
               New Protection List
             </h3>
+            <p className="text-xs text-muted-foreground leading-relaxed mb-3">
+              Parameters matched by a protection list will be excluded from the final output file, keeping them protected from changes.
+            </p>
             <div className="flex flex-col gap-3">
               <div>
                 <label className="text-xs text-muted-foreground">Name</label>

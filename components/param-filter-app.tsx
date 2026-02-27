@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useCallback } from "react";
-import { RefreshCw, FileText, ArrowLeft, ArrowRight, Download, Settings } from "lucide-react";
+import { RefreshCw, FileText, ArrowLeft, ArrowRight, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
 import { writeParamFile } from "@/lib/param-engine";
@@ -112,14 +112,7 @@ export function ParamFilterApp() {
           </div>
         )}
         <div className="flex-1" />
-        <ProtectionListSelect />
-        <button
-          onClick={() => setEditorOpen(true)}
-          className="flex items-center gap-1.5 rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground transition-colors hover:bg-accent"
-        >
-          <Settings className="h-4 w-4" />
-          Edit Lists
-        </button>
+        <ProtectionListSelect onEditLists={() => setEditorOpen(true)} />
         <button
           onClick={handleRefresh}
           disabled={refreshing}
