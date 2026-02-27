@@ -9,11 +9,13 @@ interface PdefRaw {
   };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const force = new URL(request.url).searchParams.has("force");
   try {
-    const res = await fetch(PDEF_URL, {
-      next: { revalidate: 86400 }, // Cache for 24h
-    });
+    const res = await fetch(PDEF_URL, force
+      ? { cache: "no-store" }
+      : { next: { revalidate: 86400 } }
+    );
 
     if (!res.ok) {
       return NextResponse.json(

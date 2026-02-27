@@ -70,7 +70,7 @@ export function ParamFilterApp() {
     setRefreshing(true);
     log("Fetching latest parameter definitions from ArduPilot...");
     try {
-      const res = await fetch("/api/param-definitions");
+      const res = await fetch("/api/param-definitions?force");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setParamDefs(data.params, data.groups, "just now");
@@ -140,7 +140,7 @@ export function ParamFilterApp() {
         {/* Left: Protected panel */}
         <div className="flex flex-col w-[32%] min-w-0 p-2">
           <ParamPanel
-            title="PROTECTED \u2014 will be removed"
+            title="PROTECTED — will be removed"
             headerColor="bg-protected-header"
             params={protectedParams}
             checkedNames={checkedProtected}
