@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: "Inter", "Inter Fallback";
+  --font-mono: "JetBrains Mono", "JetBrains Mono Fallback";
+
+  --color-background: #0d0f14;
+  --color-foreground: #e0e4ee;
+  --color-card: #141620;
+  --color-card-foreground: #e0e4ee;
+  --color-popover: #141620;
+  --color-popover-foreground: #e0e4ee;
+  --color-primary: #3b82f6;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #1e2230;
+  --color-secondary-foreground: #a0a8c0;
+  --color-muted: #1a1d2a;
+  --color-muted-foreground: #6b7394;
+  --color-accent: #1e2230;
+  --color-accent-foreground: #e0e4ee;
+  --color-destructive: #8b2a2a;
+  --color-destructive-foreground: #fca5a5;
+  --color-border: #252940;
+  --color-input: #252940;
+  --color-ring: #3b82f6;
+
+  --color-protected: #6b2a2a;
+  --color-protected-header: #7f3333;
+  --color-protected-text: #fca5a5;
+  --color-applied: #1a4a2a;
+  --color-applied-header: #2a6b3a;
+  --color-applied-text: #86efac;
+  --color-console-bg: #0a0c10;
+  --color-console-text: #6ee77a;
+  --color-group-text: #8898c0;
+  --color-toolbar: #12141c;
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-muted);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3f55;
+}
