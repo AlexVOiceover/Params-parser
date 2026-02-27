@@ -468,15 +468,19 @@ async function apiFetchLists(username) {
 }
 async function apiSaveLists(username, lists) {
     try {
-        await fetch("/api/lists/".concat(encodeURIComponent(username)), {
+        const res = await fetch("/api/lists/".concat(encodeURIComponent(username)), {
             method: "PUT",
             headers: {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify(lists)
         });
-    } catch (e) {
-    // silent — local dev or transient error
+        return await res.json();
+    } catch (err) {
+        return {
+            ok: false,
+            error: String(err)
+        };
     }
 }
 const AppContext = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["createContext"])(null);
@@ -557,17 +561,29 @@ function AppProvider(param) {
     }["AppProvider.useCallback[doFilter]"], []);
     // ---------- user management ----------
     const loadListsForUser = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useCallback"])({
-        "AppProvider.useCallback[loadListsForUser]": async (u)=>{
+        "AppProvider.useCallback[loadListsForUser]": async (u, logFn)=>{
             setListsLoading(true);
-            const lists = await apiFetchLists(u);
+            const result = await apiFetchLists(u);
             setListsLoading(false);
-            if (lists && lists.length > 0) {
-                setProtectionListsState(lists);
-                setActiveListName({
-                    "AppProvider.useCallback[loadListsForUser]": (prev)=>lists.some({
-                            "AppProvider.useCallback[loadListsForUser]": (l)=>l.name === prev
-                        }["AppProvider.useCallback[loadListsForUser]"]) ? prev : lists[0].name
-                }["AppProvider.useCallback[loadListsForUser]"]);
+            if (result) {
+                if (result.lists.length > 0) {
+                    setProtectionListsState(result.lists);
+                    setActiveListName({
+                        "AppProvider.useCallback[loadListsForUser]": (prev)=>result.lists.some({
+                                "AppProvider.useCallback[loadListsForUser]": (l)=>l.name === prev
+                            }["AppProvider.useCallback[loadListsForUser]"]) ? prev : result.lists[0].name
+                    }["AppProvider.useCallback[loadListsForUser]"]);
+                }
+                if (logFn) {
+                    if (result.source === "kv") {
+                        logFn("Lists loaded from server (".concat(result.lists.length, " list").concat(result.lists.length !== 1 ? "s" : "", ")"));
+                    } else if (result.source === "defaults") {
+                        logFn("No saved lists for '".concat(u, "' — using defaults"));
+                    } else {
+                        var _result_error;
+                        logFn("Could not load lists from server: ".concat((_result_error = result.error) !== null && _result_error !== void 0 ? _result_error : "unknown error"), "WARN");
+                    }
+                }
             }
             listsReadyRef.current = true;
         }
@@ -579,14 +595,15 @@ function AppProvider(param) {
             if (stored) {
                 usernameRef.current = stored;
                 setUsernameState(stored);
-                loadListsForUser(stored);
+                loadListsForUser(stored, log);
             } else {
                 // No user — use defaults immediately, no API fetch needed
                 listsReadyRef.current = true;
             }
         }
     }["AppProvider.useEffect"], [
-        loadListsForUser
+        loadListsForUser,
+        log
     ]);
     const setUser = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useCallback"])({
         "AppProvider.useCallback[setUser]": (name)=>{
@@ -595,9 +612,9 @@ function AppProvider(param) {
             usernameRef.current = clean;
             setUsernameState(clean);
             listsReadyRef.current = false;
-            loadListsForUser(clean).then({
+            loadListsForUser(clean, log).then({
                 "AppProvider.useCallback[setUser]": ()=>{
-                    log("Signed in as '".concat(clean, "' — lists loaded from server"));
+                    log("Signed in as '".concat(clean, "'"));
                 }
             }["AppProvider.useCallback[setUser]"]);
         }
@@ -820,13 +837,23 @@ function AppProvider(param) {
             }
             // Persist — only after the initial fetch completed, and only if signed in
             if (listsReadyRef.current && usernameRef.current) {
-                apiSaveLists(usernameRef.current, lists);
+                apiSaveLists(usernameRef.current, lists).then({
+                    "AppProvider.useCallback[updateProtectionLists]": (result)=>{
+                        if (result.ok) {
+                            log("Lists saved to server");
+                        } else {
+                            var _result_error;
+                            log("Lists save failed: ".concat((_result_error = result.error) !== null && _result_error !== void 0 ? _result_error : "unknown error"), "WARN");
+                        }
+                    }
+                }["AppProvider.useCallback[updateProtectionLists]"]);
             }
         }
     }["AppProvider.useCallback[updateProtectionLists]"], [
         allParams,
         activeListName,
-        doFilter
+        doFilter,
+        log
     ]);
     // ---------- render ----------
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(AppContext.Provider, {
@@ -871,7 +898,7 @@ function AppProvider(param) {
         children: children
     }, void 0, false, {
         fileName: "[project]/lib/app-context.tsx",
-        lineNumber: 395,
+        lineNumber: 413,
         columnNumber: 5
     }, this);
 }

@@ -721,10 +721,6 @@
     z-index: 50;
   }
 
-  .z-\[60\] {
-    z-index: 60;
-  }
-
   .m-2 {
     margin: calc(var(--spacing) * 2);
   }
@@ -793,10 +789,6 @@
     height: calc(var(--spacing) * 5);
   }
 
-  .h-8 {
-    height: calc(var(--spacing) * 8);
-  }
-
   .h-9 {
     height: calc(var(--spacing) * 9);
   }
@@ -811,18 +803,6 @@
 
   .h-175 {
     height: calc(var(--spacing) * 175);
-  }
-
-  .h-\[140px\] {
-    height: 140px;
-  }
-
-  .h-\[600px\] {
-    height: 600px;
-  }
-
-  .h-\[700px\] {
-    height: 700px;
   }
 
   .h-full {
@@ -865,32 +845,8 @@
     width: calc(var(--spacing) * 16);
   }
 
-  .w-44 {
-    width: calc(var(--spacing) * 44);
-  }
-
   .w-55 {
     width: calc(var(--spacing) * 55);
-  }
-
-  .w-65 {
-    width: calc(var(--spacing) * 65);
-  }
-
-  .w-\[32\%\] {
-    width: 32%;
-  }
-
-  .w-\[200px\] {
-    width: 200px;
-  }
-
-  .w-\[220px\] {
-    width: 220px;
-  }
-
-  .w-\[260px\] {
-    width: 260px;
   }
 
   .w-full {
@@ -1091,12 +1047,6 @@
     background-color: lab(4.2853% .0852123 -3.02167 / .5);
   }
 
-  .bg-background\/70 {
-    background-color: rgba(13, 15, 20, .7);
-    background-color: color(display-p3 .0524318 .0585752 .0767366 / .7);
-    background-color: lab(4.2853% .0852123 -3.02167 / .7);
-  }
-
   .bg-background\/80 {
     background-color: rgba(13, 15, 20, .8);
     background-color: color(display-p3 .0524318 .0585752 .0767366 / .8);
@@ -1125,10 +1075,6 @@
 
   .bg-console-bg {
     background-color: #0a0c10;
-  }
-
-  .bg-destructive {
-    background-color: #8b2a2a;
   }
 
   .bg-destructive\/20 {
@@ -1173,10 +1119,6 @@
 
   .bg-toolbar {
     background-color: #12141c;
-  }
-
-  .p-1 {
-    padding: calc(var(--spacing) * 1);
   }
 
   .p-1\.5 {
@@ -1265,10 +1207,6 @@
 
   .pt-1 {
     padding-top: calc(var(--spacing) * 1);
-  }
-
-  .pt-2 {
-    padding-top: calc(var(--spacing) * 2);
   }
 
   .pr-3 {
@@ -1507,12 +1445,6 @@
   }
 
   @media (hover: hover) {
-    .hover\:bg-accent:hover {
-      background-color: #1e2230;
-    }
-  }
-
-  @media (hover: hover) {
     .hover\:bg-black\/20:hover {
       background-color: rgba(0, 0, 0, .2);
     }
@@ -1529,14 +1461,6 @@
       background-color: rgba(139, 42, 42, .2);
       background-color: color(display-p3 .502601 .192965 .179843 / .2);
       background-color: lab(33.0158% 41.6482 24.4216 / .2);
-    }
-  }
-
-  @media (hover: hover) {
-    .hover\:bg-destructive\/80:hover {
-      background-color: rgba(139, 42, 42, .8);
-      background-color: color(display-p3 .502601 .192965 .179843 / .8);
-      background-color: lab(33.0158% 41.6482 24.4216 / .8);
     }
   }
 

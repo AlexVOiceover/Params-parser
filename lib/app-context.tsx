@@ -29,7 +29,7 @@ import {
 
 // ---------- helpers (module-level, no React deps) ----------
 
-async function apiFetchLists(username: string): Promise<ProtectionList[] | null> {
+async function apiFetchLists(username: string): Promise<{ lists: ProtectionList[]; source: string; error?: string } | null> {
   try {
     const res = await fetch(`/api/lists/${encodeURIComponent(username)}`);
     if (!res.ok) return null;
@@ -39,15 +39,16 @@ async function apiFetchLists(username: string): Promise<ProtectionList[] | null>
   }
 }
 
-async function apiSaveLists(username: string, lists: ProtectionList[]): Promise<void> {
+async function apiSaveLists(username: string, lists: ProtectionList[]): Promise<{ ok: boolean; error?: string }> {
   try {
-    await fetch(`/api/lists/${encodeURIComponent(username)}`, {
+    const res = await fetch(`/api/lists/${encodeURIComponent(username)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(lists),
     });
-  } catch {
-    // silent — local dev or transient error
+    return await res.json();
+  } catch (err) {
+    return { ok: false, error: String(err) };
   }
 }
 
@@ -190,15 +191,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ---------- user management ----------
 
-  const loadListsForUser = useCallback(async (u: string) => {
+  const loadListsForUser = useCallback(async (u: string, logFn?: (msg: string, level?: "INFO" | "WARN" | "ERROR") => void) => {
     setListsLoading(true);
-    const lists = await apiFetchLists(u);
+    const result = await apiFetchLists(u);
     setListsLoading(false);
-    if (lists && lists.length > 0) {
-      setProtectionListsState(lists);
-      setActiveListName((prev) =>
-        lists.some((l) => l.name === prev) ? prev : lists[0].name
-      );
+    if (result) {
+      if (result.lists.length > 0) {
+        setProtectionListsState(result.lists);
+        setActiveListName((prev) =>
+          result.lists.some((l) => l.name === prev) ? prev : result.lists[0].name
+        );
+      }
+      if (logFn) {
+        if (result.source === "kv") {
+          logFn(`Lists loaded from server (${result.lists.length} list${result.lists.length !== 1 ? "s" : ""})`);
+        } else if (result.source === "defaults") {
+          logFn(`No saved lists for '${u}' — using defaults`);
+        } else {
+          logFn(`Could not load lists from server: ${result.error ?? "unknown error"}`, "WARN");
+        }
+      }
     }
     listsReadyRef.current = true;
   }, []);
@@ -209,12 +221,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (stored) {
       usernameRef.current = stored;
       setUsernameState(stored);
-      loadListsForUser(stored);
+      loadListsForUser(stored, log);
     } else {
       // No user — use defaults immediately, no API fetch needed
       listsReadyRef.current = true;
     }
-  }, [loadListsForUser]);
+  }, [loadListsForUser, log]);
 
   const setUser = useCallback(
     (name: string) => {
@@ -223,8 +235,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       usernameRef.current = clean;
       setUsernameState(clean);
       listsReadyRef.current = false;
-      loadListsForUser(clean).then(() => {
-        log(`Signed in as '${clean}' — lists loaded from server`);
+      loadListsForUser(clean, log).then(() => {
+        log(`Signed in as '${clean}'`);
       });
     },
     [loadListsForUser, log]
@@ -383,10 +395,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       // Persist — only after the initial fetch completed, and only if signed in
       if (listsReadyRef.current && usernameRef.current) {
-        apiSaveLists(usernameRef.current, lists);
+        apiSaveLists(usernameRef.current, lists).then((result) => {
+          if (result.ok) {
+            log(`Lists saved to server`);
+          } else {
+            log(`Lists save failed: ${result.error ?? "unknown error"}`, "WARN");
+          }
+        });
       }
     },
-    [allParams, activeListName, doFilter]
+    [allParams, activeListName, doFilter, log]
   );
 
   // ---------- render ----------

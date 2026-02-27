@@ -455,15 +455,19 @@ async function apiFetchLists(username) {
 }
 async function apiSaveLists(username, lists) {
     try {
-        await fetch(`/api/lists/${encodeURIComponent(username)}`, {
+        const res = await fetch(`/api/lists/${encodeURIComponent(username)}`, {
             method: "PUT",
             headers: {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify(lists)
         });
-    } catch  {
-    // silent — local dev or transient error
+        return await res.json();
+    } catch (err) {
+        return {
+            ok: false,
+            error: String(err)
+        };
     }
 }
 const AppContext = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["createContext"])(null);
@@ -527,13 +531,24 @@ function AppProvider({ children }) {
         };
     }, []);
     // ---------- user management ----------
-    const loadListsForUser = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useCallback"])(async (u)=>{
+    const loadListsForUser = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useCallback"])(async (u, logFn)=>{
         setListsLoading(true);
-        const lists = await apiFetchLists(u);
+        const result = await apiFetchLists(u);
         setListsLoading(false);
-        if (lists && lists.length > 0) {
-            setProtectionListsState(lists);
-            setActiveListName((prev)=>lists.some((l)=>l.name === prev) ? prev : lists[0].name);
+        if (result) {
+            if (result.lists.length > 0) {
+                setProtectionListsState(result.lists);
+                setActiveListName((prev)=>result.lists.some((l)=>l.name === prev) ? prev : result.lists[0].name);
+            }
+            if (logFn) {
+                if (result.source === "kv") {
+                    logFn(`Lists loaded from server (${result.lists.length} list${result.lists.length !== 1 ? "s" : ""})`);
+                } else if (result.source === "defaults") {
+                    logFn(`No saved lists for '${u}' — using defaults`);
+                } else {
+                    logFn(`Could not load lists from server: ${result.error ?? "unknown error"}`, "WARN");
+                }
+            }
         }
         listsReadyRef.current = true;
     }, []);
@@ -543,13 +558,14 @@ function AppProvider({ children }) {
         if (stored) {
             usernameRef.current = stored;
             setUsernameState(stored);
-            loadListsForUser(stored);
+            loadListsForUser(stored, log);
         } else {
             // No user — use defaults immediately, no API fetch needed
             listsReadyRef.current = true;
         }
     }, [
-        loadListsForUser
+        loadListsForUser,
+        log
     ]);
     const setUser = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useCallback"])((name)=>{
         const clean = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$user$2d$store$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["sanitizeUsername"])(name);
@@ -557,8 +573,8 @@ function AppProvider({ children }) {
         usernameRef.current = clean;
         setUsernameState(clean);
         listsReadyRef.current = false;
-        loadListsForUser(clean).then(()=>{
-            log(`Signed in as '${clean}' — lists loaded from server`);
+        loadListsForUser(clean, log).then(()=>{
+            log(`Signed in as '${clean}'`);
         });
     }, [
         loadListsForUser,
@@ -702,12 +718,19 @@ function AppProvider({ children }) {
         }
         // Persist — only after the initial fetch completed, and only if signed in
         if (listsReadyRef.current && usernameRef.current) {
-            apiSaveLists(usernameRef.current, lists);
+            apiSaveLists(usernameRef.current, lists).then((result)=>{
+                if (result.ok) {
+                    log(`Lists saved to server`);
+                } else {
+                    log(`Lists save failed: ${result.error ?? "unknown error"}`, "WARN");
+                }
+            });
         }
     }, [
         allParams,
         activeListName,
-        doFilter
+        doFilter,
+        log
     ]);
     // ---------- render ----------
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(AppContext.Provider, {
@@ -752,7 +775,7 @@ function AppProvider({ children }) {
         children: children
     }, void 0, false, {
         fileName: "[project]/lib/app-context.tsx",
-        lineNumber: 395,
+        lineNumber: 413,
         columnNumber: 5
     }, this);
 }

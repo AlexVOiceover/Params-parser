@@ -1,6 +1,5 @@
 {
   "/api/lists/[username]/route": "app/api/lists/[username]/route.js",
   "/api/param-definitions/route": "app/api/param-definitions/route.js",
-  "/_not-found/page": "app/_not-found/page.js",
   "/page": "app/page.js"
 }

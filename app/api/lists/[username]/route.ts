@@ -15,12 +15,12 @@ export async function GET(
     const { kv } = await import("@vercel/kv");
     const data = await kv.get<ProtectionList[]>(kvKey(username));
     if (!data || data.length === 0) {
-      return NextResponse.json(DEFAULT_PROTECTION_LISTS);
+      return NextResponse.json({ lists: DEFAULT_PROTECTION_LISTS, source: "defaults" });
     }
-    return NextResponse.json(data);
-  } catch {
-    // KV not configured (local dev) — return defaults
-    return NextResponse.json(DEFAULT_PROTECTION_LISTS);
+    return NextResponse.json({ lists: data, source: "kv" });
+  } catch (err) {
+    console.error("[lists/GET] KV error:", err);
+    return NextResponse.json({ lists: DEFAULT_PROTECTION_LISTS, source: "error", error: String(err) });
   }
 }
 
@@ -34,8 +34,8 @@ export async function PUT(
     const { kv } = await import("@vercel/kv");
     await kv.set(kvKey(username), lists);
     return NextResponse.json({ ok: true });
-  } catch {
-    // KV not configured (local dev) — silently succeed
-    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("[lists/PUT] KV error:", err);
+    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
   }
 }
