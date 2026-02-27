@@ -1,0 +1,33 @@
+{
+  "name": "Calibration Parameters",
+  "description": "Sensor calibration data that is specific to each physical drone (IMU offsets, compass calibration, barometer ground pressure, motor hover thrust). These should never be overwritten from another drone.",
+  "rules": [
+    {"type": "prefix", "value": "COMPASS_OFS"},
+    {"type": "prefix", "value": "COMPASS_DIA"},
+    {"type": "prefix", "value": "COMPASS_MOT"},
+    {"type": "prefix", "value": "COMPASS_ODI"},
+    {"type": "prefix", "value": "COMPASS_SCALE"},
+    {"type": "prefix", "value": "INS_ACCOFFS"},
+    {"type": "prefix", "value": "INS_ACCSCAL"},
+    {"type": "prefix", "value": "INS_GYROFFS"},
+    {"type": "prefix", "value": "INS_ACC1_CALTEMP"},
+    {"type": "prefix", "value": "INS_ACC2_CALTEMP"},
+    {"type": "prefix", "value": "INS_ACC3_CALTEMP"},
+    {"type": "prefix", "value": "INS_GYR1_CALTEMP"},
+    {"type": "prefix", "value": "INS_GYR2_CALTEMP"},
+    {"type": "prefix", "value": "INS_GYR3_CALTEMP"},
+    {"type": "prefix", "value": "INS_ACC2OFFS"},
+    {"type": "prefix", "value": "INS_ACC2SCAL"},
+    {"type": "prefix", "value": "INS_ACC3OFFS"},
+    {"type": "prefix", "value": "INS_ACC3SCAL"},
+    {"type": "prefix", "value": "INS_GYR2OFFS"},
+    {"type": "prefix", "value": "INS_GYR3OFFS"},
+    {"type": "prefix", "value": "BARO1_GND"},
+    {"type": "prefix", "value": "BARO2_GND"},
+    {"type": "prefix", "value": "BARO3_GND"},
+    {"type": "exact",  "value": "AHRS_TRIM_X"},
+    {"type": "exact",  "value": "AHRS_TRIM_Y"},
+    {"type": "exact",  "value": "AHRS_TRIM_Z"},
+    {"type": "exact",  "value": "MOT_THST_HOVER"}
+  ]
+}

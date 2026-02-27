@@ -1,0 +1,31 @@
+{
+  "name": "Hardware & Device IDs",
+  "description": "Hardware-specific identifiers, board type, device IDs, serial port configuration, and runtime statistics. These are unique to each physical unit and should not be transferred between drones.",
+  "rules": [
+    {"type": "prefix", "value": "COMPASS_DEV_ID"},
+    {"type": "prefix", "value": "COMPASS_PRIO"},
+    {"type": "exact",  "value": "INS_GYR_ID"},
+    {"type": "exact",  "value": "INS_GYR2_ID"},
+    {"type": "exact",  "value": "INS_GYR3_ID"},
+    {"type": "exact",  "value": "INS_ACC_ID"},
+    {"type": "exact",  "value": "INS_ACC2_ID"},
+    {"type": "exact",  "value": "INS_ACC3_ID"},
+    {"type": "prefix", "value": "INS4_"},
+    {"type": "prefix", "value": "INS5_"},
+    {"type": "exact",  "value": "BARO1_DEVID"},
+    {"type": "exact",  "value": "BARO2_DEVID"},
+    {"type": "exact",  "value": "BARO3_DEVID"},
+    {"type": "prefix", "value": "STAT_"},
+    {"type": "exact",  "value": "SYSID_THISMAV"},
+    {"type": "exact",  "value": "BRD_SERIAL_NUM"},
+    {"type": "exact",  "value": "BRD_TYPE"},
+    {"type": "exact",  "value": "FORMAT_VERSION"},
+    {"type": "prefix", "value": "SERIAL0_"},
+    {"type": "prefix", "value": "SERIAL1_"},
+    {"type": "prefix", "value": "SERIAL2_"},
+    {"type": "prefix", "value": "SERIAL3_"},
+    {"type": "prefix", "value": "SERIAL4_"},
+    {"type": "prefix", "value": "SERIAL5_"},
+    {"type": "prefix", "value": "SERIAL6_"}
+  ]
+}

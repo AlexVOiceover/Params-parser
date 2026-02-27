@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:ardupilot.org)",
+      "WebFetch(domain:autotest.ardupilot.org)",
+      "WebFetch(domain:discuss.ardupilot.org)",
+      "WebFetch(domain:github.com)",
+      "Bash(pip install customtkinter requests)",
+      "Bash(python -c \":*)",
+      "Bash(python -c \"import py_compile; py_compile.compile\\(''main.py'', doraise=True\\); py_compile.compile\\(''ui/app.py'', doraise=True\\); print\\(''OK''\\)\")"
+    ]
+  }
+}

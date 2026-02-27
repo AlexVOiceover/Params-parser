@@ -1,0 +1,23 @@
+{
+  "name": "RC Configuration",
+  "description": "Radio control calibration (min/max/trim per channel) and channel mapping. These are specific to each operator's transmitter and should not be applied to drones used by different pilots.",
+  "rules": [
+    {"type": "prefix", "value": "RC1_"},
+    {"type": "prefix", "value": "RC2_"},
+    {"type": "prefix", "value": "RC3_"},
+    {"type": "prefix", "value": "RC4_"},
+    {"type": "prefix", "value": "RC5_"},
+    {"type": "prefix", "value": "RC6_"},
+    {"type": "prefix", "value": "RC7_"},
+    {"type": "prefix", "value": "RC8_"},
+    {"type": "prefix", "value": "RC9_"},
+    {"type": "prefix", "value": "RC10_"},
+    {"type": "prefix", "value": "RC11_"},
+    {"type": "prefix", "value": "RC12_"},
+    {"type": "prefix", "value": "RC13_"},
+    {"type": "prefix", "value": "RC14_"},
+    {"type": "prefix", "value": "RC15_"},
+    {"type": "prefix", "value": "RC16_"},
+    {"type": "prefix", "value": "RCMAP_"}
+  ]
+}
