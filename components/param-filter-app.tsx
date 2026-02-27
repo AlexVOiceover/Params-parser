@@ -265,7 +265,7 @@ export function ParamFilterApp() {
 
       {/* Bottom: Console + Status bar */}
       <div className="flex flex-col shrink-0 border-t border-border">
-        <div className="h-[140px]">
+        <div className="h-35">
           <ConsolePanel />
         </div>
         <div className="flex items-center justify-between border-t border-border bg-toolbar px-4 py-1.5">
