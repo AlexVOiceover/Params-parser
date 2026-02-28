@@ -181,7 +181,7 @@ function PrefixGroupRows({
               exit={ROW_EXIT}
               transition={ROW_TRANSITION}
               className={cn(
-                "flex items-center border-b border-border/30 border-l-4",
+                "flex items-center border-b border-border/30 border-l-4 pl-8",
                 isProtected
                   ? "bg-protected/5 hover:bg-protected/12 border-l-red-400/35"
                   : "bg-secondary/10 hover:bg-secondary/20 border-l-group-text/30"

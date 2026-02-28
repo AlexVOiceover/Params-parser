@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useCallback, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { motion } from "framer-motion";
 import { RefreshCw, FileText, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
@@ -13,6 +15,49 @@ import { ConsolePanel } from "@/components/console-panel";
 import { ListEditorDialog } from "@/components/list-editor-dialog";
 import { UsernamePrompt } from "@/components/username-prompt";
 import { SaveResumeModal } from "@/components/save-resume-modal";
+
+// ---------- flying rows portal ----------
+
+const MAX_FLYING = 8;
+
+interface FlyingRow {
+  id: string;
+  name: string;
+  fromRect: DOMRect;
+  toX: number;
+  toY: number;
+  delay: number;
+  variant: "protected" | "applied";
+}
+
+function FlyingRowsOverlay({ rows }: { rows: FlyingRow[] }) {
+  if (rows.length === 0) return null;
+  return createPortal(
+    <>
+      {rows.map((row) => (
+        <motion.div
+          key={row.id}
+          style={{ position: "fixed", top: 0, left: 0, pointerEvents: "none", zIndex: 9999,
+            width: Math.min(row.fromRect.width * 0.6, 240) }}
+          initial={{ x: row.fromRect.left, y: row.fromRect.top, opacity: 0.9 }}
+          animate={{ x: row.toX, y: row.toY, opacity: 0 }}
+          transition={{ duration: 0.35, delay: row.delay, ease: "easeInOut" }}
+        >
+          <div className={cn(
+            "flex items-center px-3 rounded border font-mono text-xs truncate",
+            "h-6.5",
+            row.variant === "protected"
+              ? "bg-protected/40 border-red-400/50 text-red-300"
+              : "bg-secondary border-border text-foreground/90"
+          )}>
+            {row.name}
+          </div>
+        </motion.div>
+      ))}
+    </>,
+    document.body
+  );
+}
 
 export function ParamFilterApp() {
   const {
@@ -49,6 +94,10 @@ export function ParamFilterApp() {
   const [refreshing, setRefreshing] = useState(false);
   const [saveResumeOpen, setSaveResumeOpen] = useState(false);
   const [remainingOverrides, setRemainingOverrides] = useState<Map<string, string>>(new Map());
+  const [flyingRows, setFlyingRows] = useState<FlyingRow[]>([]);
+
+  const protectedPanelRef = useRef<HTMLDivElement>(null);
+  const appliedPanelRef = useRef<HTMLDivElement>(null);
 
   const handleRemainingOverride = useCallback((name: string, value: string) => {
     setRemainingOverrides((prev) => {
@@ -58,6 +107,60 @@ export function ParamFilterApp() {
       return next;
     });
   }, []);
+
+  const handleMoveToApplied = useCallback(() => {
+    if (checkedProtected.size === 0) return;
+    const srcEl = protectedPanelRef.current;
+    const dstEl = appliedPanelRef.current;
+    if (srcEl && dstEl) {
+      const dstRect = dstEl.getBoundingClientRect();
+      const toX = dstRect.left + 20;
+      const rows: FlyingRow[] = [];
+      let i = 0;
+      for (const name of checkedProtected) {
+        if (i >= MAX_FLYING) break;
+        const el = srcEl.querySelector(`[data-param="${name}"]`);
+        if (el) {
+          rows.push({ id: `${name}-${Date.now()}`, name, fromRect: el.getBoundingClientRect(),
+            toX, toY: dstRect.top + 100 + i * 6, delay: i * 0.04, variant: "protected" });
+          i++;
+        }
+      }
+      if (rows.length > 0) {
+        setFlyingRows(rows);
+        const ttl = (0.35 + (rows.length - 1) * 0.04 + 0.1) * 1000;
+        setTimeout(() => setFlyingRows([]), ttl);
+      }
+    }
+    moveCheckedToRemaining();
+  }, [checkedProtected, moveCheckedToRemaining]);
+
+  const handleMoveToProtected = useCallback(() => {
+    if (checkedRemaining.size === 0) return;
+    const srcEl = appliedPanelRef.current;
+    const dstEl = protectedPanelRef.current;
+    if (srcEl && dstEl) {
+      const dstRect = dstEl.getBoundingClientRect();
+      const toX = dstRect.right - 260;
+      const rows: FlyingRow[] = [];
+      let i = 0;
+      for (const name of checkedRemaining) {
+        if (i >= MAX_FLYING) break;
+        const el = srcEl.querySelector(`[data-param="${name}"]`);
+        if (el) {
+          rows.push({ id: `${name}-${Date.now()}`, name, fromRect: el.getBoundingClientRect(),
+            toX, toY: dstRect.top + 100 + i * 6, delay: i * 0.04, variant: "applied" });
+          i++;
+        }
+      }
+      if (rows.length > 0) {
+        setFlyingRows(rows);
+        const ttl = (0.35 + (rows.length - 1) * 0.04 + 0.1) * 1000;
+        setTimeout(() => setFlyingRows([]), ttl);
+      }
+    }
+    moveCheckedToProtected();
+  }, [checkedRemaining, moveCheckedToProtected]);
 
   // Info sidebar resize (horizontal)
   const [infoWidth, setInfoWidth] = useState(288);
@@ -255,7 +358,7 @@ export function ParamFilterApp() {
         <div className="flex flex-1 min-w-0 min-h-0">
 
         {/* Protected panel */}
-        <div className="flex flex-col flex-1 min-w-0 p-2">
+        <div ref={protectedPanelRef} className="flex flex-col flex-1 min-w-0 p-2">
           <ParamPanel
             title="PROTECTED — will be removed"
             headerColor="bg-protected-header"
@@ -285,7 +388,7 @@ export function ParamFilterApp() {
         {/* Center: Move buttons */}
         <div className="flex flex-col items-center justify-center gap-3 px-1 py-4 shrink-0">
           <button
-            onClick={moveCheckedToProtected}
+            onClick={handleMoveToProtected}
             disabled={checkedRemaining.size === 0}
             className={cn(
               "flex w-16 flex-col items-center justify-center rounded-lg py-3 text-xs font-bold transition-colors",
@@ -296,7 +399,7 @@ export function ParamFilterApp() {
             <span className="mt-0.5">Protect</span>
           </button>
           <button
-            onClick={moveCheckedToRemaining}
+            onClick={handleMoveToApplied}
             disabled={checkedProtected.size === 0}
             className={cn(
               "flex w-16 flex-col items-center justify-center rounded-lg py-3 text-xs font-bold transition-colors",
@@ -309,7 +412,7 @@ export function ParamFilterApp() {
         </div>
 
         {/* Applied panel */}
-        <div className="flex flex-col flex-1 min-w-0 p-2">
+        <div ref={appliedPanelRef} className="flex flex-col flex-1 min-w-0 p-2">
           <ParamPanel
             title="WILL BE APPLIED"
             headerColor="bg-applied-header"
@@ -382,6 +485,9 @@ export function ParamFilterApp() {
           </span>
         </div>
       </div>
+
+      {/* Flying rows overlay */}
+      <FlyingRowsOverlay rows={flyingRows} />
 
       {/* List Editor Dialog */}
       {editorOpen && (

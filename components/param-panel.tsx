@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback } from "react";
 import { ChevronRight, ChevronDown, X } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { buildGroups } from "@/lib/param-engine";
 import { useApp } from "@/lib/app-context";
@@ -88,7 +89,7 @@ export function ParamPanel({
   valueOverrides,
   onOverrideValue,
 }: ParamPanelProps) {
-  const { paramDefs, paramNotes } = useApp();
+  const { paramDefs, paramNotes, selectedParam } = useApp();
 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
@@ -222,15 +223,20 @@ export function ParamPanel({
               return (
                 <div key={group.label}>
                   {/* Sticky group header — sits below the column header */}
-                  <button
-                    onClick={() => toggleGroup(group.label)}
+                  <div
+                    onClick={() => onToggleGroup(groupNames)}
                     className="sticky top-7 z-10 flex w-full items-center gap-1.5 border-b border-border bg-secondary/50 px-2 py-1 text-left hover:bg-secondary/70 transition-colors cursor-pointer"
                   >
-                    {isOpen ? (
-                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    ) : (
-                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    )}
+                    <span
+                      onClick={(e) => { e.stopPropagation(); toggleGroup(group.label); }}
+                      className="shrink-0 p-0.5 -m-0.5 rounded hover:bg-secondary transition-colors"
+                    >
+                      {isOpen ? (
+                        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                      )}
+                    </span>
                     <input
                       type="checkbox"
                       checked={groupAllChecked}
@@ -250,10 +256,11 @@ export function ParamPanel({
                         #{group.params.length}
                       </span>
                     </span>
-                  </button>
+                  </div>
 
                   {/* Param rows */}
-                  {isOpen &&
+                  <AnimatePresence initial={false}>
+                    {isOpen &&
                     group.params.map((param) => {
                       const def = paramDefs[param.name];
                       const descSource = def?.Description || def?.DisplayName || "";
@@ -278,17 +285,24 @@ export function ParamPanel({
                       const noteSnippet = noteMatches ? getSnippet(noteSource, q) : null;
 
                       return (
-                        <div
+                        <motion.div
                           key={param.name}
+                          data-param={param.name}
+                          initial={{ opacity: 0, x: variant === "protected" ? -16 : 16 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: variant === "protected" ? 16 : -16 }}
+                          transition={{ duration: 0.15, ease: "easeOut" }}
                           className={cn(
                             "flex items-start border-b border-border/30 pl-8 pr-2 py-1 transition-colors cursor-pointer border-l-4",
-                            variant === "protected"
+                            selectedParam?.name === param.name
+                              ? "bg-primary/10 border-l-primary/60"
+                              : variant === "protected"
                               ? "bg-protected/5 hover:bg-protected/12 border-l-red-400/35"
                               : variant === "applied"
                               ? "bg-secondary/10 hover:bg-secondary/20 border-l-group-text/30"
                               : "hover:bg-secondary/30 border-l-transparent"
                           )}
-                          onClick={() => onSelectParam(param.name, param.value)}
+                          onClick={() => { onToggleCheck(param.name); onSelectParam(param.name, param.value); }}
                         >
                           {/* Checkbox col */}
                           <div className={cn(COL_CHECKBOX, "flex justify-center pt-0.5")}>
@@ -332,9 +346,10 @@ export function ParamPanel({
                               {param.value}
                             </div>
                           )}
-                        </div>
+                        </motion.div>
                       );
                     })}
+                  </AnimatePresence>
                 </div>
               );
             })}
