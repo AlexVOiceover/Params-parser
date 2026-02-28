@@ -48,6 +48,16 @@ export function ParamFilterApp() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [saveResumeOpen, setSaveResumeOpen] = useState(false);
+  const [remainingOverrides, setRemainingOverrides] = useState<Map<string, string>>(new Map());
+
+  const handleRemainingOverride = useCallback((name: string, value: string) => {
+    setRemainingOverrides((prev) => {
+      const next = new Map(prev);
+      if (value === "") next.delete(name);
+      else next.set(name, value);
+      return next;
+    });
+  }, []);
 
   // Info sidebar resize (horizontal)
   const [infoWidth, setInfoWidth] = useState(288);
@@ -179,8 +189,8 @@ export function ParamFilterApp() {
     setSaveResumeOpen(true);
   }, [remainingParams]);
 
-  const handleConfirmSave = useCallback(() => {
-    const content = writeParamFile(remainingParams);
+  const handleConfirmSave = useCallback((params: Param[]) => {
+    const content = writeParamFile(params);
     const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -190,9 +200,9 @@ export function ParamFilterApp() {
     a.click();
     URL.revokeObjectURL(url);
     log(
-      `Saved '${baseName}_filtered.param' \u2014 ${remainingParams.length} written, ${protectedParams.length} removed`
+      `Saved '${baseName}_filtered.param' \u2014 ${params.length} written, ${protectedParams.length} removed`
     );
-  }, [remainingParams, protectedParams, fileName, log]);
+  }, [protectedParams, fileName, log]);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -249,6 +259,7 @@ export function ParamFilterApp() {
           <ParamPanel
             title="PROTECTED — will be removed"
             headerColor="bg-protected-header"
+            variant="protected"
             params={protectedParams}
             checkedNames={checkedProtected}
             pdefGroups={pdefGroups}
@@ -302,6 +313,7 @@ export function ParamFilterApp() {
           <ParamPanel
             title="WILL BE APPLIED"
             headerColor="bg-applied-header"
+            variant="applied"
             params={remainingParams}
             checkedNames={checkedRemaining}
             pdefGroups={pdefGroups}
@@ -309,6 +321,8 @@ export function ParamFilterApp() {
             onToggleAll={toggleAllRemaining}
             onToggleGroup={toggleGroupRemaining}
             onSelectParam={selectParam}
+            valueOverrides={remainingOverrides}
+            onOverrideValue={handleRemainingOverride}
           />
         </div>
 
@@ -383,6 +397,7 @@ export function ParamFilterApp() {
           protectedParams={protectedParams}
           remainingParams={remainingParams}
           fileName={fileName}
+          initialOverrides={remainingOverrides}
           onConfirm={handleConfirmSave}
           onClose={() => setSaveResumeOpen(false)}
         />

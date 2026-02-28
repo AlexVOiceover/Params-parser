@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Lock, Download, X, Shield, ChevronDown, ChevronRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
+import { useLongPress, ValueCell } from "@/components/value-cell";
 import type { Param } from "@/lib/types";
 
 // ---------- helpers ----------
@@ -30,54 +31,11 @@ function buildPrefixItems(params: Param[]): ParamItem[] {
   return items;
 }
 
-// ---------- useLongPress hook ----------
-
-function useLongPress(onLongPress: () => void, duration = 2000) {
-  const [pressing, setPressing] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const completedRef = useRef(false);
-  const callbackRef = useRef(onLongPress);
-  callbackRef.current = onLongPress;
-
-  useEffect(() => {
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  }, []);
-
-  const start = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
-    completedRef.current = false;
-    setPressing(true);
-    timerRef.current = setTimeout(() => {
-      completedRef.current = true;
-      callbackRef.current();
-      setPressing(false);
-    }, duration);
-  }, [duration]);
-
-  const cancel = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    setPressing(false);
-  }, []);
-
-  return {
-    pressing,
-    completedRef,
-    handlers: {
-      onMouseDown: start,
-      onMouseUp: cancel,
-      onMouseLeave: cancel,
-      onTouchStart: start,
-      onTouchEnd: cancel,
-      onTouchCancel: cancel,
-    },
-  };
-}
-
 // ---------- column layout ----------
 
 const COL_ICON   = "w-8 shrink-0";
 const COL_NAME   = "flex-1 min-w-0 font-mono text-xs";
-const COL_VALUE  = "w-24 shrink-0 font-mono text-xs text-right tabular-nums";
+const COL_VALUE  = "w-24 shrink-0";
 const COL_STATUS = "w-20 shrink-0";
 
 const ROW_TRANSITION = { duration: 0.18 };
@@ -85,7 +43,7 @@ const ROW_INITIAL    = { opacity: 0, y: -5 };
 const ROW_ANIMATE    = { opacity: 1, y: 0 };
 const ROW_EXIT       = { opacity: 0 };
 
-// ---------- StatusCell ----------
+// ---------- StatusCell — long-press to move ----------
 
 function StatusCell({
   paramName,
@@ -125,7 +83,7 @@ function StatusCell({
       )}
       <span
         className={cn(
-          "relative text-[11px] transition-opacity",
+          "relative text-[11px] transition-opacity whitespace-nowrap",
           isProtected ? "text-red-400/70" : "text-applied-text/80",
           lp.pressing && "opacity-40"
         )}
@@ -141,9 +99,13 @@ function StatusCell({
 function PrefixGroupRows({
   group,
   variant,
+  newValues,
+  onNewValue,
 }: {
   group: ParamGroup;
   variant: "protected" | "applied";
+  newValues: Map<string, string>;
+  onNewValue: (name: string, value: string) => void;
 }) {
   const { moveBulkToProtected, moveBulkToRemaining } = useApp();
   const [open, setOpen] = useState(true);
@@ -156,7 +118,7 @@ function PrefixGroupRows({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isProtected, moveBulkToProtected, moveBulkToRemaining]);
 
-  const lp = useLongPress(bulkMove);
+  const lp = useLongPress(bulkMove, 2000, 300);
 
   const fillBg = isProtected ? "rgba(134,239,172,0.15)" : "rgba(252,165,165,0.15)";
   const hintText = isProtected
@@ -219,19 +181,13 @@ function PrefixGroupRows({
               exit={ROW_EXIT}
               transition={ROW_TRANSITION}
               className={cn(
-                "flex items-center border-b border-border/30",
+                "flex items-center border-b border-border/30 border-l-4",
                 isProtected
-                  ? "bg-protected/5 hover:bg-protected/12"
-                  : "bg-secondary/10 hover:bg-secondary/20"
+                  ? "bg-protected/5 hover:bg-protected/12 border-l-red-400/35"
+                  : "bg-secondary/10 hover:bg-secondary/20 border-l-group-text/30"
               )}
             >
-              <div
-                className={cn(
-                  COL_ICON,
-                  "py-1 flex items-center justify-center border-l-4",
-                  isProtected ? "border-red-400/35" : "border-group-text/30"
-                )}
-              >
+              <div className={cn(COL_ICON, "py-1 flex items-center justify-center")}>
                 {isProtected && <Lock className="h-3 w-3 text-red-400/70" />}
               </div>
               <div className={cn(COL_NAME, "py-1 pl-4 pr-2")}>
@@ -239,15 +195,18 @@ function PrefixGroupRows({
                   {p.name}
                 </span>
               </div>
-              <div
-                className={cn(
-                  COL_VALUE,
-                  "py-1 px-4",
-                  isProtected ? "text-red-400/60" : "text-muted-foreground"
-                )}
-              >
-                {p.value}
-              </div>
+              {isProtected ? (
+                <div className={cn(COL_VALUE, "px-2 py-1 flex items-center justify-end")}>
+                  <span className="font-mono text-xs tabular-nums text-red-400/60">{p.value}</span>
+                </div>
+              ) : (
+                <ValueCell
+                  className={COL_VALUE}
+                  originalValue={p.value}
+                  override={newValues.get(p.name)}
+                  onOverride={(v) => onNewValue(p.name, v)}
+                />
+              )}
               <StatusCell paramName={p.name} isProtected={isProtected} />
             </motion.div>
           ))}
@@ -262,7 +221,8 @@ interface SaveResumeModalProps {
   protectedParams: Param[];
   remainingParams: Param[];
   fileName: string | null;
-  onConfirm: () => void;
+  initialOverrides?: Map<string, string>;
+  onConfirm: (params: Param[]) => void;
   onClose: () => void;
 }
 
@@ -270,12 +230,25 @@ export function SaveResumeModal({
   protectedParams,
   remainingParams,
   fileName,
+  initialOverrides,
   onConfirm,
   onClose,
 }: SaveResumeModalProps) {
   const baseName = fileName ? fileName.replace(/\.\w+$/, "") : "params";
   const [protectedOpen, setProtectedOpen] = useState(true);
   const [appliedOpen, setAppliedOpen] = useState(true);
+  const [newValues, setNewValues] = useState<Map<string, string>>(
+    () => new Map(initialOverrides ?? [])
+  );
+
+  const handleNewValue = useCallback((name: string, value: string) => {
+    setNewValues((prev) => {
+      const next = new Map(prev);
+      if (value === "") next.delete(name);
+      else next.set(name, value);
+      return next;
+    });
+  }, []);
 
   const protectedItems = useMemo(() => buildPrefixItems(protectedParams), [protectedParams]);
   const appliedItems = useMemo(() => buildPrefixItems(remainingParams), [remainingParams]);
@@ -308,7 +281,7 @@ export function SaveResumeModal({
           <div className="sticky top-0 z-10 flex items-center border-b border-border bg-toolbar text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
             <div className={cn(COL_ICON, "py-2")} />
             <div className={cn(COL_NAME, "py-2 pl-2")}>Parameter</div>
-            <div className={cn(COL_VALUE, "py-2 px-4")}>Value</div>
+            <div className={cn(COL_VALUE, "py-2 px-2 text-right")}>Value</div>
             <div className={cn(COL_STATUS, "py-2 px-4")}>Status</div>
           </div>
 
@@ -340,6 +313,8 @@ export function SaveResumeModal({
                           key={item.group.prefix}
                           group={item.group}
                           variant="protected"
+                          newValues={newValues}
+                          onNewValue={handleNewValue}
                         />
                       ) : (
                         <motion.div
@@ -356,8 +331,8 @@ export function SaveResumeModal({
                           <div className={cn(COL_NAME, "px-2 py-1.5 font-medium text-red-400")}>
                             {item.param.name}
                           </div>
-                          <div className={cn(COL_VALUE, "px-4 py-1.5 text-red-400/80")}>
-                            {item.param.value}
+                          <div className={cn(COL_VALUE, "px-2 py-1.5 flex items-center justify-end")}>
+                            <span className="font-mono text-xs tabular-nums text-red-400/60">{item.param.value}</span>
                           </div>
                           <StatusCell paramName={item.param.name} isProtected={true} />
                         </motion.div>
@@ -394,6 +369,8 @@ export function SaveResumeModal({
                           key={item.group.prefix}
                           group={item.group}
                           variant="applied"
+                          newValues={newValues}
+                          onNewValue={handleNewValue}
                         />
                       ) : (
                         <motion.div
@@ -408,9 +385,12 @@ export function SaveResumeModal({
                           <div className={cn(COL_NAME, "px-2 py-1.5 font-medium text-foreground")}>
                             {item.param.name}
                           </div>
-                          <div className={cn(COL_VALUE, "px-4 py-1.5 text-muted-foreground")}>
-                            {item.param.value}
-                          </div>
+                          <ValueCell
+                            className={COL_VALUE}
+                            originalValue={item.param.value}
+                            override={newValues.get(item.param.name)}
+                            onOverride={(v) => handleNewValue(item.param.name, v)}
+                          />
                           <StatusCell paramName={item.param.name} isProtected={false} />
                         </motion.div>
                       )
@@ -437,7 +417,14 @@ export function SaveResumeModal({
               Cancel
             </button>
             <button
-              onClick={() => { onConfirm(); onClose(); }}
+              onClick={() => {
+                const merged = remainingParams.map((p) => ({
+                  ...p,
+                  value: newValues.get(p.name) || p.value,
+                }));
+                onConfirm(merged);
+                onClose();
+              }}
               className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
             >
               <Download className="h-3.5 w-3.5" />

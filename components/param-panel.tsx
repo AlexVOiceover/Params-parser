@@ -5,6 +5,7 @@ import { ChevronRight, ChevronDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buildGroups } from "@/lib/param-engine";
 import { useApp } from "@/lib/app-context";
+import { ValueCell } from "@/components/value-cell";
 import type { Param } from "@/lib/types";
 
 type SearchMode = "name" | "description" | "both";
@@ -52,13 +53,14 @@ function getSnippet(text: string, query: string, radius = 45): string {
 // Kept in one place so column header and rows stay aligned.
 const COL_CHECKBOX = "w-7 shrink-0";
 const COL_NAME     = "flex-1 min-w-0";
-const COL_VALUE    = "w-20 shrink-0 text-right";
+const COL_VALUE    = "w-20 shrink-0";
 
 // ---------- component ----------
 
 interface ParamPanelProps {
   title: string;
   headerColor: string;
+  variant?: "protected" | "applied";
   params: Param[];
   checkedNames: Set<string>;
   pdefGroups: string[];
@@ -67,11 +69,14 @@ interface ParamPanelProps {
   onToggleGroup: (paramNames: string[]) => void;
   onSelectParam: (name: string, value: string) => void;
   headerAction?: React.ReactNode;
+  valueOverrides?: Map<string, string>;
+  onOverrideValue?: (name: string, value: string) => void;
 }
 
 export function ParamPanel({
   title,
   headerColor,
+  variant,
   params,
   checkedNames,
   pdefGroups,
@@ -80,6 +85,8 @@ export function ParamPanel({
   onToggleGroup,
   onSelectParam,
   headerAction,
+  valueOverrides,
+  onOverrideValue,
 }: ParamPanelProps) {
   const { paramDefs, paramNotes } = useApp();
 
@@ -235,11 +242,13 @@ export function ParamPanel({
                       className="h-3.5 w-3.5 rounded accent-foreground cursor-pointer"
                       aria-label={`Select all in ${group.label}`}
                     />
-                    <span className="flex-1 text-xs font-semibold text-group-text truncate">
-                      {group.label}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground tabular-nums pr-1">
-                      {group.params.length}
+                    <span className="flex-1 min-w-0 flex items-center gap-1.5">
+                      <span className="text-xs font-semibold text-group-text truncate">
+                        {group.label}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                        #{group.params.length}
+                      </span>
                     </span>
                   </button>
 
@@ -271,7 +280,14 @@ export function ParamPanel({
                       return (
                         <div
                           key={param.name}
-                          className="flex items-start border-b border-border/40 px-2 py-1 hover:bg-secondary/30 transition-colors cursor-pointer"
+                          className={cn(
+                            "flex items-start border-b border-border/30 pl-8 pr-2 py-1 transition-colors cursor-pointer border-l-4",
+                            variant === "protected"
+                              ? "bg-protected/5 hover:bg-protected/12 border-l-red-400/35"
+                              : variant === "applied"
+                              ? "bg-secondary/10 hover:bg-secondary/20 border-l-group-text/30"
+                              : "hover:bg-secondary/30 border-l-transparent"
+                          )}
                           onClick={() => onSelectParam(param.name, param.value)}
                         >
                           {/* Checkbox col */}
@@ -304,9 +320,18 @@ export function ParamPanel({
                           </div>
 
                           {/* Value col */}
-                          <div className={cn(COL_VALUE, "font-mono text-xs text-muted-foreground tabular-nums pt-0.5 pr-1")}>
-                            {param.value}
-                          </div>
+                          {onOverrideValue ? (
+                            <ValueCell
+                              className={COL_VALUE}
+                              originalValue={param.value}
+                              override={valueOverrides?.get(param.name)}
+                              onOverride={(v) => onOverrideValue(param.name, v)}
+                            />
+                          ) : (
+                            <div className={cn(COL_VALUE, "font-mono text-xs text-muted-foreground tabular-nums pt-0.5 pr-1 text-right")}>
+                              {param.value}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
