@@ -36,3 +36,5 @@ export interface ConsoleEntry {
   level: "INFO" | "WARN" | "ERROR";
   message: string;
 }
+
+export type ParamNotes = Record<string, string>;

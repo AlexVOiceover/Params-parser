@@ -14,6 +14,7 @@ import type {
   ProtectionList,
   ParamDefinition,
   ConsoleEntry,
+  ParamNotes,
 } from "@/lib/types";
 import {
   parseParamFile,
@@ -49,6 +50,29 @@ async function apiSaveLists(username: string, lists: ProtectionList[]): Promise<
     return await res.json();
   } catch (err) {
     return { ok: false, error: String(err) };
+  }
+}
+
+async function apiFetchNotes(username: string): Promise<ParamNotes> {
+  try {
+    const res = await fetch(`/api/notes/${encodeURIComponent(username)}`);
+    if (!res.ok) return {};
+    const data = await res.json();
+    return data.notes ?? {};
+  } catch {
+    return {};
+  }
+}
+
+async function apiSaveNotes(username: string, notes: ParamNotes): Promise<void> {
+  try {
+    await fetch(`/api/notes/${encodeURIComponent(username)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(notes),
+    });
+  } catch {
+    // silent — notes are best-effort
   }
 }
 
@@ -90,6 +114,9 @@ interface AppState {
 
   // Whether the user has manually moved params away from the auto-filtered baseline
   isProtectionModified: boolean;
+
+  // Per-param user notes
+  paramNotes: ParamNotes;
 }
 
 interface AppActions {
@@ -113,6 +140,7 @@ interface AppActions {
   ) => void;
   setDefsLoading: (loading: boolean) => void;
   setProtectionLists: (lists: ProtectionList[]) => void;
+  setParamNote: (name: string, note: string) => void;
   log: (message: string, level?: "INFO" | "WARN" | "ERROR") => void;
   clearConsole: () => void;
 }
@@ -153,6 +181,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [pdefGroups, setPdefGroups] = useState<string[]>([]);
   const [cacheAge, setCacheAge] = useState("No cache");
   const [defsLoading, setDefsLoading] = useState(true);
+
+  // --- notes ---
+  const [paramNotes, setParamNotesState] = useState<ParamNotes>({});
+  const paramNotesRef = useRef<ParamNotes>({});
+  const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // --- ui ---
   const [selectedParam, setSelectedParam] = useState<{ name: string; value: string } | null>(null);
@@ -215,6 +248,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     listsReadyRef.current = true;
   }, []);
 
+  const loadNotesForUser = useCallback(async (u: string) => {
+    const notes = await apiFetchNotes(u);
+    setParamNotesState(notes);
+    paramNotesRef.current = notes;
+  }, []);
+
   // On mount: restore username from localStorage
   useEffect(() => {
     const stored = getStoredUsername();
@@ -222,11 +261,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       usernameRef.current = stored;
       setUsernameState(stored);
       loadListsForUser(stored, log);
+      loadNotesForUser(stored);
     } else {
       // No user — use defaults immediately, no API fetch needed
       listsReadyRef.current = true;
     }
-  }, [loadListsForUser, log]);
+  }, [loadListsForUser, loadNotesForUser, log]);
 
   const setUser = useCallback(
     (name: string) => {
@@ -238,8 +278,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       loadListsForUser(clean, log).then(() => {
         log(`Signed in as '${clean}'`);
       });
+      loadNotesForUser(clean);
     },
-    [loadListsForUser, log]
+    [loadListsForUser, loadNotesForUser, log]
   );
 
   const clearUser = useCallback(() => {
@@ -247,8 +288,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     usernameRef.current = null;
     setUsernameState(null);
     listsReadyRef.current = false;
+    setParamNotesState({});
+    paramNotesRef.current = {};
     log("Signed out — changes will not be persisted");
   }, [log]);
+
+  const setParamNote = useCallback((name: string, note: string) => {
+    setParamNotesState((prev) => {
+      const next = { ...prev };
+      if (note) {
+        next[name] = note;
+      } else {
+        delete next[name];
+      }
+      paramNotesRef.current = next;
+      return next;
+    });
+    // Debounced save — 1s after last keystroke
+    if (notesTimerRef.current) clearTimeout(notesTimerRef.current);
+    if (usernameRef.current) {
+      notesTimerRef.current = setTimeout(() => {
+        if (usernameRef.current) {
+          apiSaveNotes(usernameRef.current, paramNotesRef.current);
+        }
+      }, 1000);
+    }
+  }, []);
 
   // ---------- file ----------
 
@@ -449,6 +514,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setParamDefs,
         setDefsLoading,
         setProtectionLists: updateProtectionLists,
+        paramNotes,
+        setParamNote,
         log,
         clearConsole,
       }}

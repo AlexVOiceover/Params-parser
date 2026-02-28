@@ -12,6 +12,7 @@ import { DetailPanel } from "@/components/detail-panel";
 import { ConsolePanel } from "@/components/console-panel";
 import { ListEditorDialog } from "@/components/list-editor-dialog";
 import { UsernamePrompt } from "@/components/username-prompt";
+import { SaveResumeModal } from "@/components/save-resume-modal";
 
 export function ParamFilterApp() {
   const {
@@ -46,6 +47,7 @@ export function ParamFilterApp() {
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [saveResumeOpen, setSaveResumeOpen] = useState(false);
 
   // Info sidebar resize (horizontal)
   const [infoWidth, setInfoWidth] = useState(288);
@@ -174,6 +176,10 @@ export function ParamFilterApp() {
 
   const handleSave = useCallback(() => {
     if (remainingParams.length === 0) return;
+    setSaveResumeOpen(true);
+  }, [remainingParams]);
+
+  const handleConfirmSave = useCallback(() => {
     const content = writeParamFile(remainingParams);
     const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
@@ -370,6 +376,17 @@ export function ParamFilterApp() {
 
       {/* First-visit username prompt */}
       {username === null && <UsernamePrompt onConfirm={setUser} />}
+
+      {/* Save resume modal */}
+      {saveResumeOpen && (
+        <SaveResumeModal
+          protectedParams={protectedParams}
+          remainingParams={remainingParams}
+          fileName={fileName}
+          onConfirm={handleConfirmSave}
+          onClose={() => setSaveResumeOpen(false)}
+        />
+      )}
 
       {/* Save selection as list dialog */}
       {saveListOpen && (

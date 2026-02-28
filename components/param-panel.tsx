@@ -1,10 +1,55 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { ChevronRight, ChevronDown } from "lucide-react";
+import { ChevronRight, ChevronDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buildGroups } from "@/lib/param-engine";
+import { useApp } from "@/lib/app-context";
 import type { Param } from "@/lib/types";
+
+type SearchMode = "name" | "description" | "both";
+
+// ---------- helpers ----------
+
+function highlightText(text: string, query: string): React.ReactNode {
+  if (!query || !text) return text;
+  const q = query.toUpperCase();
+  const upper = text.toUpperCase();
+  const nodes: React.ReactNode[] = [];
+  let cursor = 0;
+
+  while (cursor < text.length) {
+    const idx = upper.indexOf(q, cursor);
+    if (idx === -1) {
+      nodes.push(text.slice(cursor));
+      break;
+    }
+    if (idx > cursor) nodes.push(text.slice(cursor, idx));
+    nodes.push(
+      <mark
+        key={idx}
+        className="bg-amber-400/25 text-amber-200 rounded-xs px-px not-italic"
+      >
+        {text.slice(idx, idx + query.length)}
+      </mark>
+    );
+    cursor = idx + query.length;
+  }
+
+  return <>{nodes}</>;
+}
+
+/** Extract a short excerpt around the first match, with ellipsis. */
+function getSnippet(text: string, query: string, radius = 45): string {
+  if (!text || !query) return "";
+  const idx = text.toUpperCase().indexOf(query.toUpperCase());
+  if (idx === -1) return "";
+  const start = Math.max(0, idx - radius);
+  const end = Math.min(text.length, idx + query.length + radius);
+  return (start > 0 ? "…" : "") + text.slice(start, end) + (end < text.length ? "…" : "");
+}
+
+// ---------- component ----------
 
 interface ParamPanelProps {
   title: string;
@@ -31,43 +76,57 @@ export function ParamPanel({
   onSelectParam,
   headerAction,
 }: ParamPanelProps) {
+  const { paramDefs, paramNotes } = useApp();
+
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchMode, setSearchMode] = useState<SearchMode>("name");
 
   const groups = useMemo(() => buildGroups(params, pdefGroups), [params, pdefGroups]);
 
   const filteredGroups = useMemo(() => {
-    if (!searchQuery.trim()) return groups;
-    const q = searchQuery.toUpperCase();
+    const q = searchQuery.trim().toUpperCase();
+    if (!q) return groups;
+
     return groups
       .map((g) => ({
         ...g,
-        params: g.params.filter((p) => p.name.includes(q)),
+        params: g.params.filter((p) => {
+          const nameMatch = p.name.toUpperCase().includes(q);
+          if (searchMode === "name") return nameMatch;
+
+          const def = paramDefs[p.name];
+          const descMatch =
+            (def?.Description ?? "").toUpperCase().includes(q) ||
+            (def?.DisplayName ?? "").toUpperCase().includes(q);
+          const noteMatch = (paramNotes[p.name] ?? "").toUpperCase().includes(q);
+
+          if (searchMode === "description") return descMatch || noteMatch;
+          return nameMatch || descMatch || noteMatch; // "both"
+        }),
       }))
       .filter((g) => g.params.length > 0);
-  }, [groups, searchQuery]);
+  }, [groups, searchQuery, searchMode, paramDefs]);
 
   const allChecked = params.length > 0 && params.every((p) => checkedNames.has(p.name));
   const someChecked = params.some((p) => checkedNames.has(p.name));
 
-  const toggleGroup = useCallback(
-    (label: string) => {
-      setExpandedGroups((prev) => {
-        const next = new Set(prev);
-        if (next.has(label)) next.delete(label);
-        else next.add(label);
-        return next;
-      });
-    },
-    []
-  );
+  const toggleGroup = useCallback((label: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  }, []);
+
+  const q = searchQuery.trim();
+  const isSearching = q.length > 0;
 
   return (
     <div className="flex flex-1 flex-col rounded-lg border border-border bg-card overflow-hidden min-w-0">
       {/* Header */}
-      <div
-        className={cn("flex items-center gap-2 px-3 py-2.5", headerColor)}
-      >
+      <div className={cn("flex items-center gap-2 px-3 py-2.5", headerColor)}>
         <input
           type="checkbox"
           checked={allChecked}
@@ -86,14 +145,40 @@ export function ParamPanel({
 
       {/* Search */}
       {params.length > 0 && (
-        <div className="px-2 py-1.5 border-b border-border">
-          <input
-            type="text"
-            placeholder="Search params..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded bg-muted px-2.5 py-1.5 text-xs font-mono text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
-          />
+        <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-border">
+          <div className="relative flex-1 min-w-0">
+            <input
+              type="text"
+              placeholder={
+                searchMode === "name"
+                  ? "Search by name..."
+                  : searchMode === "description"
+                  ? "Search by description..."
+                  : "Search name or description..."
+              }
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded bg-muted px-2.5 py-1.5 pr-7 text-xs font-mono text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                aria-label="Clear search"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+          <select
+            value={searchMode}
+            onChange={(e) => setSearchMode(e.target.value as SearchMode)}
+            className="shrink-0 rounded bg-muted px-2 py-1.5 text-xs text-muted-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+          >
+            <option value="name">Name</option>
+            <option value="description">Description</option>
+            <option value="both">Both</option>
+          </select>
         </div>
       )}
 
@@ -107,7 +192,7 @@ export function ParamPanel({
           </div>
         )}
         {filteredGroups.map((group) => {
-          const isOpen = expandedGroups.has(group.label);
+          const isOpen = isSearching || expandedGroups.has(group.label);
           const groupNames = group.params.map((p) => p.name);
           const groupAllChecked = groupNames.every((n) => checkedNames.has(n));
           const groupSomeChecked = groupNames.some((n) => checkedNames.has(n));
@@ -147,28 +232,66 @@ export function ParamPanel({
               {/* Group params */}
               {isOpen && (
                 <div>
-                  {group.params.map((param) => (
-                    <div
-                      key={param.name}
-                      className="flex items-center gap-2 py-1 pl-9 pr-3 hover:bg-secondary/30 transition-colors cursor-pointer"
-                      onClick={() => onSelectParam(param.name, param.value)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checkedNames.has(param.name)}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={() => onToggleCheck(param.name)}
-                        className="h-3.5 w-3.5 shrink-0 rounded accent-foreground cursor-pointer"
-                        aria-label={`Select ${param.name}`}
-                      />
-                      <span className="flex-1 truncate font-mono text-xs text-foreground">
-                        {param.name}
-                      </span>
-                      <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
-                        {param.value}
-                      </span>
-                    </div>
-                  ))}
+                  {group.params.map((param) => {
+                    const def = paramDefs[param.name];
+                    const descSource = def?.Description || def?.DisplayName || "";
+                    const noteSource = paramNotes[param.name] ?? "";
+
+                    const nameMatches =
+                      isSearching &&
+                      searchMode !== "description" &&
+                      param.name.toUpperCase().includes(q.toUpperCase());
+
+                    const descMatches =
+                      isSearching &&
+                      searchMode !== "name" &&
+                      descSource.toUpperCase().includes(q.toUpperCase());
+
+                    const noteMatches =
+                      isSearching &&
+                      searchMode !== "name" &&
+                      noteSource.toUpperCase().includes(q.toUpperCase());
+
+                    const snippet = descMatches ? getSnippet(descSource, q) : null;
+                    const noteSnippet = noteMatches ? getSnippet(noteSource, q) : null;
+
+                    return (
+                      <div
+                        key={param.name}
+                        className="flex items-start gap-2 py-1 pl-9 pr-3 hover:bg-secondary/30 transition-colors cursor-pointer"
+                        onClick={() => onSelectParam(param.name, param.value)}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checkedNames.has(param.name)}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={() => onToggleCheck(param.name)}
+                          className="h-3.5 w-3.5 shrink-0 rounded accent-foreground cursor-pointer mt-0.5"
+                          aria-label={`Select ${param.name}`}
+                        />
+                        <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                          <span className="truncate font-mono text-xs text-foreground">
+                            {nameMatches
+                              ? highlightText(param.name, q)
+                              : param.name}
+                          </span>
+                          {snippet && (
+                            <span className="font-sans text-[10px] text-muted-foreground leading-snug">
+                              {highlightText(snippet, q)}
+                            </span>
+                          )}
+                          {noteSnippet && (
+                            <span className="font-sans text-[10px] text-amber-400/70 leading-snug">
+                              ✎ {highlightText(noteSnippet, q)}
+                            </span>
+                          )}
+                        </div>
+                        <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums mt-0.5">
+                          {param.value}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

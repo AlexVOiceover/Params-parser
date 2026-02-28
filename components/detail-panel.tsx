@@ -4,7 +4,7 @@ import { useApp } from "@/lib/app-context";
 import type { ParamDefinition } from "@/lib/types";
 
 export function DetailPanel() {
-  const { selectedParam, paramDefs } = useApp();
+  const { selectedParam, paramDefs, paramNotes, setParamNote, username } = useApp();
 
   if (!selectedParam) {
     return (
@@ -103,6 +103,21 @@ export function DetailPanel() {
           No definition found in ArduPilot database
         </p>
       )}
+
+      <div className="flex flex-col gap-1 pt-2 border-t border-border">
+        <span className="text-xs font-semibold text-group-text">My Comments</span>
+        <textarea
+          value={paramNotes[selectedParam.name] ?? ""}
+          onChange={(e) => setParamNote(selectedParam.name, e.target.value)}
+          placeholder={username ? "Add your notes…" : "Sign in to save notes"}
+          disabled={!username}
+          rows={3}
+          className="w-full resize-y rounded border border-border bg-secondary px-2.5 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none focus:ring-1 focus:ring-ring font-sans disabled:opacity-40 disabled:cursor-not-allowed"
+        />
+        <p className="text-[10px] text-muted-foreground/50">
+          Auto-saved · included in description search
+        </p>
+      </div>
     </div>
   );
 }
