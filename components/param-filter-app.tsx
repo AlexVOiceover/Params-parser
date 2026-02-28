@@ -182,6 +182,10 @@ export function ParamFilterApp() {
 
       {/* Main content */}
       <div className="flex flex-1 min-h-0">
+
+        {/* ── Transfer zone: Protected ⟵⟶ Applied ── */}
+        <div className="flex flex-1 min-w-0 min-h-0">
+
         {/* Protected panel */}
         <div className="flex flex-col flex-1 min-w-0 p-2">
           <ParamPanel
@@ -250,17 +254,20 @@ export function ParamFilterApp() {
           />
         </div>
 
-        {/* Detail panel */}
-        <div className="hidden lg:flex lg:flex-col flex-1 min-w-0 m-2 rounded-lg border border-border bg-card overflow-hidden">
-          <div className="border-b border-border px-3 py-2">
-            <h3 className="text-xs font-semibold text-foreground">
+        </div>{/* end transfer zone */}
+
+        {/* ── Info sidebar (read-only) ── */}
+        <div className="hidden lg:flex lg:flex-col w-72 shrink-0 border-l-2 border-border bg-card/40">
+          <div className="px-3 py-2 border-b border-border bg-toolbar">
+            <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
               Parameter Info
-            </h3>
+            </span>
           </div>
           <div className="flex-1 min-h-0 overflow-hidden">
             <DetailPanel />
           </div>
         </div>
+
       </div>
 
       {/* Bottom: Console + Status bar */}
