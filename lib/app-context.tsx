@@ -132,6 +132,10 @@ interface AppActions {
   toggleGroupRemaining: (paramNames: string[]) => void;
   moveCheckedToProtected: () => void;
   moveCheckedToRemaining: () => void;
+  moveSingleToProtected: (name: string) => void;
+  moveSingleToRemaining: (name: string) => void;
+  moveBulkToProtected: (names: string[]) => void;
+  moveBulkToRemaining: (names: string[]) => void;
   selectParam: (name: string, value: string) => void;
   setParamDefs: (
     defs: Record<string, ParamDefinition>,
@@ -431,6 +435,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
     log(`Moved ${toMove.length} param(s) to Will Be Applied: ${preview}`);
   }, [checkedProtected, protectedParams, log]);
 
+  const moveSingleToProtected = useCallback(
+    (name: string) => {
+      const param = remainingParams.find((p) => p.name === name);
+      if (!param) return;
+      setRemainingParams((prev) => prev.filter((p) => p.name !== name));
+      setProtectedParams((prev) => [...prev, param]);
+      log(`Moved '${name}' to Protected`);
+    },
+    [remainingParams, log]
+  );
+
+  const moveSingleToRemaining = useCallback(
+    (name: string) => {
+      const param = protectedParams.find((p) => p.name === name);
+      if (!param) return;
+      setProtectedParams((prev) => prev.filter((p) => p.name !== name));
+      setRemainingParams((prev) => [...prev, param]);
+      log(`Moved '${name}' to Will Be Applied`);
+    },
+    [protectedParams, log]
+  );
+
+  const moveBulkToProtected = useCallback(
+    (names: string[]) => {
+      const nameSet = new Set(names);
+      const toMove = remainingParams.filter((p) => nameSet.has(p.name));
+      if (toMove.length === 0) return;
+      setRemainingParams((prev) => prev.filter((p) => !nameSet.has(p.name)));
+      setProtectedParams((prev) => [...prev, ...toMove]);
+      log(`Moved ${toMove.length} param(s) to Protected`);
+    },
+    [remainingParams, log]
+  );
+
+  const moveBulkToRemaining = useCallback(
+    (names: string[]) => {
+      const nameSet = new Set(names);
+      const toMove = protectedParams.filter((p) => nameSet.has(p.name));
+      if (toMove.length === 0) return;
+      setProtectedParams((prev) => prev.filter((p) => !nameSet.has(p.name)));
+      setRemainingParams((prev) => [...prev, ...toMove]);
+      log(`Moved ${toMove.length} param(s) to Will Be Applied`);
+    },
+    [protectedParams, log]
+  );
+
   // ---------- misc ----------
 
   const selectParam = useCallback((name: string, value: string) => {
@@ -510,6 +560,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         toggleGroupRemaining,
         moveCheckedToProtected,
         moveCheckedToRemaining,
+        moveSingleToProtected,
+        moveSingleToRemaining,
+        moveBulkToProtected,
+        moveBulkToRemaining,
         selectParam,
         setParamDefs,
         setDefsLoading,

@@ -39,7 +39,6 @@ function highlightText(text: string, query: string): React.ReactNode {
   return <>{nodes}</>;
 }
 
-/** Extract a short excerpt around the first match, with ellipsis. */
 function getSnippet(text: string, query: string, radius = 45): string {
   if (!text || !query) return "";
   const idx = text.toUpperCase().indexOf(query.toUpperCase());
@@ -48,6 +47,12 @@ function getSnippet(text: string, query: string, radius = 45): string {
   const end = Math.min(text.length, idx + query.length + radius);
   return (start > 0 ? "…" : "") + text.slice(start, end) + (end < text.length ? "…" : "");
 }
+
+// ---------- layout constants ----------
+// Kept in one place so column header and rows stay aligned.
+const COL_CHECKBOX = "w-7 shrink-0";
+const COL_NAME     = "flex-1 min-w-0";
+const COL_VALUE    = "w-20 shrink-0 text-right";
 
 // ---------- component ----------
 
@@ -102,11 +107,11 @@ export function ParamPanel({
           const noteMatch = (paramNotes[p.name] ?? "").toUpperCase().includes(q);
 
           if (searchMode === "description") return descMatch || noteMatch;
-          return nameMatch || descMatch || noteMatch; // "both"
+          return nameMatch || descMatch || noteMatch;
         }),
       }))
       .filter((g) => g.params.length > 0);
-  }, [groups, searchQuery, searchMode, paramDefs]);
+  }, [groups, searchQuery, searchMode, paramDefs, paramNotes]);
 
   const allChecked = params.length > 0 && params.every((p) => checkedNames.has(p.name));
   const someChecked = params.some((p) => checkedNames.has(p.name));
@@ -125,7 +130,7 @@ export function ParamPanel({
 
   return (
     <div className="flex flex-1 flex-col rounded-lg border border-border bg-card overflow-hidden min-w-0">
-      {/* Header */}
+      {/* Panel header */}
       <div className={cn("flex items-center gap-2 px-3 py-2.5", headerColor)}>
         <input
           type="checkbox"
@@ -143,7 +148,7 @@ export function ParamPanel({
         {headerAction}
       </div>
 
-      {/* Search */}
+      {/* Search bar */}
       {params.length > 0 && (
         <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-border">
           <div className="relative flex-1 min-w-0">
@@ -182,121 +187,134 @@ export function ParamPanel({
         </div>
       )}
 
-      {/* Param list */}
+      {/* Scrollable list */}
       <div className="flex-1 overflow-y-auto min-h-0">
-        {filteredGroups.length === 0 && (
+        {filteredGroups.length === 0 ? (
           <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
-            {params.length === 0
-              ? "No parameters loaded"
-              : "No matching parameters"}
+            {params.length === 0 ? "No parameters loaded" : "No matching parameters"}
           </div>
-        )}
-        {filteredGroups.map((group) => {
-          const isOpen = isSearching || expandedGroups.has(group.label);
-          const groupNames = group.params.map((p) => p.name);
-          const groupAllChecked = groupNames.every((n) => checkedNames.has(n));
-          const groupSomeChecked = groupNames.some((n) => checkedNames.has(n));
-
-          return (
-            <div key={group.label}>
-              {/* Group header */}
-              <button
-                onClick={() => toggleGroup(group.label)}
-                className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left hover:bg-secondary/50 transition-colors"
-              >
-                {isOpen ? (
-                  <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                ) : (
-                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                )}
-                <input
-                  type="checkbox"
-                  checked={groupAllChecked}
-                  ref={(el) => {
-                    if (el)
-                      el.indeterminate = groupSomeChecked && !groupAllChecked;
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={() => onToggleGroup(groupNames)}
-                  className="h-3.5 w-3.5 rounded accent-foreground cursor-pointer"
-                  aria-label={`Select all in ${group.label}`}
-                />
-                <span className="text-xs font-semibold text-group-text truncate">
-                  {group.label}
-                </span>
-                <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">
-                  {group.params.length}
-                </span>
-              </button>
-
-              {/* Group params */}
-              {isOpen && (
-                <div>
-                  {group.params.map((param) => {
-                    const def = paramDefs[param.name];
-                    const descSource = def?.Description || def?.DisplayName || "";
-                    const noteSource = paramNotes[param.name] ?? "";
-
-                    const nameMatches =
-                      isSearching &&
-                      searchMode !== "description" &&
-                      param.name.toUpperCase().includes(q.toUpperCase());
-
-                    const descMatches =
-                      isSearching &&
-                      searchMode !== "name" &&
-                      descSource.toUpperCase().includes(q.toUpperCase());
-
-                    const noteMatches =
-                      isSearching &&
-                      searchMode !== "name" &&
-                      noteSource.toUpperCase().includes(q.toUpperCase());
-
-                    const snippet = descMatches ? getSnippet(descSource, q) : null;
-                    const noteSnippet = noteMatches ? getSnippet(noteSource, q) : null;
-
-                    return (
-                      <div
-                        key={param.name}
-                        className="flex items-start gap-2 py-1 pl-9 pr-3 hover:bg-secondary/30 transition-colors cursor-pointer"
-                        onClick={() => onSelectParam(param.name, param.value)}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checkedNames.has(param.name)}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={() => onToggleCheck(param.name)}
-                          className="h-3.5 w-3.5 shrink-0 rounded accent-foreground cursor-pointer mt-0.5"
-                          aria-label={`Select ${param.name}`}
-                        />
-                        <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                          <span className="truncate font-mono text-xs text-foreground">
-                            {nameMatches
-                              ? highlightText(param.name, q)
-                              : param.name}
-                          </span>
-                          {snippet && (
-                            <span className="font-sans text-[10px] text-muted-foreground leading-snug">
-                              {highlightText(snippet, q)}
-                            </span>
-                          )}
-                          {noteSnippet && (
-                            <span className="font-sans text-[10px] text-amber-400/70 leading-snug">
-                              ✎ {highlightText(noteSnippet, q)}
-                            </span>
-                          )}
-                        </div>
-                        <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums mt-0.5">
-                          {param.value}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+        ) : (
+          <>
+            {/* Sticky column header */}
+            <div className="sticky top-0 z-20 flex items-center border-b border-border bg-toolbar px-2 py-1">
+              <div className={COL_CHECKBOX} />
+              <div className={cn(COL_NAME, "text-[10px] font-semibold text-muted-foreground uppercase tracking-wider pl-1")}>
+                Parameter
+              </div>
+              <div className={cn(COL_VALUE, "text-[10px] font-semibold text-muted-foreground uppercase tracking-wider pr-1")}>
+                Value
+              </div>
             </div>
-          );
-        })}
+
+            {filteredGroups.map((group) => {
+              const isOpen = isSearching || expandedGroups.has(group.label);
+              const groupNames = group.params.map((p) => p.name);
+              const groupAllChecked = groupNames.every((n) => checkedNames.has(n));
+              const groupSomeChecked = groupNames.some((n) => checkedNames.has(n));
+
+              return (
+                <div key={group.label}>
+                  {/* Sticky group header — sits below the column header */}
+                  <button
+                    onClick={() => toggleGroup(group.label)}
+                    className="sticky top-7 z-10 flex w-full items-center gap-1.5 border-b border-border bg-secondary/50 px-2 py-1 text-left hover:bg-secondary/70 transition-colors cursor-pointer"
+                  >
+                    {isOpen ? (
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    )}
+                    <input
+                      type="checkbox"
+                      checked={groupAllChecked}
+                      ref={(el) => {
+                        if (el) el.indeterminate = groupSomeChecked && !groupAllChecked;
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={() => onToggleGroup(groupNames)}
+                      className="h-3.5 w-3.5 rounded accent-foreground cursor-pointer"
+                      aria-label={`Select all in ${group.label}`}
+                    />
+                    <span className="flex-1 text-xs font-semibold text-group-text truncate">
+                      {group.label}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground tabular-nums pr-1">
+                      {group.params.length}
+                    </span>
+                  </button>
+
+                  {/* Param rows */}
+                  {isOpen &&
+                    group.params.map((param) => {
+                      const def = paramDefs[param.name];
+                      const descSource = def?.Description || def?.DisplayName || "";
+                      const noteSource = paramNotes[param.name] ?? "";
+
+                      const nameMatches =
+                        isSearching &&
+                        searchMode !== "description" &&
+                        param.name.toUpperCase().includes(q.toUpperCase());
+
+                      const descMatches =
+                        isSearching &&
+                        searchMode !== "name" &&
+                        descSource.toUpperCase().includes(q.toUpperCase());
+
+                      const noteMatches =
+                        isSearching &&
+                        searchMode !== "name" &&
+                        noteSource.toUpperCase().includes(q.toUpperCase());
+
+                      const snippet = descMatches ? getSnippet(descSource, q) : null;
+                      const noteSnippet = noteMatches ? getSnippet(noteSource, q) : null;
+
+                      return (
+                        <div
+                          key={param.name}
+                          className="flex items-start border-b border-border/40 px-2 py-1 hover:bg-secondary/30 transition-colors cursor-pointer"
+                          onClick={() => onSelectParam(param.name, param.value)}
+                        >
+                          {/* Checkbox col */}
+                          <div className={cn(COL_CHECKBOX, "flex justify-center pt-0.5")}>
+                            <input
+                              type="checkbox"
+                              checked={checkedNames.has(param.name)}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={() => onToggleCheck(param.name)}
+                              className="h-3.5 w-3.5 rounded accent-foreground cursor-pointer"
+                              aria-label={`Select ${param.name}`}
+                            />
+                          </div>
+
+                          {/* Name col */}
+                          <div className={cn(COL_NAME, "flex flex-col gap-0.5 pl-1")}>
+                            <span className="font-mono text-xs text-foreground truncate">
+                              {nameMatches ? highlightText(param.name, q) : param.name}
+                            </span>
+                            {snippet && (
+                              <span className="font-sans text-[10px] text-muted-foreground leading-snug">
+                                {highlightText(snippet, q)}
+                              </span>
+                            )}
+                            {noteSnippet && (
+                              <span className="font-sans text-[10px] text-amber-400/70 leading-snug">
+                                ✎ {highlightText(noteSnippet, q)}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Value col */}
+                          <div className={cn(COL_VALUE, "font-mono text-xs text-muted-foreground tabular-nums pt-0.5 pr-1")}>
+                            {param.value}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              );
+            })}
+          </>
+        )}
       </div>
     </div>
   );

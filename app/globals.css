@@ -59,3 +59,9 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #3a3f55;
 }
+
+@keyframes longPressFill {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
