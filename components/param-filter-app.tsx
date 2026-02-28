@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback, useRef } from "react";
+import { useEffect, useCallback, useRef, useState } from "react";
 import { RefreshCw, FileText, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
@@ -12,7 +12,6 @@ import { DetailPanel } from "@/components/detail-panel";
 import { ConsolePanel } from "@/components/console-panel";
 import { ListEditorDialog } from "@/components/list-editor-dialog";
 import { UsernamePrompt } from "@/components/username-prompt";
-import { useState } from "react";
 
 export function ParamFilterApp() {
   const {
@@ -47,6 +46,37 @@ export function ParamFilterApp() {
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Info sidebar resize
+  const [infoWidth, setInfoWidth] = useState(288); // default ~w-72
+  const dragState = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    dragState.current = { startX: e.clientX, startWidth: infoWidth };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+  }, [infoWidth]);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!dragState.current) return;
+      const delta = dragState.current.startX - e.clientX;
+      setInfoWidth(Math.max(180, Math.min(560, dragState.current.startWidth + delta)));
+    };
+    const onUp = () => {
+      if (!dragState.current) return;
+      dragState.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
 
   // "Save selection as list" dialog state
   const [saveListOpen, setSaveListOpen] = useState(false);
@@ -256,9 +286,17 @@ export function ParamFilterApp() {
 
         </div>{/* end transfer zone */}
 
-        {/* ── Info sidebar (read-only) ── */}
-        <div className="hidden lg:flex lg:flex-col w-72 shrink-0 border-l-2 border-border bg-card/40">
-          <div className="px-3 py-2 border-b border-border bg-toolbar">
+        {/* ── Info sidebar (read-only, resizable) ── */}
+        <div
+          className="hidden lg:flex lg:flex-col shrink-0 bg-card/40 relative"
+          style={{ width: infoWidth }}
+        >
+          {/* Drag handle */}
+          <div
+            onMouseDown={handleDragStart}
+            className="absolute left-0 top-0 bottom-0 w-1 bg-border hover:bg-primary/60 transition-colors cursor-col-resize z-10"
+          />
+          <div className="pl-4 pr-3 py-2 border-b border-border bg-toolbar">
             <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
               Parameter Info
             </span>
