@@ -10,7 +10,6 @@ interface ListEditorDialogProps {
   onClose: () => void;
 }
 
-const MAX_SUGGESTIONS = 12;
 
 export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
   const { protectionLists, setProtectionLists, log, paramDefs, pdefGroups } =
@@ -56,7 +55,7 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
         if (!aStarts && bStarts) return 1;
         return a.localeCompare(b);
       })
-      .slice(0, MAX_SUGGESTIONS);
+;
   }, [ruleInput, ruleType, paramDefs, pdefGroups, lists, selectedIdx]);
 
   const addRule = useCallback(
