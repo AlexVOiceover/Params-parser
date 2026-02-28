@@ -47,28 +47,50 @@ export function ParamFilterApp() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Info sidebar resize
-  const [infoWidth, setInfoWidth] = useState(288); // default ~w-72
-  const dragState = useRef<{ startX: number; startWidth: number } | null>(null);
+  // Info sidebar resize (horizontal)
+  const [infoWidth, setInfoWidth] = useState(288);
+  const infoDrag = useRef<{ startX: number; startWidth: number } | null>(null);
 
-  const handleDragStart = useCallback((e: React.MouseEvent) => {
-    dragState.current = { startX: e.clientX, startWidth: infoWidth };
+  const handleInfoDragStart = useCallback((e: React.MouseEvent) => {
+    infoDrag.current = { startX: e.clientX, startWidth: infoWidth };
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
     e.preventDefault();
   }, [infoWidth]);
 
+  // Console panel resize (vertical)
+  const [consoleHeight, setConsoleHeight] = useState(140);
+  const consoleDrag = useRef<{ startY: number; startHeight: number } | null>(null);
+
+  const handleConsoleDragStart = useCallback((e: React.MouseEvent) => {
+    consoleDrag.current = { startY: e.clientY, startHeight: consoleHeight };
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+  }, [consoleHeight]);
+
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
-      if (!dragState.current) return;
-      const delta = dragState.current.startX - e.clientX;
-      setInfoWidth(Math.max(180, Math.min(560, dragState.current.startWidth + delta)));
+      if (infoDrag.current) {
+        const delta = infoDrag.current.startX - e.clientX;
+        setInfoWidth(Math.max(180, Math.min(560, infoDrag.current.startWidth + delta)));
+      }
+      if (consoleDrag.current) {
+        const delta = consoleDrag.current.startY - e.clientY;
+        setConsoleHeight(Math.max(60, Math.min(400, consoleDrag.current.startHeight + delta)));
+      }
     };
     const onUp = () => {
-      if (!dragState.current) return;
-      dragState.current = null;
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
+      if (infoDrag.current) {
+        infoDrag.current = null;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      }
+      if (consoleDrag.current) {
+        consoleDrag.current = null;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      }
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -293,7 +315,7 @@ export function ParamFilterApp() {
         >
           {/* Drag handle */}
           <div
-            onMouseDown={handleDragStart}
+            onMouseDown={handleInfoDragStart}
             className="absolute left-0 top-0 bottom-0 w-1 bg-border hover:bg-primary/60 transition-colors cursor-col-resize z-10"
           />
           <div className="pl-4 pr-3 py-2 border-b border-border bg-toolbar">
@@ -309,8 +331,13 @@ export function ParamFilterApp() {
       </div>
 
       {/* Bottom: Console + Status bar */}
-      <div className="flex flex-col shrink-0 border-t border-border">
-        <div className="h-35">
+      <div className="flex flex-col shrink-0 relative">
+        {/* Drag handle */}
+        <div
+          onMouseDown={handleConsoleDragStart}
+          className="h-1 bg-border hover:bg-primary/60 transition-colors cursor-row-resize shrink-0"
+        />
+        <div style={{ height: consoleHeight }}>
           <ConsolePanel />
         </div>
         <div className="flex items-center justify-between border-t border-border bg-toolbar px-4 py-1.5">
