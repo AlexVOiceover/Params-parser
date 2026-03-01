@@ -197,6 +197,7 @@ const [saveResumeOpen, setSaveResumeOpen] = useState(false);
     createFromDefs();
     setAppMode("create");
     setRemainingOverrides(new Map());
+    setActiveCatalogSource(undefined);
   }, [paramDefs, createFromDefs, log]);
 
   // Info sidebar resize (horizontal)
@@ -345,6 +346,12 @@ const handleSave = useCallback(() => {
     setCatalogUpload({ content, suggestedName });
   }, [appMode, remainingParams, remainingOverrides, fileName]);
 
+  const fileSource: "local" | "catalog" | "new" | null =
+    appMode === "create" ? "new" :
+    appMode === "edit" && activeCatalogSource ? "catalog" :
+    appMode === "edit" ? "local" :
+    null;
+
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       {/* Toolbar */}
@@ -352,45 +359,62 @@ const handleSave = useCallback(() => {
         "flex items-center gap-2 border-b border-border px-3 py-2 shrink-0 transition-colors duration-300",
         appMode === "create" ? "bg-emerald-950/25 border-b-emerald-800/50" : "bg-toolbar"
       )}>
-        {/* Left: file operations */}
-        <FileUpload onFileLoaded={() => { setAppMode("edit"); setRemainingOverrides(new Map()); setActiveCatalogSource(undefined); }} />
-        {appMode === "edit" && (
-          activeCatalogSource ? (
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Library className="h-3 w-3 shrink-0" />
-              <span className="font-medium text-foreground truncate max-w-60">
-                {activeCatalogSource.drone}
-                <span className="text-muted-foreground"> / </span>
-                {activeCatalogSource.set}
-                <span className="text-muted-foreground"> / </span>
-                <span className="font-mono">{activeCatalogSource.version}</span>
-              </span>
-            </div>
-          ) : fileName ? (
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <FileText className="h-3 w-3 shrink-0" />
-              <span className="font-mono font-medium text-foreground max-w-35 truncate">{fileName}</span>
-            </div>
-          ) : null
+        {/* Source group: Open .param | Catalog | New Config */}
+
+        {/* 1. Open .param */}
+        <FileUpload
+          onFileLoaded={() => { setAppMode("edit"); setRemainingOverrides(new Map()); setActiveCatalogSource(undefined); }}
+          className={cn(fileSource && fileSource !== "local" && "opacity-40 hover:opacity-90")}
+        />
+        {fileSource === "local" && fileName && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <FileText className="h-3 w-3 shrink-0" />
+            <span className="font-mono font-medium text-foreground max-w-36 truncate">{fileName}</span>
+          </div>
         )}
 
         <div className="w-px h-4 bg-border shrink-0" />
 
+        {/* 2. Catalog */}
+        <Link
+          href="/catalog"
+          className={cn(
+            "flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-all cursor-pointer whitespace-nowrap",
+            fileSource && fileSource !== "catalog" && "opacity-40 hover:opacity-90"
+          )}
+        >
+          <Library className="h-3.5 w-3.5" />
+          Catalog
+        </Link>
+        {fileSource === "catalog" && activeCatalogSource && (
+          <span className="text-xs text-foreground font-medium truncate max-w-52">
+            {activeCatalogSource.drone}
+            <span className="text-muted-foreground"> / </span>
+            {activeCatalogSource.set}
+            <span className="text-muted-foreground"> / </span>
+            <span className="font-mono">{activeCatalogSource.version}</span>
+          </span>
+        )}
+
+        <div className="w-px h-4 bg-border shrink-0" />
+
+        {/* 3. New Config */}
         <button
           onClick={handleCreateNew}
           disabled={defsLoading}
           title="Browse all ArduPilot params — values will be 0 (pdef.json has no defaults)"
           className={cn(
-            "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap",
+            "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all cursor-pointer whitespace-nowrap",
             appMode === "create"
               ? "bg-emerald-600 hover:bg-emerald-500 text-white"
-              : "bg-emerald-800/70 hover:bg-emerald-700 text-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              : "bg-emerald-800/70 hover:bg-emerald-700 text-emerald-100 disabled:cursor-not-allowed",
+            fileSource && fileSource !== "new" && "opacity-40 hover:opacity-90"
           )}
         >
           <FilePlus className="h-3.5 w-3.5" />
           New Config
         </button>
-        {appMode === "create" && (
+        {fileSource === "new" && (
           <div
             className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-emerald-900/50 text-emerald-300 border border-emerald-700/60"
             title="Values are 0 — ArduPilot pdef.json does not publish firmware defaults"
@@ -400,15 +424,6 @@ const handleSave = useCallback(() => {
           </div>
         )}
 
-        <div className="w-px h-4 bg-border shrink-0" />
-
-        <Link
-          href="/catalog"
-          className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer whitespace-nowrap"
-        >
-          <Library className="h-3.5 w-3.5" />
-          Catalog
-        </Link>
         {/* Spacer */}
         <div className="flex-1" />
 

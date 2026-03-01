@@ -2,9 +2,10 @@
 
 import { useRef } from "react";
 import { Upload } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
 
-export function FileUpload({ onFileLoaded }: { onFileLoaded?: () => void }) {
+export function FileUpload({ onFileLoaded, className }: { onFileLoaded?: () => void; className?: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const { loadFile } = useApp();
 
@@ -33,7 +34,7 @@ export function FileUpload({ onFileLoaded }: { onFileLoaded?: () => void }) {
       />
       <button
         onClick={() => inputRef.current?.click()}
-        className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 cursor-pointer whitespace-nowrap"
+        className={cn("flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-all hover:bg-primary/90 cursor-pointer whitespace-nowrap", className)}
       >
         <Upload className="h-4 w-4" />
         Open .param
