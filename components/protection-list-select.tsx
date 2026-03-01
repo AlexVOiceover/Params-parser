@@ -12,9 +12,11 @@ interface Props {
 export function ProtectionListSelect({ onEditLists }: Props) {
   const { protectionLists, activeListName, setActiveList } = useApp();
 
+  const globalLists = protectionLists.filter((l) => l.isGlobal);
+  const userLists = protectionLists.filter((l) => !l.isGlobal);
+
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
     if (e.target.value === EDIT_SENTINEL) {
-      // Reset the visual selection back to the active list
       e.target.value = activeListName;
       onEditLists();
     } else {
@@ -30,15 +32,35 @@ export function ProtectionListSelect({ onEditLists }: Props) {
       <select
         value={activeListName}
         onChange={handleChange}
-        className="h-9 rounded-md border border-border bg-secondary px-3 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring"
+        className="h-9 rounded-md border border-border bg-secondary px-3 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer"
       >
-        {protectionLists.map((pl) => (
-          <option key={pl.name} value={pl.name}>
-            {pl.name}
-          </option>
-        ))}
+        {globalLists.length > 0 ? (
+          <>
+            <optgroup label="Global">
+              {globalLists.map((pl) => (
+                <option key={pl.name} value={pl.name}>{pl.name}</option>
+              ))}
+            </optgroup>
+            {userLists.length > 0 && (
+              <optgroup label="My Lists">
+                {userLists.map((pl) => (
+                  <option key={pl.name} value={pl.name}>{pl.name}</option>
+                ))}
+              </optgroup>
+            )}
+            <optgroup label="──────────────">
+              <option value={NO_FILTER_SENTINEL}>No Filter</option>
+            </optgroup>
+          </>
+        ) : (
+          <>
+            {protectionLists.map((pl) => (
+              <option key={pl.name} value={pl.name}>{pl.name}</option>
+            ))}
+            <option value={NO_FILTER_SENTINEL}>No Filter</option>
+          </>
+        )}
         <option disabled value="">──────────────</option>
-        <option value={NO_FILTER_SENTINEL}>No Filter</option>
         <option value={EDIT_SENTINEL}>✏  Edit Lists…</option>
       </select>
     </div>

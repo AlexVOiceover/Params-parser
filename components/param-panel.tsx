@@ -414,7 +414,10 @@ export function ParamPanel({
                               ? "bg-secondary/10 hover:bg-secondary/20 border-l-group-text/30"
                               : "hover:bg-secondary/30 border-l-transparent"
                           )}
-                          onClick={() => { onToggleCheck(param.name); onSelectParam(param.name, valueOverrides?.get(param.name) ?? param.value); }}
+                          onClick={() => {
+                            if (variant !== "applied") onToggleCheck(param.name);
+                            onSelectParam(param.name, valueOverrides?.get(param.name) ?? param.value);
+                          }}
                         >
                           {/* Checkbox col */}
                           <div className={cn(COL_CHECKBOX, "flex justify-center pt-0.5")}>

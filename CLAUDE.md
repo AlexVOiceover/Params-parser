@@ -30,6 +30,7 @@ See `memory/MEMORY.md` for full architecture notes.
 ## UI / Tailwind Conventions
 
 - Always add `cursor-pointer` to any interactive element (buttons, clickable spans, selects)
+- Always add `whitespace-nowrap` to any button or link that contains text — button text must never wrap to a second line
 - Inputs with an overlaid clear button: use `pr-7` on the input and `absolute right-1.5 top-1/2 -translate-y-1/2` on the button
 - Use `onMouseDown` + `e.preventDefault()` for clear buttons inside inputs to prevent `onBlur` race conditions
 - Search fields with a mode selector: input grows `flex-1`, select is `shrink-0` to the right

@@ -21,18 +21,13 @@ import {
   applyFilter,
   DEFAULT_PROTECTION_LISTS,
 } from "@/lib/param-engine";
-import {
-  getStoredUsername,
-  storeUsername,
-  clearStoredUsername,
-  sanitizeUsername,
-} from "@/lib/user-store";
+import { useAuth } from "@/components/auth-provider";
 
 // ---------- helpers (module-level, no React deps) ----------
 
-async function apiFetchLists(username: string): Promise<{ lists: ProtectionList[]; source: string; error?: string } | null> {
+async function apiFetchGlobalLists(): Promise<{ lists: ProtectionList[]; source: string; error?: string } | null> {
   try {
-    const res = await fetch(`/api/lists/${encodeURIComponent(username)}`);
+    const res = await fetch("/api/lists/_global_");
     if (!res.ok) return null;
     return await res.json();
   } catch {
@@ -40,49 +35,9 @@ async function apiFetchLists(username: string): Promise<{ lists: ProtectionList[
   }
 }
 
-async function apiSaveLists(username: string, lists: ProtectionList[]): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const res = await fetch(`/api/lists/${encodeURIComponent(username)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(lists),
-    });
-    return await res.json();
-  } catch (err) {
-    return { ok: false, error: String(err) };
-  }
-}
-
-async function apiFetchNotes(username: string): Promise<ParamNotes> {
-  try {
-    const res = await fetch(`/api/notes/${encodeURIComponent(username)}`);
-    if (!res.ok) return {};
-    const data = await res.json();
-    return data.notes ?? {};
-  } catch {
-    return {};
-  }
-}
-
-async function apiSaveNotes(username: string, notes: ParamNotes): Promise<void> {
-  try {
-    await fetch(`/api/notes/${encodeURIComponent(username)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(notes),
-    });
-  } catch {
-    // silent — notes are best-effort
-  }
-}
-
 // ---------- types ----------
 
 interface AppState {
-  // User
-  username: string | null;
-  listsLoading: boolean;
-
   // File
   fileName: string;
   allParams: Param[];
@@ -123,8 +78,6 @@ interface AppState {
 }
 
 interface AppActions {
-  setUser: (name: string) => void;
-  clearUser: () => void;
   loadFile: (name: string, content: string) => void;
   setActiveList: (name: string) => void;
   toggleCheckedProtected: (name: string) => void;
@@ -159,14 +112,6 @@ const AppContext = createContext<(AppState & AppActions) | null>(null);
 // ---------- provider ----------
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  // --- user ---
-  const [username, setUsernameState] = useState<string | null>(null);
-  const [listsLoading, setListsLoading] = useState(false);
-  const usernameRef = useRef<string | null>(null);
-  // true once the initial per-user list fetch (or skip) is done — prevents
-  // saving defaults back to the server before we've loaded real data
-  const listsReadyRef = useRef(false);
-
   // --- file ---
   const [fileName, setFileName] = useState("");
   const [allParams, setAllParams] = useState<Param[]>([]);
@@ -198,6 +143,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [paramNotes, setParamNotesState] = useState<ParamNotes>({});
   const paramNotesRef = useRef<ParamNotes>({});
   const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notesLoadedRef = useRef(false);
+  const globalListsRef = useRef<ProtectionList[]>([]);
+
+  const { user, role } = useAuth();
+  const isAdmin = role === "admin";
 
   // --- ui ---
   const [selectedParam, setSelectedParam] = useState<{ name: string; value: string } | null>(null);
@@ -234,76 +184,70 @@ export function AppProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  // ---------- user management ----------
+  // ---------- load global lists on mount ----------
 
-  const loadListsForUser = useCallback(async (u: string, logFn?: (msg: string, level?: "INFO" | "WARN" | "ERROR") => void) => {
-    setListsLoading(true);
-    const result = await apiFetchLists(u);
-    setListsLoading(false);
-    if (result) {
+  useEffect(() => {
+    apiFetchGlobalLists().then((result) => {
+      if (!result) return;
       if (result.lists.length > 0) {
-        setProtectionListsState(result.lists);
+        const marked = result.lists.map((l) => ({ ...l, isGlobal: true }));
+        globalListsRef.current = marked;
+        setProtectionListsState(marked);
         setActiveListName((prev) =>
-          result.lists.some((l) => l.name === prev) ? prev : result.lists[0].name
+          marked.some((l) => l.name === prev) ? prev : marked[0].name
         );
       }
-      if (logFn) {
-        if (result.source === "kv") {
-          logFn(`Lists loaded from server (${result.lists.length} list${result.lists.length !== 1 ? "s" : ""})`);
-        } else if (result.source === "defaults") {
-          logFn(`No saved lists for '${u}' — using defaults`);
-        } else {
-          logFn(`Could not load lists from server: ${result.error ?? "unknown error"}`, "WARN");
-        }
+      if (result.source === "supabase" || result.source === "kv") {
+        log(`Lists loaded (${result.lists.length} list${result.lists.length !== 1 ? "s" : ""})`);
+      } else if (result.source !== "defaults") {
+        log(`Could not load lists: ${result.error ?? "unknown error"}`, "WARN");
       }
-    }
-    listsReadyRef.current = true;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadNotesForUser = useCallback(async (u: string) => {
-    const notes = await apiFetchNotes(u);
-    setParamNotesState(notes);
-    paramNotesRef.current = notes;
-  }, []);
+  // ---------- load user notes + lists when auth user is known ----------
 
-  // On mount: restore username from localStorage
   useEffect(() => {
-    const stored = getStoredUsername();
-    if (stored) {
-      usernameRef.current = stored;
-      setUsernameState(stored);
-      loadListsForUser(stored, log);
-      loadNotesForUser(stored);
-    } else {
-      // No user — use defaults immediately, no API fetch needed
-      listsReadyRef.current = true;
-    }
-  }, [loadListsForUser, loadNotesForUser, log]);
+    if (!user) return;
 
-  const setUser = useCallback(
-    (name: string) => {
-      const clean = sanitizeUsername(name);
-      storeUsername(clean);
-      usernameRef.current = clean;
-      setUsernameState(clean);
-      listsReadyRef.current = false;
-      loadListsForUser(clean, log).then(() => {
-        log(`Signed in as '${clean}'`);
-      });
-      loadNotesForUser(clean);
-    },
-    [loadListsForUser, loadNotesForUser, log]
-  );
+    fetch("/api/notes")
+      .then((r) => r.json())
+      .then(({ notes }: { notes: ParamNotes }) => {
+        setParamNotesState(notes);
+        paramNotesRef.current = notes;
+        notesLoadedRef.current = true;
+      })
+      .catch(() => { notesLoadedRef.current = true; });
 
-  const clearUser = useCallback(() => {
-    clearStoredUsername();
-    usernameRef.current = null;
-    setUsernameState(null);
-    listsReadyRef.current = false;
-    setParamNotesState({});
-    paramNotesRef.current = {};
-    log("Signed out — changes will not be persisted");
-  }, [log]);
+    fetch("/api/user/lists")
+      .then((r) => r.json())
+      .then(({ lists }: { lists: ProtectionList[] | null }) => {
+        if (!lists?.length) return;
+        const merged = [...globalListsRef.current, ...lists];
+        setProtectionListsState(merged);
+        setActiveListName((prev) =>
+          merged.some((l) => l.name === prev) ? prev : merged[0].name
+        );
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  // ---------- debounce-save notes when they change ----------
+
+  useEffect(() => {
+    if (!user || !notesLoadedRef.current) return;
+    if (notesTimerRef.current) clearTimeout(notesTimerRef.current);
+    notesTimerRef.current = setTimeout(() => {
+      fetch("/api/notes", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(paramNotes),
+      }).catch(() => {});
+    }, 1500);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramNotes, user?.id]);
 
   const setParamNote = useCallback((name: string, note: string) => {
     setParamNotesState((prev) => {
@@ -316,15 +260,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       paramNotesRef.current = next;
       return next;
     });
-    // Debounced save — 1s after last keystroke
-    if (notesTimerRef.current) clearTimeout(notesTimerRef.current);
-    if (usernameRef.current) {
-      notesTimerRef.current = setTimeout(() => {
-        if (usernameRef.current) {
-          apiSaveNotes(usernameRef.current, paramNotesRef.current);
-        }
-      }, 1000);
-    }
   }, []);
 
   // ---------- file ----------
@@ -538,7 +473,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setConsoleEntries([]);
   }, []);
 
-  // ---------- protection list mutations (auto-saves to KV) ----------
+  // ---------- protection list mutations ----------
 
   const updateProtectionLists = useCallback(
     (lists: ProtectionList[]) => {
@@ -546,18 +481,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (allParams.length > 0) {
         doFilter(allParams, activeListName, lists);
       }
-      // Persist — only after the initial fetch completed, and only if signed in
-      if (listsReadyRef.current && usernameRef.current) {
-        apiSaveLists(usernameRef.current, lists).then((result) => {
-          if (result.ok) {
-            log(`Lists saved to server`);
-          } else {
-            log(`Lists save failed: ${result.error ?? "unknown error"}`, "WARN");
-          }
-        });
+      if (user) {
+        const userLists = lists
+          .filter((l) => !l.isGlobal)
+          .map(({ name, description, rules }) => ({ name, description, rules }));
+        fetch("/api/user/lists", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(userLists),
+        }).catch(() => {});
+
+        if (isAdmin) {
+          const globalLists = lists
+            .filter((l) => l.isGlobal)
+            .map(({ name, description, rules }) => ({ name, description, rules }));
+          fetch("/api/admin/lists", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(globalLists),
+          }).catch(() => {});
+        }
       }
     },
-    [allParams, activeListName, doFilter, log]
+    [allParams, activeListName, doFilter, user, isAdmin]
   );
 
   // ---------- render ----------
@@ -565,8 +511,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider
       value={{
-        username,
-        listsLoading,
         fileName,
         allParams,
         protectedParams,
@@ -586,8 +530,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           protectedParams.length > 0 &&
           (protectedParams.length !== baselineProtectedNames.size ||
             protectedParams.some((p) => !baselineProtectedNames.has(p.name))),
-        setUser,
-        clearUser,
         loadFile,
         createFromDefs,
         setActiveList,

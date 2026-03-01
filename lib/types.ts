@@ -14,6 +14,7 @@ export interface ProtectionList {
   name: string;
   description: string;
   rules: Rule[];
+  isGlobal?: boolean;
 }
 
 export interface ParamDefinition {
@@ -39,3 +40,33 @@ export interface ConsoleEntry {
 }
 
 export type ParamNotes = Record<string, string>;
+
+// ── Catalog types (Supabase) ──────────────────────────────────────────────
+
+export interface DroneType {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+}
+
+export interface ParamSet {
+  id: string;
+  name: string;
+  description: string | null;
+  drone_type_id: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ParamVersion {
+  id: string;
+  param_set_id: string;
+  version_label: string;
+  storage_path: string;
+  changelog: string | null;
+  created_by: string | null;
+  created_at: string;
+  is_latest: boolean;
+}

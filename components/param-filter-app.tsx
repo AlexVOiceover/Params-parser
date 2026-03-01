@@ -3,9 +3,11 @@
 import { useEffect, useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
-import { FileText, FilePlus, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, User } from "lucide-react";
+import Link from "next/link";
+import { FileText, FilePlus, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, User, Library, LogOut, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
+import { useAuth } from "@/components/auth-provider";
 import { writeParamFile } from "@/lib/param-engine";
 import { FileUpload } from "@/components/file-upload";
 import { ProtectionListSelect } from "@/components/protection-list-select";
@@ -13,8 +15,8 @@ import { ParamPanel } from "@/components/param-panel";
 import { DetailPanel } from "@/components/detail-panel";
 import { ConsolePanel } from "@/components/console-panel";
 import { ListEditorDialog } from "@/components/list-editor-dialog";
-import { UsernamePrompt } from "@/components/username-prompt";
 import { SaveResumeModal } from "@/components/save-resume-modal";
+import { CatalogUploadModal } from "@/components/catalog-upload-modal";
 
 // ---------- flying rows portal ----------
 
@@ -59,9 +61,8 @@ function FlyingRowsOverlay({ rows }: { rows: FlyingRow[] }) {
   );
 }
 
-export function ParamFilterApp() {
+export function ParamFilterApp({ loadUrl, catalogSource }: { loadUrl?: string; catalogSource?: { drone: string; set: string; version: string } }) {
   const {
-    username,
     fileName,
     protectedParams,
     remainingParams,
@@ -88,15 +89,37 @@ export function ParamFilterApp() {
     activeListName,
     isProtectionModified,
     createFromDefs,
-    setUser,
-    clearUser,
+    loadFile,
     log,
   } = useApp();
 
+  const { user, role, signOut } = useAuth();
+
+  useEffect(() => {
+    if (user && role) log(`Signed in as ${user.email} (${role})`);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, role]);
+
   const [appMode, setAppMode] = useState<"idle" | "edit" | "create">("idle");
+  const [activeCatalogSource, setActiveCatalogSource] = useState<{ drone: string; set: string; version: string } | undefined>(undefined);
+
+  useEffect(() => {
+    if (!loadUrl) return;
+    const filename = decodeURIComponent(loadUrl.split("/").pop() ?? "catalog.param");
+    fetch(loadUrl)
+      .then((r) => r.text())
+      .then((content) => {
+        loadFile(filename, content);
+        setAppMode("edit");
+        setActiveCatalogSource(catalogSource);
+      })
+      .catch(() => log("Failed to load param file from URL", "ERROR"));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadUrl]);
   const [editorOpen, setEditorOpen] = useState(false);
   const [activePanel, setActivePanel] = useState<"protected" | "applied">("applied");
 const [saveResumeOpen, setSaveResumeOpen] = useState(false);
+  const [catalogUpload, setCatalogUpload] = useState<{ content: string; suggestedName: string } | null>(null);
   const [remainingOverrides, setRemainingOverrides] = useState<Map<string, string>>(new Map());
   const [flyingRows, setFlyingRows] = useState<FlyingRow[]>([]);
 
@@ -174,6 +197,7 @@ const [saveResumeOpen, setSaveResumeOpen] = useState(false);
     createFromDefs();
     setAppMode("create");
     setRemainingOverrides(new Map());
+    setActiveCatalogSource(undefined);
   }, [paramDefs, createFromDefs, log]);
 
   // Info sidebar resize (horizontal)
@@ -310,41 +334,89 @@ const handleSave = useCallback(() => {
     );
   }, [appMode, protectedParams, remainingParams, remainingOverrides, fileName, log]);
 
+  const handlePublishToCatalog = useCallback((header: string | null) => {
+    const merged = remainingParams.map((p) => ({
+      ...p,
+      value: remainingOverrides.get(p.name) || p.value,
+    }));
+    const content = (header ?? "") + writeParamFile(merged);
+    const baseName = fileName ? fileName.replace(/\.\w+$/, "") : "params";
+    const suggestedName = appMode === "create" ? "new_config" : `${baseName}_filtered`;
+    setSaveResumeOpen(false);
+    setCatalogUpload({ content, suggestedName });
+  }, [appMode, remainingParams, remainingOverrides, fileName]);
+
+  const fileSource: "local" | "catalog" | "new" | null =
+    appMode === "create" ? "new" :
+    appMode === "edit" && activeCatalogSource ? "catalog" :
+    appMode === "edit" ? "local" :
+    null;
+
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       {/* Toolbar */}
       <header className={cn(
-        "flex items-center gap-3 border-b border-border px-4 py-2.5 shrink-0 transition-colors duration-300",
+        "flex items-center gap-2 border-b border-border px-3 py-2 shrink-0 transition-colors duration-300",
         appMode === "create" ? "bg-emerald-950/25 border-b-emerald-800/50" : "bg-toolbar"
       )}>
-        {/* Left: file operations */}
-        <FileUpload onFileLoaded={() => { setAppMode("edit"); setRemainingOverrides(new Map()); }} />
-        {appMode === "edit" && fileName && (
-          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <FileText className="h-3.5 w-3.5" />
-            <span className="font-mono font-medium text-foreground">{fileName}</span>
+        {/* Source group: Open .param | Catalog | New Config */}
+
+        {/* 1. Open .param */}
+        <FileUpload
+          onFileLoaded={() => { setAppMode("edit"); setRemainingOverrides(new Map()); setActiveCatalogSource(undefined); }}
+          className={cn(fileSource && fileSource !== "local" && "opacity-40 hover:opacity-90")}
+        />
+        {fileSource === "local" && fileName && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <FileText className="h-3 w-3 shrink-0" />
+            <span className="font-mono font-medium text-foreground max-w-36 truncate">{fileName}</span>
           </div>
         )}
 
-        <div className="w-px h-5 bg-border shrink-0" />
+        <div className="w-px h-4 bg-border shrink-0" />
 
+        {/* 2. Catalog */}
+        <Link
+          href="/catalog"
+          className={cn(
+            "flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-all cursor-pointer whitespace-nowrap",
+            fileSource && fileSource !== "catalog" && "opacity-40 hover:opacity-90"
+          )}
+        >
+          <Library className="h-3.5 w-3.5" />
+          Catalog
+        </Link>
+        {fileSource === "catalog" && activeCatalogSource && (
+          <span className="text-xs text-foreground font-medium truncate max-w-52">
+            {activeCatalogSource.drone}
+            <span className="text-muted-foreground"> / </span>
+            {activeCatalogSource.set}
+            <span className="text-muted-foreground"> / </span>
+            <span className="font-mono">{activeCatalogSource.version}</span>
+          </span>
+        )}
+
+        <div className="w-px h-4 bg-border shrink-0" />
+
+        {/* 3. New Config */}
         <button
           onClick={handleCreateNew}
           disabled={defsLoading}
           title="Browse all ArduPilot params — values will be 0 (pdef.json has no defaults)"
           className={cn(
-            "flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors cursor-pointer",
+            "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all cursor-pointer whitespace-nowrap",
             appMode === "create"
               ? "bg-emerald-600 hover:bg-emerald-500 text-white"
-              : "bg-emerald-800/70 hover:bg-emerald-700 text-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              : "bg-emerald-800/70 hover:bg-emerald-700 text-emerald-100 disabled:cursor-not-allowed",
+            fileSource && fileSource !== "new" && "opacity-40 hover:opacity-90"
           )}
         >
-          <FilePlus className="h-4 w-4" />
+          <FilePlus className="h-3.5 w-3.5" />
           New Config
         </button>
-        {appMode === "create" && (
+        {fileSource === "new" && (
           <div
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-900/50 text-emerald-300 border border-emerald-700/60"
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-emerald-900/50 text-emerald-300 border border-emerald-700/60"
             title="Values are 0 — ArduPilot pdef.json does not publish firmware defaults"
           >
             <FilePlus className="h-3 w-3" />
@@ -355,21 +427,39 @@ const handleSave = useCallback(() => {
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Right: list selector + user */}
+        {/* Right: list selector + admin icon + user */}
         <ProtectionListSelect onEditLists={() => setEditorOpen(true)} />
-        {username && (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground border-l border-border pl-3">
-            <User className="h-3.5 w-3.5" />
-            <span className="font-mono font-medium text-foreground">{username}</span>
-            <button
-              onClick={clearUser}
-              className="hover:text-foreground transition-colors cursor-pointer"
-              title="Change username"
+        <div className="flex items-center gap-1 border-l border-border pl-2 text-muted-foreground">
+          {role === "admin" && (
+            <Link
+              href="/admin"
+              className="rounded p-1 hover:text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
+              title="Admin"
             >
-              · change
-            </button>
-          </div>
-        )}
+              <Settings className="h-3.5 w-3.5" />
+            </Link>
+          )}
+          {user ? (
+            <>
+              <User className="h-3.5 w-3.5 shrink-0" />
+              <span className="font-mono text-xs font-medium text-foreground max-w-40 truncate">{user.email}</span>
+              <button
+                onClick={signOut}
+                title="Sign out"
+                className="rounded p-1 hover:text-foreground hover:bg-secondary/50 transition-colors cursor-pointer ml-0.5"
+              >
+                <LogOut className="h-3 w-3" />
+              </button>
+            </>
+          ) : (
+            <Link
+              href="/login"
+              className="text-xs hover:text-foreground transition-colors cursor-pointer px-1"
+            >
+              Sign in
+            </Link>
+          )}
+        </div>
       </header>
 
       {/* Main content */}
@@ -396,9 +486,9 @@ const handleSave = useCallback(() => {
               <div className="flex items-center gap-1.5">
                 <span
                   className="text-xs text-foreground/70 font-mono truncate max-w-30"
-                  title={activeListName}
+                  title={activeListName === "__no_filter__" ? "No Filter" : activeListName}
                 >
-                  {activeListName}
+                  {activeListName === "__no_filter__" ? "No Filter" : activeListName}
                 </span>
                 {isProtectionModified && (
                   <button
@@ -505,7 +595,7 @@ const handleSave = useCallback(() => {
               )}
             >
               <Download className="h-3.5 w-3.5" />
-              {appMode === "create" ? "Save New File" : "Save Filtered File"}
+              {appMode === "create" ? "Export .param" : "Export .param"}
             </button>
             <span className="text-xs text-muted-foreground">
               {statusMessage}
@@ -525,9 +615,6 @@ const handleSave = useCallback(() => {
         <ListEditorDialog onClose={() => setEditorOpen(false)} />
       )}
 
-      {/* First-visit username prompt */}
-      {username === null && <UsernamePrompt onConfirm={setUser} />}
-
       {/* Save resume modal */}
       {saveResumeOpen && (
         <SaveResumeModal
@@ -536,7 +623,16 @@ const handleSave = useCallback(() => {
           remainingOverrides={remainingOverrides}
           fileName={fileName}
           onConfirm={handleConfirmSave}
+          onPublishToCatalog={role === "contributor" || role === "admin" ? handlePublishToCatalog : undefined}
           onClose={() => setSaveResumeOpen(false)}
+        />
+      )}
+
+      {catalogUpload && (
+        <CatalogUploadModal
+          content={catalogUpload.content}
+          suggestedName={catalogUpload.suggestedName}
+          onClose={() => setCatalogUpload(null)}
         />
       )}
 
