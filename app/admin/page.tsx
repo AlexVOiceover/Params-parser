@@ -18,21 +18,10 @@ export default async function AdminPage() {
   if (profile?.role !== "admin") redirect("/");
 
   const admin = createAdminClient();
-  const [{ data: profiles }, { data: paramSets }] = await Promise.all([
-    admin
-      .from("profiles")
-      .select("id, username, role, created_at")
-      .order("created_at"),
-    admin
-      .from("param_sets")
-      .select("id, name, published, created_at, drone_types(name), profiles(username)")
-      .order("created_at", { ascending: false }),
-  ]);
+  const { data: profiles } = await admin
+    .from("profiles")
+    .select("id, username, role, created_at")
+    .order("created_at");
 
-  return (
-    <AdminDashboard
-      profiles={profiles ?? []}
-      paramSets={(paramSets ?? []) as unknown as Parameters<typeof AdminDashboard>[0]["paramSets"]}
-    />
-  );
+  return <AdminDashboard profiles={profiles ?? []} />;
 }

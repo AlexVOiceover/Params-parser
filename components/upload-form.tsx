@@ -34,7 +34,7 @@ export function UploadForm({ droneTypes, firmwares, paramSets }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null); // paramSetId on success
+  const [done, setDone] = useState<{ paramSetId: string } | null>(null);
 
   const filteredFirmwares = firmwares.filter((f) => f.drone_type_id === droneTypeId);
   const filteredParamSets = paramSets.filter((ps) => ps.drone_type_id === droneTypeId);
@@ -75,7 +75,7 @@ export function UploadForm({ droneTypes, firmwares, paramSets }: Props) {
       return;
     }
 
-    setDone(json.paramSetId as string);
+    setDone({ paramSetId: json.paramSetId as string });
     setSubmitting(false);
     router.refresh();
   }
@@ -86,7 +86,7 @@ export function UploadForm({ droneTypes, firmwares, paramSets }: Props) {
         <CheckCircle className="h-10 w-10 text-emerald-400 mx-auto mb-4" />
         <h2 className="text-lg font-semibold text-foreground mb-2">Upload complete</h2>
         <p className="text-sm text-muted-foreground mb-6">
-          The param version has been saved. An admin will need to publish it before it appears in the catalog.
+          The param set has been saved to the catalog.
         </p>
         <div className="flex gap-3 justify-center">
           <button

@@ -62,7 +62,6 @@ export interface ParamSet {
   description: string | null;
   drone_type_id: string | null;
   firmware_id: string | null;
-  published: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;

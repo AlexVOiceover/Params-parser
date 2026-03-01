@@ -1,11 +1,9 @@
-import Link from "next/link";
-import { ChevronRight } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
-import type { DroneType } from "@/lib/types";
+import { createClient, createSessionClient } from "@/lib/supabase/server";
+import { DroneTypeGrid } from "@/components/drone-type-grid";
 
 export const dynamic = "force-dynamic";
 
-async function getDroneTypes(): Promise<(DroneType & { param_set_count: number })[]> {
+async function getDroneTypes() {
   const supabase = createClient();
 
   const { data: droneTypes } = await supabase
@@ -20,8 +18,7 @@ async function getDroneTypes(): Promise<(DroneType & { param_set_count: number }
       const { count } = await supabase
         .from("param_sets")
         .select("id", { count: "exact", head: true })
-        .eq("drone_type_id", dt.id)
-        .eq("published", true);
+        .eq("drone_type_id", dt.id);
       return { ...dt, param_set_count: count ?? 0 };
     })
   );
@@ -29,47 +26,36 @@ async function getDroneTypes(): Promise<(DroneType & { param_set_count: number }
   return counts;
 }
 
+async function getIsAdmin(): Promise<boolean> {
+  try {
+    const supabase = await createSessionClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+    const { data } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+    return data?.role === "admin";
+  } catch {
+    return false;
+  }
+}
+
 export default async function CatalogPage() {
-  const droneTypes = await getDroneTypes();
+  const [droneTypes, isAdmin] = await Promise.all([getDroneTypes(), getIsAdmin()]);
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-10">
       <p className="text-muted-foreground mb-8">
-        Browse community-verified param configurations by drone type. Download any published set
+        Browse community-verified param configurations by drone type. Download any set
         directly into Mission Planner.
       </p>
 
-      {droneTypes.length === 0 ? (
+      {droneTypes.length === 0 && !isAdmin ? (
         <p className="text-sm text-muted-foreground">No drone types found.</p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {droneTypes.map((dt) => (
-            <Link
-              key={dt.id}
-              href={`/catalog/${dt.slug}`}
-              className="group flex flex-col gap-2 rounded-lg border border-border bg-card p-5 hover:border-primary/50 hover:bg-card/80 transition-colors cursor-pointer"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <span className="font-semibold text-foreground group-hover:text-primary transition-colors">
-                  {dt.name}
-                </span>
-                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5 group-hover:text-primary transition-colors" />
-              </div>
-              {dt.description && (
-                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-                  {dt.description}
-                </p>
-              )}
-              <div className="mt-auto pt-3 border-t border-border/50">
-                <span className="text-xs text-muted-foreground">
-                  {dt.param_set_count === 0
-                    ? "No param sets yet"
-                    : `${dt.param_set_count} param set${dt.param_set_count === 1 ? "" : "s"}`}
-                </span>
-              </div>
-            </Link>
-          ))}
-        </div>
+        <DroneTypeGrid droneTypes={droneTypes} isAdmin={isAdmin} />
       )}
     </div>
   );

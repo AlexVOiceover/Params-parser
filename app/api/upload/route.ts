@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSessionClient, createAdminClient } from "@/lib/supabase/server";
+import { parseParamFile } from "@/lib/param-engine";
 
 export async function POST(request: NextRequest) {
   // 1. Verify session
@@ -46,7 +47,6 @@ export async function POST(request: NextRequest) {
         drone_type_id: droneTypeId,
         firmware_id: firmwareId,
         created_by: user.id,
-        published: false,
       })
       .select("id")
       .single();
@@ -77,17 +77,29 @@ export async function POST(request: NextRequest) {
   await admin.from("param_versions").update({ is_latest: false }).eq("param_set_id", paramSetId);
 
   // 6. Insert new version
-  const { error: pvError } = await admin.from("param_versions").insert({
+  const { data: pv, error: pvError } = await admin.from("param_versions").insert({
     param_set_id: paramSetId,
     version_label: versionLabel,
     storage_path: storagePath,
     changelog,
     created_by: user.id,
     is_latest: true,
-  });
+  }).select("id").single();
 
-  if (pvError) {
-    return NextResponse.json({ error: pvError.message }, { status: 500 });
+  if (pvError || !pv) {
+    return NextResponse.json({ error: pvError?.message ?? "Failed to create version" }, { status: 500 });
+  }
+
+  // 7. Parse and store individual param values for analytics
+  const fileText = Buffer.from(fileBuffer).toString("utf-8");
+  const paramValues = parseParamFile(fileText).map(({ name, value }) => ({
+    param_version_id: pv.id,
+    name,
+    value,
+  }));
+
+  if (paramValues.length > 0) {
+    await admin.from("param_values").insert(paramValues);
   }
 
   return NextResponse.json({ ok: true, paramSetId });

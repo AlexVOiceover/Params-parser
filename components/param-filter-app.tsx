@@ -16,6 +16,7 @@ import { DetailPanel } from "@/components/detail-panel";
 import { ConsolePanel } from "@/components/console-panel";
 import { ListEditorDialog } from "@/components/list-editor-dialog";
 import { SaveResumeModal } from "@/components/save-resume-modal";
+import { CatalogUploadModal } from "@/components/catalog-upload-modal";
 
 // ---------- flying rows portal ----------
 
@@ -60,7 +61,7 @@ function FlyingRowsOverlay({ rows }: { rows: FlyingRow[] }) {
   );
 }
 
-export function ParamFilterApp() {
+export function ParamFilterApp({ loadUrl }: { loadUrl?: string }) {
   const {
     fileName,
     protectedParams,
@@ -88,6 +89,7 @@ export function ParamFilterApp() {
     activeListName,
     isProtectionModified,
     createFromDefs,
+    loadFile,
     log,
   } = useApp();
 
@@ -98,10 +100,24 @@ export function ParamFilterApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, role]);
 
+  useEffect(() => {
+    if (!loadUrl) return;
+    const filename = decodeURIComponent(loadUrl.split("/").pop() ?? "catalog.param");
+    fetch(loadUrl)
+      .then((r) => r.text())
+      .then((content) => {
+        loadFile(filename, content);
+        setAppMode("edit");
+      })
+      .catch(() => log("Failed to load param file from URL", "ERROR"));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadUrl]);
+
   const [appMode, setAppMode] = useState<"idle" | "edit" | "create">("idle");
   const [editorOpen, setEditorOpen] = useState(false);
   const [activePanel, setActivePanel] = useState<"protected" | "applied">("applied");
 const [saveResumeOpen, setSaveResumeOpen] = useState(false);
+  const [catalogUpload, setCatalogUpload] = useState<{ content: string; suggestedName: string } | null>(null);
   const [remainingOverrides, setRemainingOverrides] = useState<Map<string, string>>(new Map());
   const [flyingRows, setFlyingRows] = useState<FlyingRow[]>([]);
 
@@ -314,6 +330,18 @@ const handleSave = useCallback(() => {
       `Saved '${outName}' \u2014 ${merged.length} written${appMode !== "create" ? `, ${protectedParams.length} removed` : ""}`
     );
   }, [appMode, protectedParams, remainingParams, remainingOverrides, fileName, log]);
+
+  const handlePublishToCatalog = useCallback((header: string | null) => {
+    const merged = remainingParams.map((p) => ({
+      ...p,
+      value: remainingOverrides.get(p.name) || p.value,
+    }));
+    const content = (header ?? "") + writeParamFile(merged);
+    const baseName = fileName ? fileName.replace(/\.\w+$/, "") : "params";
+    const suggestedName = appMode === "create" ? "new_config" : `${baseName}_filtered`;
+    setSaveResumeOpen(false);
+    setCatalogUpload({ content, suggestedName });
+  }, [appMode, remainingParams, remainingOverrides, fileName]);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -547,7 +575,7 @@ const handleSave = useCallback(() => {
               )}
             >
               <Download className="h-3.5 w-3.5" />
-              {appMode === "create" ? "Save New File" : "Save Filtered File"}
+              {appMode === "create" ? "Export .param" : "Export .param"}
             </button>
             <span className="text-xs text-muted-foreground">
               {statusMessage}
@@ -575,7 +603,16 @@ const handleSave = useCallback(() => {
           remainingOverrides={remainingOverrides}
           fileName={fileName}
           onConfirm={handleConfirmSave}
+          onPublishToCatalog={role === "contributor" || role === "admin" ? handlePublishToCatalog : undefined}
           onClose={() => setSaveResumeOpen(false)}
+        />
+      )}
+
+      {catalogUpload && (
+        <CatalogUploadModal
+          content={catalogUpload.content}
+          suggestedName={catalogUpload.suggestedName}
+          onClose={() => setCatalogUpload(null)}
         />
       )}
 
