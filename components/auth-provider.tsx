@@ -2,7 +2,6 @@
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 interface AuthContextValue {
@@ -28,7 +27,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
   // Ref so signOut uses the same instance as the auth listener
   const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null);
 
@@ -53,7 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     await supabaseRef.current?.auth.signOut();
-    router.refresh();
+    window.location.href = "/";
   };
 
   return (
