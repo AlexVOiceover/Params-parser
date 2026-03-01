@@ -2,8 +2,6 @@
 
 A web app for filtering Mission Planner `.param` files before applying them to a drone fleet. Export your config from one drone, strip the parameters that must stay unique per drone (calibration, hardware IDs, RC setup), and apply only the safe changes to your target drones.
 
-**Live:** [v0-params-parser-git-main-fac-projects.vercel.app](https://v0-params-parser-git-main-fac-projects.vercel.app)
-
 ---
 
 ## Workflow
@@ -26,7 +24,38 @@ Three lists are included. Rules can be `prefix` (matches any param starting with
 | Hardware & Device IDs | Compass/IMU/baro device IDs, board type, serial number, system ID |
 | RC Configuration | RC channels 1–16, RC channel mapping |
 
-Use the **Protection list** dropdown → **Edit Lists…** to create or modify lists. Your lists are saved to your username and synced across devices.
+---
+
+## Param Catalog
+
+The catalog (`/catalog`) is publicly visible — no login required to browse and download param files.
+
+### User roles
+
+| Role | Can do |
+|---|---|
+| `viewer` | Browse catalog, use the filter tool. Default for all new accounts. |
+| `contributor` | Everything above + upload new param sets and versions via `/upload` |
+| `admin` | Everything above + publish/unpublish param sets, change user roles via `/admin` |
+
+### Creating accounts
+
+There is no self-registration. Accounts are created by an admin through the **Supabase dashboard**:
+
+1. Go to **Authentication → Users** in your Supabase project
+2. Click **Invite user** (sends a magic-link email) or **Add user → Create new user** (set email + password directly)
+3. The user's profile row is created automatically on first sign-in (role defaults to `viewer`)
+4. To promote them, sign in as an admin → go to `/admin` → change their role in the Users table
+
+### Uploading param files
+
+Contributors and admins see an **Upload** link in the toolbar and catalog header.
+
+1. Choose **New param set** (first time for a config) or **Add version to existing**
+2. Select drone type and firmware version
+3. Enter a version label (e.g. `v1.2`) and optional changelog
+4. Upload the `.param` file
+5. An admin must publish it from `/admin` before it appears in the catalog
 
 ---
 
@@ -34,18 +63,19 @@ Use the **Protection list** dropdown → **Edit Lists…** to create or modify l
 
 ```bash
 npm install
-npx vercel link          # link to Vercel project
-npx vercel env pull .env.development.local   # pull KV credentials
-npm run dev
+npm run dev --turbopack
+```
+
+### Environment variables
+
+Create `.env.development.local`:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
+SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
 ```
 
 ### Deploy
 
-Push to `main` — Vercel auto-deploys.
-
-### Environment variables (set automatically via Vercel + Upstash Redis integration)
-
-```
-KV_REST_API_URL=...
-KV_REST_API_TOKEN=...
-```
+Push to `main` — Vercel auto-deploys. Set the three env vars above in your Vercel project settings.
