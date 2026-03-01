@@ -36,6 +36,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const supabase = createClient();
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
     supabaseRef.current = supabase;
 
     supabase.auth.getSession().then(async ({ data: { session } }) => {
