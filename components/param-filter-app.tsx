@@ -4,7 +4,7 @@ import { useEffect, useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { FileText, FilePlus, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, User, Library, LogOut } from "lucide-react";
+import { FileText, FilePlus, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, User, Library, LogOut, Upload, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
 import { useAuth } from "@/components/auth-provider";
@@ -91,7 +91,7 @@ export function ParamFilterApp() {
     log,
   } = useApp();
 
-  const { user, signOut } = useAuth();
+  const { user, role, signOut } = useAuth();
 
   const [appMode, setAppMode] = useState<"idle" | "edit" | "create">("idle");
   const [editorOpen, setEditorOpen] = useState(false);
@@ -359,6 +359,24 @@ const handleSave = useCallback(() => {
           <Library className="h-4 w-4" />
           Catalog
         </Link>
+        {(role === "contributor" || role === "admin") && (
+          <Link
+            href="/upload"
+            className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
+          >
+            <Upload className="h-4 w-4" />
+            Upload
+          </Link>
+        )}
+        {role === "admin" && (
+          <Link
+            href="/admin"
+            className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
+          >
+            <Settings className="h-4 w-4" />
+            Admin
+          </Link>
+        )}
 
         {/* Spacer */}
         <div className="flex-1" />
