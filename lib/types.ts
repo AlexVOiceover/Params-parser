@@ -49,23 +49,14 @@ export interface DroneType {
   description: string | null;
 }
 
-export interface Firmware {
-  id: string;
-  drone_type_id: string;
-  version: string;
-  release_date: string | null;
-}
-
 export interface ParamSet {
   id: string;
   name: string;
   description: string | null;
   drone_type_id: string | null;
-  firmware_id: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
-  firmwares?: Firmware | null;
 }
 
 export interface ParamVersion {

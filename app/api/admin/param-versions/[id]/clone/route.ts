@@ -26,6 +26,7 @@ export async function POST(
 
   if (!droneTypeId) return NextResponse.json({ error: "droneTypeId required" }, { status: 400 });
   if (!versionLabel?.trim()) return NextResponse.json({ error: "versionLabel required" }, { status: 400 });
+  if (!/^\d+\.\d+$/.test(versionLabel.trim())) return NextResponse.json({ error: "Version label must be in format number.number (e.g. 1.0)" }, { status: 400 });
   if (!paramSetId && !newParamSet?.name?.trim()) return NextResponse.json({ error: "paramSetId or newParamSet.name required" }, { status: 400 });
 
   const admin = createAdminClient();
@@ -47,7 +48,6 @@ export async function POST(
         name: newParamSet!.name.trim(),
         description: newParamSet!.description?.trim() || null,
         drone_type_id: droneTypeId,
-        firmware_id: null,
         created_by: user.id,
       })
       .select("id")

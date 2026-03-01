@@ -18,7 +18,7 @@ async function getData(droneSlug: string, paramSetId: string) {
       .single(),
     supabase
       .from("param_sets")
-      .select("id, name, description, firmware_id, created_at, updated_at, created_by, drone_type_id, firmwares(id, version, release_date, drone_type_id)")
+      .select("id, name, description, created_at, updated_at, created_by, drone_type_id")
       .eq("id", paramSetId)
       .maybeSingle(),
     supabase
@@ -30,7 +30,7 @@ async function getData(droneSlug: string, paramSetId: string) {
 
 return {
     droneType: droneType as DroneType | null,
-    paramSet: paramSet as (ParamSet & { firmwares?: { version: string } | null }) | null,
+    paramSet: paramSet as ParamSet | null,
     versions: (versions as ParamVersion[]) ?? [],
   };
 }
@@ -75,11 +75,6 @@ export default async function ParamSetPage({
             <p className="text-sm text-muted-foreground">{paramSet.description}</p>
           )}
         </div>
-        {paramSet.firmwares && (
-          <span className="shrink-0 rounded-full bg-primary/15 border border-primary/30 px-3 py-1 text-xs font-mono text-primary mt-0.5">
-            ArduPilot v{paramSet.firmwares.version}
-          </span>
-        )}
       </div>
 
       {/* Versions section */}
@@ -100,6 +95,8 @@ export default async function ParamSetPage({
           droneTypeId={(droneType as DroneType & { id: string }).id}
           paramSetId={paramSetId}
           isAdmin={isAdmin}
+          droneName={droneType.name}
+          paramSetName={paramSet.name}
         />
       )}
     </div>

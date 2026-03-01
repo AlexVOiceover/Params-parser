@@ -23,7 +23,7 @@ export async function POST(
   // Fetch original param set
   const { data: original, error: origError } = await admin
     .from("param_sets")
-    .select("id, name, description, drone_type_id, firmware_id")
+    .select("id, name, description, drone_type_id")
     .eq("id", id)
     .single();
   if (origError || !original) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -35,14 +35,13 @@ export async function POST(
     .eq("param_set_id", id)
     .order("created_at", { ascending: true });
 
-  // Create new param set — preserve firmware only when cloning within same drone type
+  // Create new param set
   const { data: newSet, error: setError } = await admin
     .from("param_sets")
     .insert({
       name: name.trim(),
       description: description?.trim() || null,
       drone_type_id: droneTypeId,
-      firmware_id: droneTypeId === original.drone_type_id ? original.firmware_id : null,
       created_by: user.id,
     })
     .select("id")

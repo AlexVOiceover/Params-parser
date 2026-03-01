@@ -6,12 +6,10 @@ import { Upload, CheckCircle } from "lucide-react";
 import Link from "next/link";
 
 type DroneType = { id: string; name: string };
-type Firmware = { id: string; drone_type_id: string; version: string };
 type ParamSetOption = { id: string; name: string; drone_type_id: string | null };
 
 interface Props {
   droneTypes: DroneType[];
-  firmwares: Firmware[];
   paramSets: ParamSetOption[];
 }
 
@@ -21,14 +19,10 @@ const selectClass = inputClass + " cursor-pointer";
 const labelClass = "flex flex-col gap-1.5";
 const labelTextClass = "text-xs font-medium text-muted-foreground";
 
-export function UploadForm({ droneTypes, firmwares, paramSets }: Props) {
+export function UploadForm({ droneTypes, paramSets }: Props) {
   const router = useRouter();
-  const [mode, setMode] = useState<"new" | "existing">("new");
   const [droneTypeId, setDroneTypeId] = useState("");
-  const [firmwareId, setFirmwareId] = useState("");
   const [paramSetId, setParamSetId] = useState("");
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
   const [versionLabel, setVersionLabel] = useState("");
   const [changelog, setChangelog] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -36,7 +30,6 @@ export function UploadForm({ droneTypes, firmwares, paramSets }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ paramSetId: string } | null>(null);
 
-  const filteredFirmwares = firmwares.filter((f) => f.drone_type_id === droneTypeId);
   const filteredParamSets = paramSets.filter((ps) => ps.drone_type_id === droneTypeId);
 
   function reset() {
@@ -50,18 +43,16 @@ export function UploadForm({ droneTypes, firmwares, paramSets }: Props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!file) return;
+    if (!/^\d+\.\d+$/.test(versionLabel.trim())) {
+      setError("Version must be in format number.number (e.g. 1.0)");
+      return;
+    }
     setSubmitting(true);
     setError(null);
 
     const fd = new FormData();
-    fd.set("mode", mode);
     fd.set("droneTypeId", droneTypeId);
-    if (firmwareId) fd.set("firmwareId", firmwareId);
-    if (mode === "existing") fd.set("paramSetId", paramSetId);
-    if (mode === "new") {
-      fd.set("name", name);
-      if (description) fd.set("description", description);
-    }
+    fd.set("paramSetId", paramSetId);
     fd.set("versionLabel", versionLabel);
     if (changelog) fd.set("changelog", changelog);
     fd.set("file", file);
@@ -110,22 +101,6 @@ export function UploadForm({ droneTypes, firmwares, paramSets }: Props) {
     <form onSubmit={handleSubmit} className="max-w-lg mx-auto px-6 py-10">
       <h1 className="text-xl font-semibold text-foreground mb-6">Upload Param File</h1>
 
-      {/* Mode toggle */}
-      <div className="flex rounded-md border border-border overflow-hidden mb-6 w-fit text-sm">
-        {(["new", "existing"] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => setMode(m)}
-            className={`px-4 py-2 font-medium transition-colors cursor-pointer ${
-              mode === m ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {m === "new" ? "New param set" : "Add version to existing"}
-          </button>
-        ))}
-      </div>
-
       <div className="flex flex-col gap-4">
         {/* Drone type */}
         <label className={labelClass}>
@@ -135,66 +110,18 @@ export function UploadForm({ droneTypes, firmwares, paramSets }: Props) {
           <select
             required
             value={droneTypeId}
-            onChange={(e) => {
-              setDroneTypeId(e.target.value);
-              setFirmwareId("");
-              setParamSetId("");
-            }}
+            onChange={(e) => { setDroneTypeId(e.target.value); setParamSetId(""); }}
             className={selectClass}
           >
             <option value="">Select drone type…</option>
             {droneTypes.map((dt) => (
-              <option key={dt.id} value={dt.id}>
-                {dt.name}
-              </option>
+              <option key={dt.id} value={dt.id}>{dt.name}</option>
             ))}
           </select>
         </label>
 
-        {/* Firmware */}
+        {/* Param set */}
         {droneTypeId && (
-          <label className={labelClass}>
-            <span className={labelTextClass}>Firmware version</span>
-            <select value={firmwareId} onChange={(e) => setFirmwareId(e.target.value)} className={selectClass}>
-              <option value="">None / Unknown</option>
-              {filteredFirmwares.map((f) => (
-                <option key={f.id} value={f.id}>
-                  ArduPilot v{f.version}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-
-        {/* New: name + description */}
-        {mode === "new" && (
-          <>
-            <label className={labelClass}>
-              <span className={labelTextClass}>
-                Param set name <span className="text-destructive">*</span>
-              </span>
-              <input
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Baseline survey config"
-                className={inputClass}
-              />
-            </label>
-            <label className={labelClass}>
-              <span className={labelTextClass}>Description</span>
-              <input
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Short description (optional)"
-                className={inputClass}
-              />
-            </label>
-          </>
-        )}
-
-        {/* Existing: param set selector */}
-        {mode === "existing" && droneTypeId && (
           <label className={labelClass}>
             <span className={labelTextClass}>
               Param set <span className="text-destructive">*</span>
@@ -207,26 +134,27 @@ export function UploadForm({ droneTypes, firmwares, paramSets }: Props) {
             >
               <option value="">Select param set…</option>
               {filteredParamSets.map((ps) => (
-                <option key={ps.id} value={ps.id}>
-                  {ps.name}
-                </option>
+                <option key={ps.id} value={ps.id}>{ps.name}</option>
               ))}
             </select>
           </label>
         )}
 
-        {/* Version label */}
+        {/* Version */}
         <label className={labelClass}>
           <span className={labelTextClass}>
-            Version label <span className="text-destructive">*</span>
+            Version <span className="text-destructive">*</span>
           </span>
           <input
             required
             value={versionLabel}
             onChange={(e) => setVersionLabel(e.target.value)}
-            placeholder="e.g. v1.0"
+            placeholder="e.g. 1.0"
             className={inputClass + " font-mono"}
           />
+          {versionLabel.trim() && !/^\d+\.\d+$/.test(versionLabel.trim()) && (
+            <p className="text-xs text-destructive mt-0.5">Must be number.number (e.g. 1.0)</p>
+          )}
         </label>
 
         {/* Changelog */}

@@ -10,7 +10,6 @@ interface ParamSetRow {
   name: string;
   description: string | null;
   updated_at: string;
-  firmwares?: { version: string } | null;
   param_versions?: { version_label: string; created_at: string }[];
 }
 
@@ -146,13 +145,6 @@ export function ParamSetList({ droneSlug, droneTypeId, paramSets, isAdmin }: Pro
                   </span>
                 )}
               </div>
-              {ps.firmwares && (
-                <div className="shrink-0 mt-0.5">
-                  <span className="rounded-full bg-primary/15 border border-primary/30 px-2.5 py-0.5 text-xs font-mono text-primary">
-                    v{ps.firmwares.version}
-                  </span>
-                </div>
-              )}
             </Link>
 
             {isAdmin && (

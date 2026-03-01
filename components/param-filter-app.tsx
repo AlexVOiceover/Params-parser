@@ -4,7 +4,7 @@ import { useEffect, useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { FileText, FilePlus, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, User, Library, LogOut, Upload, Settings } from "lucide-react";
+import { FileText, FilePlus, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, User, Library, LogOut, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
 import { useAuth } from "@/components/auth-provider";
@@ -61,7 +61,7 @@ function FlyingRowsOverlay({ rows }: { rows: FlyingRow[] }) {
   );
 }
 
-export function ParamFilterApp({ loadUrl }: { loadUrl?: string }) {
+export function ParamFilterApp({ loadUrl, catalogSource }: { loadUrl?: string; catalogSource?: { drone: string; set: string; version: string } }) {
   const {
     fileName,
     protectedParams,
@@ -100,6 +100,9 @@ export function ParamFilterApp({ loadUrl }: { loadUrl?: string }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, role]);
 
+  const [appMode, setAppMode] = useState<"idle" | "edit" | "create">("idle");
+  const [activeCatalogSource, setActiveCatalogSource] = useState<{ drone: string; set: string; version: string } | undefined>(undefined);
+
   useEffect(() => {
     if (!loadUrl) return;
     const filename = decodeURIComponent(loadUrl.split("/").pop() ?? "catalog.param");
@@ -108,12 +111,11 @@ export function ParamFilterApp({ loadUrl }: { loadUrl?: string }) {
       .then((content) => {
         loadFile(filename, content);
         setAppMode("edit");
+        setActiveCatalogSource(catalogSource);
       })
       .catch(() => log("Failed to load param file from URL", "ERROR"));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadUrl]);
-
-  const [appMode, setAppMode] = useState<"idle" | "edit" | "create">("idle");
   const [editorOpen, setEditorOpen] = useState(false);
   const [activePanel, setActivePanel] = useState<"protected" | "applied">("applied");
 const [saveResumeOpen, setSaveResumeOpen] = useState(false);
@@ -351,12 +353,25 @@ const handleSave = useCallback(() => {
         appMode === "create" ? "bg-emerald-950/25 border-b-emerald-800/50" : "bg-toolbar"
       )}>
         {/* Left: file operations */}
-        <FileUpload onFileLoaded={() => { setAppMode("edit"); setRemainingOverrides(new Map()); }} />
-        {appMode === "edit" && fileName && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <FileText className="h-3 w-3 shrink-0" />
-            <span className="font-mono font-medium text-foreground max-w-35 truncate">{fileName}</span>
-          </div>
+        <FileUpload onFileLoaded={() => { setAppMode("edit"); setRemainingOverrides(new Map()); setActiveCatalogSource(undefined); }} />
+        {appMode === "edit" && (
+          activeCatalogSource ? (
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Library className="h-3 w-3 shrink-0" />
+              <span className="font-medium text-foreground truncate max-w-60">
+                {activeCatalogSource.drone}
+                <span className="text-muted-foreground"> / </span>
+                {activeCatalogSource.set}
+                <span className="text-muted-foreground"> / </span>
+                <span className="font-mono">{activeCatalogSource.version}</span>
+              </span>
+            </div>
+          ) : fileName ? (
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <FileText className="h-3 w-3 shrink-0" />
+              <span className="font-mono font-medium text-foreground max-w-35 truncate">{fileName}</span>
+            </div>
+          ) : null
         )}
 
         <div className="w-px h-4 bg-border shrink-0" />
@@ -366,7 +381,7 @@ const handleSave = useCallback(() => {
           disabled={defsLoading}
           title="Browse all ArduPilot params — values will be 0 (pdef.json has no defaults)"
           className={cn(
-            "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
+            "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap",
             appMode === "create"
               ? "bg-emerald-600 hover:bg-emerald-500 text-white"
               : "bg-emerald-800/70 hover:bg-emerald-700 text-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -389,21 +404,11 @@ const handleSave = useCallback(() => {
 
         <Link
           href="/catalog"
-          className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
+          className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer whitespace-nowrap"
         >
           <Library className="h-3.5 w-3.5" />
           Catalog
         </Link>
-        {(role === "contributor" || role === "admin") && (
-          <Link
-            href="/upload"
-            className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
-          >
-            <Upload className="h-3.5 w-3.5" />
-            Upload
-          </Link>
-        )}
-
         {/* Spacer */}
         <div className="flex-1" />
 
@@ -425,10 +430,10 @@ const handleSave = useCallback(() => {
               <span className="font-mono text-xs font-medium text-foreground max-w-40 truncate">{user.email}</span>
               <button
                 onClick={signOut}
-                className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:text-foreground hover:bg-secondary/50 transition-colors cursor-pointer ml-0.5"
+                title="Sign out"
+                className="rounded p-1 hover:text-foreground hover:bg-secondary/50 transition-colors cursor-pointer ml-0.5"
               >
                 <LogOut className="h-3 w-3" />
-                Sign out
               </button>
             </>
           ) : (

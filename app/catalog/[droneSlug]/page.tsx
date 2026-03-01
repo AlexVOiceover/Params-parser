@@ -19,7 +19,7 @@ async function getDroneType(slug: string): Promise<DroneType | null> {
 async function getParamSets(droneTypeId: string): Promise<ParamSet[]> {
   const { data } = await createClient()
     .from("param_sets")
-    .select("id, name, description, firmware_id, created_at, updated_at, created_by, drone_type_id, firmwares(id, version, release_date, drone_type_id), param_versions(version_label, created_at)")
+    .select("id, name, description, created_at, updated_at, created_by, drone_type_id, param_versions(version_label, created_at)")
     .eq("drone_type_id", droneTypeId)
     .order("updated_at", { ascending: false });
   return (data as unknown as ParamSet[]) ?? [];

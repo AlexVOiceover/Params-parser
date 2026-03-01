@@ -30,6 +30,8 @@ interface Props {
   droneTypeId: string;
   paramSetId: string;
   isAdmin: boolean;
+  droneName: string;
+  paramSetName: string;
 }
 
 const NEW_PARAM_SET = "__new__";
@@ -42,7 +44,7 @@ function storageUrl(path: string) {
   return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/param-files/${path}`;
 }
 
-export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId, isAdmin }: Props) {
+export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId, isAdmin, droneName, paramSetName }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
 
@@ -147,9 +149,11 @@ export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId,
     }
   }
 
+  const versionLabelValid = /^\d+\.\d+$/.test(cloneVersionLabel.trim());
   const cloneDisabled =
     cloning ||
     !cloneVersionLabel.trim() ||
+    !versionLabelValid ||
     (isNewParamSet && !newParamSetName.trim());
 
   return (
@@ -172,7 +176,7 @@ export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId,
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <Link
-                    href={`/?load=${encodeURIComponent(storageUrl(v.storage_path))}`}
+                    href={`/?load=${encodeURIComponent(storageUrl(v.storage_path))}&drone=${encodeURIComponent(droneName)}&set=${encodeURIComponent(paramSetName)}&version=${encodeURIComponent(v.version_label)}`}
                     className="flex items-center gap-1.5 rounded-md bg-secondary border border-border hover:bg-secondary/80 px-3 py-1.5 text-xs font-medium text-foreground transition-colors cursor-pointer"
                   >
                     <Filter className="h-3.5 w-3.5" />
@@ -332,8 +336,12 @@ export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId,
                   value={cloneVersionLabel}
                   onChange={(e) => setCloneVersionLabel(e.target.value)}
                   disabled={cloning}
+                  placeholder="e.g. 1.0"
                   className="rounded-md border border-border bg-secondary px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
                 />
+                {cloneVersionLabel.trim() && !versionLabelValid && (
+                  <p className="text-xs text-destructive mt-0.5">Must be number.number (e.g. 1.0)</p>
+                )}
               </label>
 
               {/* Changelog */}

@@ -20,46 +20,20 @@ export async function POST(request: NextRequest) {
 
   // 3. Parse form data
   const formData = await request.formData();
-  const mode = formData.get("mode") as string;
   const droneTypeId = formData.get("droneTypeId") as string;
-  const firmwareId = (formData.get("firmwareId") as string | null) || null;
+  const paramSetId = formData.get("paramSetId") as string;
   const versionLabel = formData.get("versionLabel") as string;
   const changelog = (formData.get("changelog") as string | null) || null;
   const file = formData.get("file") as File | null;
 
-  if (!file || !versionLabel || !droneTypeId) {
+  if (!file || !versionLabel || !droneTypeId || !paramSetId) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  }
+  if (!/^\d+\.\d+$/.test(versionLabel.trim())) {
+    return NextResponse.json({ error: "Version must be in format number.number (e.g. 1.0)" }, { status: 400 });
   }
 
   const admin = createAdminClient();
-  let paramSetId: string;
-
-  if (mode === "new") {
-    const name = formData.get("name") as string | null;
-    if (!name) return NextResponse.json({ error: "Name is required for a new param set" }, { status: 400 });
-    const description = (formData.get("description") as string | null) || null;
-
-    const { data: ps, error: psError } = await admin
-      .from("param_sets")
-      .insert({
-        name,
-        description,
-        drone_type_id: droneTypeId,
-        firmware_id: firmwareId,
-        created_by: user.id,
-      })
-      .select("id")
-      .single();
-
-    if (psError || !ps) {
-      return NextResponse.json({ error: psError?.message ?? "Failed to create param set" }, { status: 500 });
-    }
-    paramSetId = ps.id;
-  } else {
-    const existing = formData.get("paramSetId") as string | null;
-    if (!existing) return NextResponse.json({ error: "Param set ID required" }, { status: 400 });
-    paramSetId = existing;
-  }
 
   // 4. Upload file to storage
   const storagePath = `${paramSetId}/${versionLabel}.param`;

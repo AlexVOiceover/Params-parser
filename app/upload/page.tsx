@@ -20,16 +20,14 @@ export default async function UploadPage() {
   }
 
   const admin = createAdminClient();
-  const [{ data: droneTypes }, { data: firmwares }, { data: paramSets }] = await Promise.all([
+  const [{ data: droneTypes }, { data: paramSets }] = await Promise.all([
     admin.from("drone_types").select("id, name").order("name"),
-    admin.from("firmwares").select("id, drone_type_id, version").order("version"),
     admin.from("param_sets").select("id, name, drone_type_id").order("name"),
   ]);
 
   return (
     <UploadForm
       droneTypes={droneTypes ?? []}
-      firmwares={firmwares ?? []}
       paramSets={paramSets ?? []}
     />
   );

@@ -4,12 +4,13 @@ import { ParamFilterApp } from "@/components/param-filter-app";
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ load?: string }>;
+  searchParams: Promise<{ load?: string; drone?: string; set?: string; version?: string }>;
 }) {
-  const { load } = await searchParams;
+  const { load, drone, set, version } = await searchParams;
+  const catalogSource = drone && set && version ? { drone, set, version } : undefined;
   return (
     <AppProvider>
-      <ParamFilterApp loadUrl={load} />
+      <ParamFilterApp loadUrl={load} catalogSource={catalogSource} />
     </AppProvider>
   );
 }
