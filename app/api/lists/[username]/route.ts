@@ -1,41 +1,35 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 import { DEFAULT_PROTECTION_LISTS } from "@/lib/param-engine";
 import type { ProtectionList } from "@/lib/types";
 
-function kvKey(username: string) {
-  return `lists:${username.toLowerCase()}`;
-}
-
-export async function GET(
-  _req: Request,
-  { params }: { params: Promise<{ username: string }> }
-) {
-  const { username } = await params;
+export async function GET() {
   try {
-    const { kv } = await import("@vercel/kv");
-    const data = await kv.get<ProtectionList[]>(kvKey(username));
-    if (!data || data.length === 0) {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("protection_lists")
+      .select("name, description, rules")
+      .is("owner_id", null)
+      .order("created_at");
+
+    if (error || !data?.length) {
       return NextResponse.json({ lists: DEFAULT_PROTECTION_LISTS, source: "defaults" });
     }
-    return NextResponse.json({ lists: data, source: "kv" });
+
+    const lists: ProtectionList[] = data.map((row) => ({
+      name: row.name,
+      description: row.description ?? "",
+      rules: row.rules ?? [],
+    }));
+
+    return NextResponse.json({ lists, source: "supabase" });
   } catch (err) {
-    console.error("[lists/GET] KV error:", err);
+    console.error("[lists/GET] Supabase error:", err);
     return NextResponse.json({ lists: DEFAULT_PROTECTION_LISTS, source: "error", error: String(err) });
   }
 }
 
-export async function PUT(
-  req: Request,
-  { params }: { params: Promise<{ username: string }> }
-) {
-  const { username } = await params;
-  try {
-    const lists: ProtectionList[] = await req.json();
-    const { kv } = await import("@vercel/kv");
-    await kv.set(kvKey(username), lists);
-    return NextResponse.json({ ok: true });
-  } catch (err) {
-    console.error("[lists/PUT] KV error:", err);
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
-  }
+// User-specific list persistence requires authentication (Phase 3).
+export async function PUT() {
+  return NextResponse.json({ ok: true });
 }

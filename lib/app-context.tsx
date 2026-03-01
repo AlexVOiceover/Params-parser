@@ -248,12 +248,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         );
       }
       if (logFn) {
-        if (result.source === "kv") {
-          logFn(`Lists loaded from server (${result.lists.length} list${result.lists.length !== 1 ? "s" : ""})`);
+        if (result.source === "supabase" || result.source === "kv") {
+          logFn(`Lists loaded (${result.lists.length} list${result.lists.length !== 1 ? "s" : ""})`);
         } else if (result.source === "defaults") {
-          logFn(`No saved lists for '${u}' — using defaults`);
+          logFn("Using default protection lists");
         } else {
-          logFn(`Could not load lists from server: ${result.error ?? "unknown error"}`, "WARN");
+          logFn(`Could not load lists: ${result.error ?? "unknown error"}`, "WARN");
         }
       }
     }
@@ -266,7 +266,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     paramNotesRef.current = notes;
   }, []);
 
-  // On mount: restore username from localStorage
+  // On mount: always load global lists from Supabase; restore username if stored
   useEffect(() => {
     const stored = getStoredUsername();
     if (stored) {
@@ -275,8 +275,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       loadListsForUser(stored, log);
       loadNotesForUser(stored);
     } else {
-      // No user — use defaults immediately, no API fetch needed
-      listsReadyRef.current = true;
+      // No username yet — still load global lists from Supabase
+      loadListsForUser("_global_", log);
     }
   }, [loadListsForUser, loadNotesForUser, log]);
 
@@ -546,16 +546,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (allParams.length > 0) {
         doFilter(allParams, activeListName, lists);
       }
-      // Persist — only after the initial fetch completed, and only if signed in
-      if (listsReadyRef.current && usernameRef.current) {
-        apiSaveLists(usernameRef.current, lists).then((result) => {
-          if (result.ok) {
-            log(`Lists saved to server`);
-          } else {
-            log(`Lists save failed: ${result.error ?? "unknown error"}`, "WARN");
-          }
-        });
-      }
+      // Persist — requires authentication (Phase 3); no-op until then
     },
     [allParams, activeListName, doFilter, log]
   );
