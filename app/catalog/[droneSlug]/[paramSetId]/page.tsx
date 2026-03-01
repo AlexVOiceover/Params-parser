@@ -4,7 +4,7 @@ import { ChevronRight, Download } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import type { DroneType, ParamSet, ParamVersion } from "@/lib/types";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 async function getData(droneSlug: string, paramSetId: string) {
   const supabase = createClient();
