@@ -4,9 +4,10 @@ import { useEffect, useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { FileText, FilePlus, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, User, Library } from "lucide-react";
+import { FileText, FilePlus, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, User, Library, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
+import { useAuth } from "@/components/auth-provider";
 import { writeParamFile } from "@/lib/param-engine";
 import { FileUpload } from "@/components/file-upload";
 import { ProtectionListSelect } from "@/components/protection-list-select";
@@ -14,7 +15,6 @@ import { ParamPanel } from "@/components/param-panel";
 import { DetailPanel } from "@/components/detail-panel";
 import { ConsolePanel } from "@/components/console-panel";
 import { ListEditorDialog } from "@/components/list-editor-dialog";
-import { UsernamePrompt } from "@/components/username-prompt";
 import { SaveResumeModal } from "@/components/save-resume-modal";
 
 // ---------- flying rows portal ----------
@@ -62,7 +62,6 @@ function FlyingRowsOverlay({ rows }: { rows: FlyingRow[] }) {
 
 export function ParamFilterApp() {
   const {
-    username,
     fileName,
     protectedParams,
     remainingParams,
@@ -89,10 +88,10 @@ export function ParamFilterApp() {
     activeListName,
     isProtectionModified,
     createFromDefs,
-    setUser,
-    clearUser,
     log,
   } = useApp();
+
+  const { user, signOut } = useAuth();
 
   const [appMode, setAppMode] = useState<"idle" | "edit" | "create">("idle");
   const [editorOpen, setEditorOpen] = useState(false);
@@ -366,18 +365,25 @@ const handleSave = useCallback(() => {
 
         {/* Right: list selector + user */}
         <ProtectionListSelect onEditLists={() => setEditorOpen(true)} />
-        {username && (
+        {user ? (
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground border-l border-border pl-3">
             <User className="h-3.5 w-3.5" />
-            <span className="font-mono font-medium text-foreground">{username}</span>
+            <span className="font-mono font-medium text-foreground">{user.email}</span>
             <button
-              onClick={clearUser}
-              className="hover:text-foreground transition-colors cursor-pointer"
-              title="Change username"
+              onClick={signOut}
+              className="hover:text-foreground transition-colors cursor-pointer flex items-center gap-1"
+              title="Sign out"
             >
-              · change
+              <LogOut className="h-3 w-3" />
             </button>
           </div>
+        ) : (
+          <Link
+            href="/login"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer border-l border-border pl-3"
+          >
+            Sign in
+          </Link>
         )}
       </header>
 
@@ -533,9 +539,6 @@ const handleSave = useCallback(() => {
       {editorOpen && (
         <ListEditorDialog onClose={() => setEditorOpen(false)} />
       )}
-
-      {/* First-visit username prompt */}
-      {username === null && <UsernamePrompt onConfirm={setUser} />}
 
       {/* Save resume modal */}
       {saveResumeOpen && (

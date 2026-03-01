@@ -3,11 +3,13 @@
 import { TriangleAlert, CircleCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
+import { useAuth } from "@/components/auth-provider";
 import { validateParam } from "@/lib/param-engine";
 import type { ParamDefinition } from "@/lib/types";
 
 export function DetailPanel() {
-  const { selectedParam, paramDefs, paramNotes, setParamNote, username, acknowledgedInvalid, acknowledgeParam } = useApp();
+  const { selectedParam, paramDefs, paramNotes, setParamNote, acknowledgedInvalid, acknowledgeParam } = useApp();
+  const { user } = useAuth();
 
   if (!selectedParam) {
     return (
@@ -147,8 +149,8 @@ export function DetailPanel() {
         <textarea
           value={paramNotes[selectedParam.name] ?? ""}
           onChange={(e) => setParamNote(selectedParam.name, e.target.value)}
-          placeholder={username ? "Add your notes…" : "Sign in to save notes"}
-          disabled={!username}
+          placeholder={user ? "Add your notes…" : "Sign in to save notes"}
+          disabled={!user}
           rows={3}
           className="w-full resize-y rounded border border-border bg-secondary px-2.5 py-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none focus:ring-1 focus:ring-ring font-sans disabled:opacity-40 disabled:cursor-not-allowed"
         />
