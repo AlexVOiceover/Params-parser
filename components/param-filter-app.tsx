@@ -319,37 +319,37 @@ const handleSave = useCallback(() => {
     <div className="flex h-screen flex-col overflow-hidden">
       {/* Toolbar */}
       <header className={cn(
-        "flex items-center gap-3 border-b border-border px-4 py-2.5 shrink-0 transition-colors duration-300",
+        "flex items-center gap-2 border-b border-border px-3 py-2 shrink-0 transition-colors duration-300",
         appMode === "create" ? "bg-emerald-950/25 border-b-emerald-800/50" : "bg-toolbar"
       )}>
         {/* Left: file operations */}
         <FileUpload onFileLoaded={() => { setAppMode("edit"); setRemainingOverrides(new Map()); }} />
         {appMode === "edit" && fileName && (
-          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <FileText className="h-3.5 w-3.5" />
-            <span className="font-mono font-medium text-foreground">{fileName}</span>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <FileText className="h-3 w-3 shrink-0" />
+            <span className="font-mono font-medium text-foreground max-w-35 truncate">{fileName}</span>
           </div>
         )}
 
-        <div className="w-px h-5 bg-border shrink-0" />
+        <div className="w-px h-4 bg-border shrink-0" />
 
         <button
           onClick={handleCreateNew}
           disabled={defsLoading}
           title="Browse all ArduPilot params — values will be 0 (pdef.json has no defaults)"
           className={cn(
-            "flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors cursor-pointer",
+            "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
             appMode === "create"
               ? "bg-emerald-600 hover:bg-emerald-500 text-white"
               : "bg-emerald-800/70 hover:bg-emerald-700 text-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed"
           )}
         >
-          <FilePlus className="h-4 w-4" />
+          <FilePlus className="h-3.5 w-3.5" />
           New Config
         </button>
         {appMode === "create" && (
           <div
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-900/50 text-emerald-300 border border-emerald-700/60"
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold bg-emerald-900/50 text-emerald-300 border border-emerald-700/60"
             title="Values are 0 — ArduPilot pdef.json does not publish firmware defaults"
           >
             <FilePlus className="h-3 w-3" />
@@ -357,57 +357,61 @@ const handleSave = useCallback(() => {
           </div>
         )}
 
+        <div className="w-px h-4 bg-border shrink-0" />
+
         <Link
           href="/catalog"
-          className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
+          className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
         >
-          <Library className="h-4 w-4" />
+          <Library className="h-3.5 w-3.5" />
           Catalog
         </Link>
         {(role === "contributor" || role === "admin") && (
           <Link
             href="/upload"
-            className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
+            className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
           >
-            <Upload className="h-4 w-4" />
+            <Upload className="h-3.5 w-3.5" />
             Upload
-          </Link>
-        )}
-        {role === "admin" && (
-          <Link
-            href="/admin"
-            className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
-          >
-            <Settings className="h-4 w-4" />
-            Admin
           </Link>
         )}
 
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Right: list selector + user */}
+        {/* Right: list selector + admin icon + user */}
         <ProtectionListSelect onEditLists={() => setEditorOpen(true)} />
-        {user ? (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground border-l border-border pl-3">
-            <User className="h-3.5 w-3.5" />
-            <span className="font-mono font-medium text-foreground">{user.email}</span>
-            <button
-              onClick={signOut}
-              className="hover:text-foreground transition-colors cursor-pointer flex items-center gap-1"
-              title="Sign out"
+        <div className="flex items-center gap-1 border-l border-border pl-2 text-muted-foreground">
+          {role === "admin" && (
+            <Link
+              href="/admin"
+              className="rounded p-1 hover:text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
+              title="Admin"
             >
-              <LogOut className="h-3 w-3" />
-            </button>
-          </div>
-        ) : (
-          <Link
-            href="/login"
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer border-l border-border pl-3"
-          >
-            Sign in
-          </Link>
-        )}
+              <Settings className="h-3.5 w-3.5" />
+            </Link>
+          )}
+          {user ? (
+            <>
+              <User className="h-3.5 w-3.5 shrink-0" />
+              <span className="font-mono text-xs font-medium text-foreground max-w-40 truncate">{user.email}</span>
+              <button
+                onClick={signOut}
+                className="rounded p-1 hover:text-foreground transition-colors cursor-pointer"
+                title="Sign out"
+              >
+                <LogOut className="h-3 w-3" />
+              </button>
+            </>
+          ) : (
+            <Link
+              href="/login"
+              className="text-xs hover:text-foreground transition-colors cursor-pointer px-1"
+            >
+              Sign in
+            </Link>
+          )}
+        </div>
       </header>
 
       {/* Main content */}
