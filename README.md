@@ -59,6 +59,35 @@ Contributors and admins see an **Upload** link in the toolbar and catalog header
 
 ---
 
+## Data Architecture
+
+The app uses a **hybrid storage model**: raw files in Supabase Storage + structured data in Postgres.
+
+### Storage (Supabase Storage — `param-files` bucket)
+
+Raw `.param` files are stored as-is, keyed by `{paramSetId}/{versionLabel}.param`.
+- The bucket is **public** — Download and "Open in Filter" link directly to the file URL, no API round-trip needed.
+- This is the canonical source of truth. Mission Planner imports it directly.
+
+### Database (Postgres via Supabase)
+
+| Table | Purpose |
+|---|---|
+| `profiles` | User accounts with role (`viewer` / `contributor` / `admin`). Auto-created on first sign-in. |
+| `protection_lists` | Named rule sets (prefix/exact matches). `owner_id = NULL` = global (admin-managed). |
+| `drone_types` | Drone models (AIR8, AIR4Rugged, …). Admin-managed. |
+| `firmwares` | ArduPilot firmware versions per drone type. Admin-managed. |
+| `param_sets` | Named param configurations ("albums"). Belongs to a drone type + firmware. |
+| `param_versions` | Versioned snapshots of a param set. Points to the file in Storage via `storage_path`. |
+| `param_values` | Individual `NAME,VALUE` rows parsed from each uploaded file. Enables analytics. |
+
+### Why both?
+
+- **Files** handle downloads — serve directly from CDN, no reconstruction, exact format Mission Planner needs.
+- **`param_values`** handles analytics — query how a parameter changed across versions, diff two configs, search by value. Populated automatically on every upload by parsing the file server-side.
+
+---
+
 ## Development
 
 ```bash
