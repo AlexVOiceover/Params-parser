@@ -24,6 +24,7 @@ export interface ParamDefinition {
   Values?: Record<string, string>;
   Bitmask?: Record<string, string>;
   RebootRequired?: string;
+  Default?: string;
 }
 
 export interface ParamGroup {

@@ -3,10 +3,11 @@
 import { useEffect, useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
-import { RefreshCw, FileText, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, User } from "lucide-react";
+import { RefreshCw, FileText, FilePlus, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
 import { writeParamFile } from "@/lib/param-engine";
+import type { Param } from "@/lib/types";
 import { FileUpload } from "@/components/file-upload";
 import { ProtectionListSelect } from "@/components/protection-list-select";
 import { ParamPanel } from "@/components/param-panel";
@@ -68,6 +69,7 @@ export function ParamFilterApp() {
     checkedProtected,
     checkedRemaining,
     pdefGroups,
+    paramDefs,
     cacheAge,
     defsLoading,
     statusMessage,
@@ -85,11 +87,13 @@ export function ParamFilterApp() {
     protectionLists,
     setProtectionLists,
     isProtectionModified,
+    createFromDefs,
     setUser,
     clearUser,
     log,
   } = useApp();
 
+  const [appMode, setAppMode] = useState<"idle" | "edit" | "create">("idle");
   const [editorOpen, setEditorOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [saveResumeOpen, setSaveResumeOpen] = useState(false);
@@ -161,6 +165,16 @@ export function ParamFilterApp() {
     }
     moveCheckedToProtected();
   }, [checkedRemaining, moveCheckedToProtected]);
+
+  const handleCreateNew = useCallback(() => {
+    if (!Object.keys(paramDefs).length) {
+      log("Definitions not loaded yet, please wait...", "WARN");
+      return;
+    }
+    createFromDefs();
+    setAppMode("create");
+    setRemainingOverrides(new Map());
+  }, [paramDefs, createFromDefs, log]);
 
   // Info sidebar resize (horizontal)
   const [infoWidth, setInfoWidth] = useState(288);
@@ -298,26 +312,56 @@ export function ParamFilterApp() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     const baseName = fileName ? fileName.replace(/\.\w+$/, "") : "params";
+    const outName = appMode === "create"
+      ? "new_config.param"
+      : `${baseName}_filtered.param`;
     a.href = url;
-    a.download = `${baseName}_filtered.param`;
+    a.download = outName;
     a.click();
     URL.revokeObjectURL(url);
     log(
-      `Saved '${baseName}_filtered.param' \u2014 ${params.length} written, ${protectedParams.length} removed`
+      `Saved '${outName}' \u2014 ${params.length} written${appMode !== "create" ? `, ${protectedParams.length} removed` : ""}`
     );
-  }, [protectedParams, fileName, log]);
+  }, [appMode, protectedParams, fileName, log]);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       {/* Toolbar */}
-      <header className="flex items-center gap-4 border-b border-border bg-toolbar px-4 py-2.5 shrink-0 flex-wrap">
-        <FileUpload />
-        {fileName && (
+      <header className={cn(
+        "flex items-center gap-3 border-b border-border px-4 py-2.5 shrink-0 flex-wrap transition-colors duration-300",
+        appMode === "create" ? "bg-emerald-950/25 border-b-emerald-800/50" : "bg-toolbar"
+      )}>
+        <FileUpload onFileLoaded={() => { setAppMode("edit"); setRemainingOverrides(new Map()); }} />
+        <button
+          onClick={handleCreateNew}
+          disabled={defsLoading}
+          title="Browse all ArduPilot params — values will be 0 (pdef.json has no defaults)"
+          className={cn(
+            "flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors",
+            appMode === "create"
+              ? "bg-emerald-600 hover:bg-emerald-500 text-white"
+              : "bg-emerald-800/70 hover:bg-emerald-700 text-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed"
+          )}
+        >
+          <FilePlus className="h-4 w-4" />
+          New Config
+        </button>
+
+        {/* Mode / file indicator */}
+        {appMode === "create" && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-900/50 text-emerald-300 border border-emerald-700/60"
+            title="Values are 0 — ArduPilot pdef.json does not publish firmware defaults">
+            <FilePlus className="h-3 w-3" />
+            New Config · values are 0
+          </div>
+        )}
+        {appMode === "edit" && fileName && (
           <div className="flex items-center gap-1.5 text-sm text-foreground">
             <FileText className="h-4 w-4 text-muted-foreground" />
             <span className="font-medium">{fileName}</span>
           </div>
         )}
+
         {/* Username badge */}
         {username && (
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -414,8 +458,8 @@ export function ParamFilterApp() {
         {/* Applied panel */}
         <div ref={appliedPanelRef} className="flex flex-col flex-1 min-w-0 p-2">
           <ParamPanel
-            title="WILL BE APPLIED"
-            headerColor="bg-applied-header"
+            title={appMode === "create" ? "DEFAULT VALUES" : "WILL BE APPLIED"}
+            headerColor={appMode === "create" ? "bg-emerald-900/40" : "bg-applied-header"}
             variant="applied"
             params={remainingParams}
             checkedNames={checkedRemaining}
@@ -474,7 +518,7 @@ export function ParamFilterApp() {
               )}
             >
               <Download className="h-3.5 w-3.5" />
-              Save Filtered File
+              {appMode === "create" ? "Save New File" : "Save Filtered File"}
             </button>
             <span className="text-xs text-muted-foreground">
               {statusMessage}

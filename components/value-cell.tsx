@@ -47,6 +47,7 @@ export function useLongPress(onLongPress: () => void, duration = 2000, pressDela
   return {
     pressing,
     completedRef,
+    fillDuration: duration - pressDelay,
     handlers: {
       onMouseDown: start,
       onMouseUp: cancel,
@@ -126,7 +127,7 @@ export function ValueCell({
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
-            animation: "longPressFill 1s linear forwards",
+            animation: `longPressFill ${lp.fillDuration}ms linear forwards`,
             transformOrigin: "left center",
             background: "rgba(59,130,246,0.15)",
           }}

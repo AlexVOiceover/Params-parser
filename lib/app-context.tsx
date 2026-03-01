@@ -145,6 +145,7 @@ interface AppActions {
   setDefsLoading: (loading: boolean) => void;
   setProtectionLists: (lists: ProtectionList[]) => void;
   setParamNote: (name: string, note: string) => void;
+  createFromDefs: () => void;
   log: (message: string, level?: "INFO" | "WARN" | "ERROR") => void;
   clearConsole: () => void;
 }
@@ -333,6 +334,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [activeListName, protectionLists, doFilter, log]
   );
+
+  const createFromDefs = useCallback(() => {
+    const params: Param[] = Object.entries(paramDefs).map(([name, def]) => ({
+      name,
+      value: def.Default ?? "0",
+    }));
+    setFileName("new_config.param");
+    setAllParams(params);
+    setActiveListName("__no_filter__");
+    const { protected: p, remaining: r } = applyFilter(params, []);
+    setProtectedParams(p);
+    setRemainingParams(r);
+    setBaselineProtectedNames(new Set());
+    setCheckedProtected(new Set());
+    setCheckedRemaining(new Set());
+    setSelectedParam(null);
+    setStatusMessage(`${params.length} params loaded (values set to 0)`);
+    log(`New config \u2014 ${params.length} params from pdef. Note: ArduPilot pdef.json has no default values, all set to 0`);
+  }, [paramDefs, log]);
 
   // ---------- list selection ----------
 
@@ -551,6 +571,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setUser,
         clearUser,
         loadFile,
+        createFromDefs,
         setActiveList,
         toggleCheckedProtected,
         toggleCheckedRemaining,

@@ -4,7 +4,7 @@ import { useRef } from "react";
 import { Upload } from "lucide-react";
 import { useApp } from "@/lib/app-context";
 
-export function FileUpload() {
+export function FileUpload({ onFileLoaded }: { onFileLoaded?: () => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const { loadFile } = useApp();
 
@@ -15,6 +15,7 @@ export function FileUpload() {
     reader.onload = () => {
       const content = reader.result as string;
       loadFile(file.name, content);
+      onFileLoaded?.();
     };
     reader.readAsText(file);
     // Reset so the same file can be re-selected

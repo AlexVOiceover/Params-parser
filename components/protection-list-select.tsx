@@ -3,6 +3,7 @@
 import { useApp } from "@/lib/app-context";
 
 const EDIT_SENTINEL = "__edit_lists__";
+const NO_FILTER_SENTINEL = "__no_filter__";
 
 interface Props {
   onEditLists: () => void;
@@ -37,6 +38,7 @@ export function ProtectionListSelect({ onEditLists }: Props) {
           </option>
         ))}
         <option disabled value="">──────────────</option>
+        <option value={NO_FILTER_SENTINEL}>No Filter</option>
         <option value={EDIT_SENTINEL}>✏  Edit Lists…</option>
       </select>
     </div>

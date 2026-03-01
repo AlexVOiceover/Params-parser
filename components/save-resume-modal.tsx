@@ -78,7 +78,7 @@ function StatusCell({
       {lp.pressing && (
         <div
           className="absolute inset-0 pointer-events-none"
-          style={{ animation: "longPressFill 2s linear forwards", transformOrigin: "left center", background: fillBg }}
+          style={{ animation: `longPressFill ${lp.fillDuration}ms linear forwards`, transformOrigin: "left center", background: fillBg }}
         />
       )}
       <span
@@ -135,7 +135,7 @@ function PrefixGroupRows({
         {lp.pressing && (
           <div
             className="absolute inset-0 pointer-events-none"
-            style={{ animation: "longPressFill 2s linear forwards", transformOrigin: "left center", background: fillBg }}
+            style={{ animation: `longPressFill ${lp.fillDuration}ms linear forwards`, transformOrigin: "left center", background: fillBg }}
           />
         )}
         <button
