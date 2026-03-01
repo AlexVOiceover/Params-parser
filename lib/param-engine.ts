@@ -1,4 +1,4 @@
-import type { Param, Rule, ProtectionList, ParamGroup } from "./types";
+import type { Param, Rule, ProtectionList, ParamGroup, ParamDefinition } from "./types";
 import defaultListsJson from "@/data/protection-lists.json";
 
 /**
@@ -101,3 +101,39 @@ export function buildGroups(
  */
 export const DEFAULT_PROTECTION_LISTS: ProtectionList[] =
   defaultListsJson as ProtectionList[];
+
+/**
+ * Validate a param value against its ArduPilot definition.
+ * Returns null if valid (or no constraints to check), or a reason string if invalid.
+ */
+export function validateParam(value: string, def: ParamDefinition): string | null {
+  const num = parseFloat(value);
+  const isNum = !isNaN(num);
+
+  // Range takes priority — definitive numeric constraint
+  if (def.Range) {
+    if (!isNum) return "Not a number";
+    const lo = parseFloat(def.Range.low);
+    const hi = parseFloat(def.Range.high);
+    if (num >= lo && num <= hi) return null;
+    return `Out of range ${def.Range.low} – ${def.Range.high}`;
+  }
+
+  // Values (strict enum) — only when no Range is defined
+  if (def.Values && Object.keys(def.Values).length > 0) {
+    if (!isNum) return "Not a number";
+    const keys = Object.keys(def.Values);
+    const isValid = keys.some((k) => Math.abs(parseFloat(k) - num) < 0.001);
+    if (isValid) return null;
+    return `Must be one of: ${keys.join(", ")}`;
+  }
+
+  // Bitmask — must be a non-negative integer
+  if (def.Bitmask && Object.keys(def.Bitmask).length > 0) {
+    if (!isNum || num < 0 || Math.abs(num - Math.round(num)) > 0.001) {
+      return "Must be a non-negative integer";
+    }
+  }
+
+  return null;
+}

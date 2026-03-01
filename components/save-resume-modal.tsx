@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
 import { useLongPress, ValueCell } from "@/components/value-cell";
+import { validateParam } from "@/lib/param-engine";
 import type { Param } from "@/lib/types";
 
 // ---------- drone icon ----------
@@ -130,7 +131,7 @@ function PrefixGroupRows({
   newValues: Map<string, string>;
   onNewValue: (name: string, value: string) => void;
 }) {
-  const { moveBulkToProtected, moveBulkToRemaining } = useApp();
+  const { moveBulkToProtected, moveBulkToRemaining, paramDefs } = useApp();
   const [open, setOpen] = useState(true);
   const isProtected = variant === "protected";
 
@@ -233,6 +234,7 @@ function PrefixGroupRows({
                   originalValue={p.value}
                   override={newValues.get(p.name)}
                   onOverride={(v) => onNewValue(p.name, v)}
+                  isInvalid={!!paramDefs[p.name] && validateParam(newValues.get(p.name) ?? p.value, paramDefs[p.name]) !== null}
                 />
               )}
               <StatusCell paramName={p.name} isProtected={isProtected} />
@@ -252,6 +254,7 @@ interface SaveResumeModalProps {
   initialOverrides?: Map<string, string>;
   onConfirm: (params: Param[]) => void;
   onClose: () => void;
+  onOverridesChange?: (overrides: Map<string, string>) => void;
 }
 
 export function SaveResumeModal({
@@ -261,7 +264,9 @@ export function SaveResumeModal({
   initialOverrides,
   onConfirm,
   onClose,
+  onOverridesChange,
 }: SaveResumeModalProps) {
+  const { paramDefs } = useApp();
   const baseName = fileName ? fileName.replace(/\.\w+$/, "") : "params";
   const [protectedOpen, setProtectedOpen] = useState(true);
   const [appliedOpen, setAppliedOpen] = useState(true);
@@ -270,13 +275,12 @@ export function SaveResumeModal({
   );
 
   const handleNewValue = useCallback((name: string, value: string) => {
-    setNewValues((prev) => {
-      const next = new Map(prev);
-      if (value === "") next.delete(name);
-      else next.set(name, value);
-      return next;
-    });
-  }, []);
+    const next = new Map(newValues);
+    if (value === "") next.delete(name);
+    else next.set(name, value);
+    setNewValues(next);
+    onOverridesChange?.(next);
+  }, [newValues, onOverridesChange]);
 
   const protectedItems = useMemo(() => buildPrefixItems(protectedParams), [protectedParams]);
   const appliedItems = useMemo(() => buildPrefixItems(remainingParams), [remainingParams]);
@@ -418,6 +422,7 @@ export function SaveResumeModal({
                             originalValue={item.param.value}
                             override={newValues.get(item.param.name)}
                             onOverride={(v) => handleNewValue(item.param.name, v)}
+                            isInvalid={!!paramDefs[item.param.name] && validateParam(newValues.get(item.param.name) ?? item.param.value, paramDefs[item.param.name]) !== null}
                           />
                           <StatusCell paramName={item.param.name} isProtected={false} />
                         </motion.div>

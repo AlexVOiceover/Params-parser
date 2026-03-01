@@ -1,6 +1,8 @@
 "use client";
 
+import { TriangleAlert } from "lucide-react";
 import { useApp } from "@/lib/app-context";
+import { validateParam } from "@/lib/param-engine";
 import type { ParamDefinition } from "@/lib/types";
 
 export function DetailPanel() {
@@ -15,9 +17,19 @@ export function DetailPanel() {
   }
 
   const meta: ParamDefinition = paramDefs[selectedParam.name] ?? {};
+  const validationReason = Object.keys(meta).length ? validateParam(selectedParam.value, meta) : null;
 
   return (
     <div className="flex flex-col gap-3 p-4 overflow-y-auto h-full">
+      {validationReason && (
+        <div className="rounded border border-red-800/50 bg-red-950/40 px-3 py-2 flex flex-col gap-1">
+          <span className="flex items-center gap-1.5 text-xs font-semibold text-red-400">
+            <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+            Value out of specification
+          </span>
+          <p className="text-xs text-red-300/80">{validationReason}</p>
+        </div>
+      )}
       <div>
         <h3 className="font-mono text-sm font-bold text-foreground">
           {selectedParam.name}

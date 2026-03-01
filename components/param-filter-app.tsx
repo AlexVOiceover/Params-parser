@@ -3,7 +3,7 @@
 import { useEffect, useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
-import { RefreshCw, FileText, FilePlus, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, User } from "lucide-react";
+import { FileText, FilePlus, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
 import { writeParamFile } from "@/lib/param-engine";
@@ -95,8 +95,7 @@ export function ParamFilterApp() {
 
   const [appMode, setAppMode] = useState<"idle" | "edit" | "create">("idle");
   const [editorOpen, setEditorOpen] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [saveResumeOpen, setSaveResumeOpen] = useState(false);
+const [saveResumeOpen, setSaveResumeOpen] = useState(false);
   const [remainingOverrides, setRemainingOverrides] = useState<Map<string, string>>(new Map());
   const [flyingRows, setFlyingRows] = useState<FlyingRow[]>([]);
 
@@ -283,25 +282,7 @@ export function ParamFilterApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
-    log("Fetching latest parameter definitions from ArduPilot...");
-    try {
-      const res = await fetch("/api/param-definitions?force");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setParamDefs(data.params, data.groups, "just now");
-      log(
-        `Definitions updated \u2014 ${Object.keys(data.params).length} params, ${data.groups.length} groups`
-      );
-    } catch (err) {
-      log(`Fetch failed: ${(err as Error).message}`, "ERROR");
-    } finally {
-      setRefreshing(false);
-    }
-  }, [log, setParamDefs]);
-
-  const handleSave = useCallback(() => {
+const handleSave = useCallback(() => {
     if (remainingParams.length === 0) return;
     setSaveResumeOpen(true);
   }, [remainingParams]);
@@ -380,19 +361,6 @@ export function ParamFilterApp() {
         )}
         <div className="flex-1" />
         <ProtectionListSelect onEditLists={() => setEditorOpen(true)} />
-        <button
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className={cn(
-            "flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium text-primary-foreground transition-colors",
-            "bg-[#2d5a27] hover:bg-[#3a7232] disabled:opacity-50"
-          )}
-        >
-          <RefreshCw
-            className={cn("h-4 w-4", refreshing && "animate-spin")}
-          />
-          {refreshing ? "Fetching..." : "Refresh Params"}
-        </button>
       </header>
 
       {/* Main content */}
@@ -550,6 +518,7 @@ export function ParamFilterApp() {
           initialOverrides={remainingOverrides}
           onConfirm={handleConfirmSave}
           onClose={() => setSaveResumeOpen(false)}
+          onOverridesChange={setRemainingOverrides}
         />
       )}
 

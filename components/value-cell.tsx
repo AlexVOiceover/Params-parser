@@ -81,11 +81,13 @@ export function ValueCell({
   originalValue,
   override,
   onOverride,
+  isInvalid,
   className,
 }: {
   originalValue: string;
   override: string | undefined;
   onOverride: (value: string) => void;
+  isInvalid?: boolean;
   className?: string;
 }) {
   const [editing, setEditing] = useState(false);
@@ -158,7 +160,7 @@ export function ValueCell({
       <span
         className={cn(
           "relative font-mono text-xs tabular-nums",
-          hasOverride ? "text-amber-400" : "text-muted-foreground"
+          isInvalid ? "text-red-400" : hasOverride ? "text-amber-400" : "text-muted-foreground"
         )}
       >
         {hasOverride ? override : originalValue}

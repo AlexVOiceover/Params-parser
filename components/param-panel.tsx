@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback } from "react";
 import { ChevronRight, ChevronDown, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { buildGroups } from "@/lib/param-engine";
+import { buildGroups, validateParam } from "@/lib/param-engine";
 import { useApp } from "@/lib/app-context";
 import { ValueCell } from "@/components/value-cell";
 import type { Param } from "@/lib/types";
@@ -302,7 +302,7 @@ export function ParamPanel({
                               ? "bg-secondary/10 hover:bg-secondary/20 border-l-group-text/30"
                               : "hover:bg-secondary/30 border-l-transparent"
                           )}
-                          onClick={() => { onToggleCheck(param.name); onSelectParam(param.name, param.value); }}
+                          onClick={() => { onToggleCheck(param.name); onSelectParam(param.name, valueOverrides?.get(param.name) ?? param.value); }}
                         >
                           {/* Checkbox col */}
                           <div className={cn(COL_CHECKBOX, "flex justify-center pt-0.5")}>
@@ -339,7 +339,13 @@ export function ParamPanel({
                               className={COL_VALUE}
                               originalValue={param.value}
                               override={valueOverrides?.get(param.name)}
-                              onOverride={(v) => onOverrideValue(param.name, v)}
+                              onOverride={(v) => {
+                                onOverrideValue(param.name, v);
+                                if (selectedParam?.name === param.name) {
+                                  onSelectParam(param.name, v !== "" ? v : param.value);
+                                }
+                              }}
+                              isInvalid={!!def && validateParam(valueOverrides?.get(param.name) ?? param.value, def) !== null}
                             />
                           ) : (
                             <div className={cn(COL_VALUE, "font-mono text-xs text-muted-foreground tabular-nums pt-0.5 pr-1 text-right")}>
