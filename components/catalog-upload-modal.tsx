@@ -28,7 +28,7 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    createClient().from("drone_types").select("id, name").order("name").then(({ data }) => {
+    createClient()?.from("drone_types").select("id, name").order("name").then(({ data }) => {
       setDroneTypes(data ?? []);
     });
   }, []);
