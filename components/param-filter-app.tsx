@@ -93,6 +93,11 @@ export function ParamFilterApp() {
 
   const { user, role, signOut } = useAuth();
 
+  useEffect(() => {
+    if (user && role) log(`Signed in as ${user.email} (${role})`);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, role]);
+
   const [appMode, setAppMode] = useState<"idle" | "edit" | "create">("idle");
   const [editorOpen, setEditorOpen] = useState(false);
   const [activePanel, setActivePanel] = useState<"protected" | "applied">("applied");
