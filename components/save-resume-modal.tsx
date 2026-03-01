@@ -102,7 +102,7 @@ export function SaveResumeModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative z-10 w-full max-w-sm rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
+      <div className="relative z-10 w-full max-w-md rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border bg-toolbar px-5 py-3.5">
           <div className="flex items-center gap-2">
@@ -167,29 +167,31 @@ export function SaveResumeModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 border-t border-border bg-toolbar px-5 py-3">
+        <div className="flex items-center justify-between gap-2 border-t border-border bg-toolbar px-5 py-3">
           <button
             onClick={onClose}
             className="rounded-md border border-border px-4 py-2 text-sm text-foreground hover:bg-secondary transition-colors cursor-pointer"
           >
             Cancel
           </button>
-          {onPublishToCatalog && (
+          <div className="flex items-center gap-2">
+            {onPublishToCatalog && (
+              <button
+                onClick={() => { onPublishToCatalog(includeHeader ? buildHeader() : null); onClose(); }}
+                className="flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Publish to Catalog
+              </button>
+            )}
             <button
-              onClick={() => { onPublishToCatalog(includeHeader ? buildHeader() : null); onClose(); }}
-              className="flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20 transition-colors cursor-pointer whitespace-nowrap"
+              onClick={handleDownload}
+              className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
             >
-              <Upload className="h-3.5 w-3.5" />
-              Publish to Catalog
+              <Download className="h-3.5 w-3.5" />
+              Download
             </button>
-          )}
-          <button
-            onClick={handleDownload}
-            className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
-          >
-            <Download className="h-3.5 w-3.5" />
-            Download
-          </button>
+          </div>
         </div>
       </div>
     </div>

@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronRight, Trash2, Plus, X } from "lucide-react";
+import { Trash2, Plus, X, Pencil } from "lucide-react";
 
 interface DroneTypeRow {
   id: string;
@@ -30,6 +30,36 @@ export function DroneTypeGrid({ droneTypes, isAdmin }: Props) {
   const [newDescription, setNewDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [deleteErrors, setDeleteErrors] = useState<Record<string, string>>({});
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+
+  function startEdit(dt: DroneTypeRow) {
+    setEditingId(dt.id);
+    setEditName(dt.name);
+    setEditDescription(dt.description ?? "");
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+  }
+
+  async function handleEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingId || !editName.trim()) return;
+    setEditSaving(true);
+    const res = await fetch(`/api/admin/drone-types/${editingId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: editName.trim(), description: editDescription.trim() || null }),
+    });
+    setEditSaving(false);
+    if (res.ok) {
+      setEditingId(null);
+      startTransition(() => router.refresh());
+    }
+  }
 
   function resetAdd() {
     setShowAdd(false);
@@ -66,54 +96,96 @@ export function DroneTypeGrid({ droneTypes, isAdmin }: Props) {
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {droneTypes.map((dt) => (
-        <div key={dt.id} className="relative group/card flex flex-col gap-1">
-          <Link
-            href={`/catalog/${dt.slug}`}
-            className={`flex flex-col gap-2 rounded-lg border border-border bg-card p-5 hover:border-primary/50 hover:bg-card/80 transition-colors cursor-pointer${isAdmin ? " pr-10" : ""}`}
+      {droneTypes.map((dt) =>
+        editingId === dt.id ? (
+          <form
+            key={dt.id}
+            onSubmit={handleEdit}
+            className="flex flex-col gap-3 rounded-lg border border-primary/40 bg-card p-5"
           >
-            <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-foreground">Edit drone type</span>
+              <button type="button" onClick={cancelEdit} className="text-muted-foreground hover:text-foreground cursor-pointer">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <input
+              required
+              autoFocus
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              placeholder="Name"
+              className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
+            />
+            <input
+              value={editDescription}
+              onChange={(e) => setEditDescription(e.target.value)}
+              placeholder="Description (optional)"
+              className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
+            />
+            <button
+              type="submit"
+              disabled={editSaving || !editName.trim()}
+              className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed"
+            >
+              {editSaving ? "Saving…" : "Save"}
+            </button>
+          </form>
+        ) : (
+          <div key={dt.id} className="relative group/card flex flex-col gap-1">
+            <Link
+              href={`/catalog/${dt.slug}`}
+              className={`flex flex-col gap-2 rounded-lg border border-border bg-card p-5 hover:border-primary/50 hover:bg-card/80 transition-colors cursor-pointer${isAdmin ? " pr-10" : ""}`}
+            >
               <span className="font-semibold text-foreground group-hover/card:text-primary transition-colors">
                 {dt.name}
               </span>
-              <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5 group-hover/card:text-primary transition-colors" />
-            </div>
-            {dt.description && (
-              <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-                {dt.description}
+              {dt.description && (
+                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+                  {dt.description}
+                </p>
+              )}
+              <div className="mt-auto pt-3 border-t border-border/50">
+                <span className="text-xs text-muted-foreground">
+                  {dt.param_set_count === 0
+                    ? "No param sets yet"
+                    : `${dt.param_set_count} param set${dt.param_set_count === 1 ? "" : "s"}`}
+                </span>
+              </div>
+            </Link>
+
+            {isAdmin && (
+              <div className="absolute top-2.5 right-2.5 flex gap-1 opacity-0 group-hover/card:opacity-100 transition-all">
+                <button
+                  onClick={() => startEdit(dt)}
+                  title={`Edit ${dt.name}`}
+                  className="rounded p-1 bg-card border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors cursor-pointer"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => handleDelete(dt.id)}
+                  disabled={dt.param_set_count > 0}
+                  title={
+                    dt.param_set_count > 0
+                      ? `Cannot delete — ${dt.param_set_count} param set${dt.param_set_count === 1 ? "" : "s"} exist`
+                      : `Delete ${dt.name}`
+                  }
+                  className="rounded p-1 bg-card border border-border text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-colors cursor-pointer disabled:opacity-20 disabled:cursor-not-allowed"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+
+            {deleteErrors[dt.id] && (
+              <p className="text-xs text-destructive-foreground bg-destructive/20 border border-destructive/40 rounded-md px-2.5 py-1.5">
+                {deleteErrors[dt.id]}
               </p>
             )}
-            <div className="mt-auto pt-3 border-t border-border/50">
-              <span className="text-xs text-muted-foreground">
-                {dt.param_set_count === 0
-                  ? "No param sets yet"
-                  : `${dt.param_set_count} param set${dt.param_set_count === 1 ? "" : "s"}`}
-              </span>
-            </div>
-          </Link>
-
-          {isAdmin && (
-            <button
-              onClick={() => handleDelete(dt.id)}
-              disabled={dt.param_set_count > 0}
-              title={
-                dt.param_set_count > 0
-                  ? `Cannot delete — ${dt.param_set_count} param set${dt.param_set_count === 1 ? "" : "s"} exist`
-                  : `Delete ${dt.name}`
-              }
-              className="absolute top-2.5 right-2.5 rounded p-1 opacity-0 group-hover/card:opacity-100 bg-card border border-border text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-all cursor-pointer disabled:opacity-20 disabled:cursor-not-allowed"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          )}
-
-          {deleteErrors[dt.id] && (
-            <p className="text-xs text-destructive-foreground bg-destructive/20 border border-destructive/40 rounded-md px-2.5 py-1.5">
-              {deleteErrors[dt.id]}
-            </p>
-          )}
-        </div>
-      ))}
+          </div>
+        )
+      )}
 
       {isAdmin && !showAdd && (
         <button

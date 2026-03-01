@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Settings, ChevronRight } from "lucide-react";
+import { Settings, Filter, Library } from "lucide-react";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -17,16 +17,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="flex-1" />
         <Link
           href="/catalog"
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
         >
-          <ChevronRight className="h-3.5 w-3.5 rotate-180" />
+          <Library className="h-3.5 w-3.5" />
           Catalog
         </Link>
         <Link
           href="/"
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer whitespace-nowrap"
         >
-          <ChevronRight className="h-3.5 w-3.5 rotate-180" />
+          <Filter className="h-3.5 w-3.5" />
           Filter Tool
         </Link>
       </header>

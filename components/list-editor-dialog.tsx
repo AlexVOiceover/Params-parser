@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useCallback, useRef, useMemo } from "react";
-import { X, Plus, Trash2, Shield } from "lucide-react";
+import { X, Plus, Trash2, Shield, Globe, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
+import { useAuth } from "@/components/auth-provider";
 import type { ProtectionList, ParamDefinition } from "@/lib/types";
 
 type SuggestionMode = "name" | "description" | "both";
@@ -53,6 +54,8 @@ interface ListEditorDialogProps {
 export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
   const { protectionLists, setProtectionLists, log, paramDefs, pdefGroups } =
     useApp();
+  const { role } = useAuth();
+  const isAdmin = role === "admin";
 
   const [lists, setLists] = useState<ProtectionList[]>(() =>
     JSON.parse(JSON.stringify(protectionLists))
@@ -75,8 +78,10 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
   const [showNewList, setShowNewList] = useState(false);
   const [newListName, setNewListName] = useState("");
   const [newListDesc, setNewListDesc] = useState("");
+  const [newListIsGlobal, setNewListIsGlobal] = useState(false);
 
   const selectedList = selectedIdx >= 0 ? lists[selectedIdx] : null;
+  const isReadOnly = !!selectedList?.isGlobal && !isAdmin;
 
   // Autocomplete suggestions filtered by type, mode, and query — excluding already-added rules
   const suggestions = useMemo(() => {
@@ -193,6 +198,7 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
       name: newListName.trim(),
       description: newListDesc.trim(),
       rules: [],
+      ...(isAdmin && newListIsGlobal ? { isGlobal: true } : {}),
     };
     const updated = [...lists, newList];
     setLists(updated);
@@ -201,7 +207,8 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
     setShowNewList(false);
     setNewListName("");
     setNewListDesc("");
-  }, [newListName, newListDesc, lists]);
+    setNewListIsGlobal(false);
+  }, [newListName, newListDesc, lists, isAdmin, newListIsGlobal]);
 
   const handleDeleteList = useCallback(() => {
     if (selectedIdx < 0) return;
@@ -230,6 +237,16 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
     setSelectedIdx(i);
     setSelectedRule(null);
   }, []);
+
+  const updateSelectedList = useCallback(
+    (patch: Partial<Pick<ProtectionList, "name" | "description" | "isGlobal">>) => {
+      if (selectedIdx < 0) return;
+      const updated = [...lists];
+      updated[selectedIdx] = { ...updated[selectedIdx], ...patch };
+      setLists(updated);
+    },
+    [selectedIdx, lists]
+  );
 
   // Rules split by type for grouped display
   const prefixRules = selectedList?.rules
@@ -283,6 +300,11 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                       : "border-transparent text-secondary-foreground hover:bg-secondary hover:text-foreground"
                   )}
                 >
+                  {pl.isGlobal ? (
+                    <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                  ) : (
+                    <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                  )}
                   <span className="flex-1 text-sm font-medium truncate">
                     {pl.name}
                   </span>
@@ -326,6 +348,36 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                   placeholder="Description (optional)"
                   className="w-full rounded-md border border-border bg-secondary px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
                 />
+                {isAdmin && (
+                  <div className="flex rounded-md border border-border overflow-hidden text-xs font-medium">
+                    <button
+                      type="button"
+                      onClick={() => setNewListIsGlobal(false)}
+                      className={cn(
+                        "flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 transition-colors",
+                        !newListIsGlobal
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <User className="h-3.5 w-3.5" />
+                      User
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewListIsGlobal(true)}
+                      className={cn(
+                        "flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 transition-colors border-l border-border",
+                        newListIsGlobal
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <Globe className="h-3.5 w-3.5" />
+                      Global
+                    </button>
+                  </div>
+                )}
                 <div className="flex gap-1.5">
                   <button
                     onClick={() => {
@@ -357,7 +409,7 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                 </button>
                 <button
                   onClick={handleDeleteList}
-                  disabled={selectedIdx < 0}
+                  disabled={selectedIdx < 0 || isReadOnly}
                   className="flex items-center justify-center rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-destructive/20 hover:border-destructive hover:text-destructive-foreground transition-colors disabled:opacity-30"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -371,19 +423,74 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
             {selectedList ? (
               <>
                 {/* List info */}
-                <div className="border-b border-border px-5 py-3.5 shrink-0">
-                  <h3 className="text-sm font-bold text-foreground">
-                    {selectedList.name}
-                  </h3>
-                  {selectedList.description && (
-                    <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                      {selectedList.description}
+                <div className="border-b border-border px-5 py-3.5 shrink-0 flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    {isReadOnly ? (
+                      <h3 className="flex-1 text-sm font-bold text-foreground">
+                        {selectedList.name}
+                      </h3>
+                    ) : (
+                      <input
+                        value={selectedList.name}
+                        onChange={(e) => updateSelectedList({ name: e.target.value })}
+                        className="flex-1 rounded-md border border-border bg-secondary px-2.5 py-1.5 text-sm font-bold text-foreground outline-none focus:ring-1 focus:ring-ring"
+                        placeholder="List name"
+                      />
+                    )}
+                    {isAdmin && (
+                      <div className="flex rounded-md border border-border overflow-hidden text-xs font-medium shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => updateSelectedList({ isGlobal: false })}
+                          className={cn(
+                            "flex items-center gap-1.5 px-2.5 py-1.5 transition-colors",
+                            !selectedList.isGlobal
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-secondary text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          <User className="h-3.5 w-3.5" />
+                          User
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateSelectedList({ isGlobal: true })}
+                          className={cn(
+                            "flex items-center gap-1.5 px-2.5 py-1.5 transition-colors border-l border-border",
+                            selectedList.isGlobal
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-secondary text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          <Globe className="h-3.5 w-3.5" />
+                          Global
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {isReadOnly ? (
+                    selectedList.description ? (
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        {selectedList.description}
+                      </p>
+                    ) : null
+                  ) : (
+                    <input
+                      value={selectedList.description}
+                      onChange={(e) => updateSelectedList({ description: e.target.value })}
+                      className="rounded-md border border-border bg-secondary px-2.5 py-1.5 text-xs text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
+                      placeholder="Description (optional)"
+                    />
+                  )}
+                  {isReadOnly && (
+                    <p className="text-[11px] text-muted-foreground/60 italic">
+                      Global list — view only
                     </p>
                   )}
                 </div>
 
                 {/* Add rule area */}
-                <div className="border-b border-border px-5 py-4 shrink-0">
+                {!isReadOnly && <div className="border-b border-border px-5 py-4 shrink-0">
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">
                     Add Rule
                   </p>
@@ -538,7 +645,7 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                       Add
                     </button>
                   </div>
-                </div>
+                </div>}
 
                 {/* Rules list */}
                 <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0">
@@ -599,13 +706,15 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                                     </span>
                                     {rule.value}
                                   </button>
-                                  <button
-                                    onClick={() => removeRule(origIdx)}
-                                    className="text-muted-foreground hover:text-destructive-foreground transition-colors ml-0.5"
-                                    aria-label={`Remove rule ${rule.value}`}
-                                  >
-                                    <X className="h-3 w-3" />
-                                  </button>
+                                  {!isReadOnly && (
+                                    <button
+                                      onClick={() => removeRule(origIdx)}
+                                      className="text-muted-foreground hover:text-destructive-foreground transition-colors ml-0.5"
+                                      aria-label={`Remove rule ${rule.value}`}
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  )}
                                 </span>
                               );
                             })}
@@ -658,13 +767,15 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                                     </span>
                                     {rule.value}
                                   </button>
-                                  <button
-                                    onClick={() => removeRule(origIdx)}
-                                    className="text-muted-foreground hover:text-destructive-foreground transition-colors ml-0.5"
-                                    aria-label={`Remove rule ${rule.value}`}
-                                  >
-                                    <X className="h-3 w-3" />
-                                  </button>
+                                  {!isReadOnly && (
+                                    <button
+                                      onClick={() => removeRule(origIdx)}
+                                      className="text-muted-foreground hover:text-destructive-foreground transition-colors ml-0.5"
+                                      aria-label={`Remove rule ${rule.value}`}
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  )}
                                 </span>
                               );
                             })}

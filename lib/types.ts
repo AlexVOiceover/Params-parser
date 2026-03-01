@@ -14,6 +14,7 @@ export interface ProtectionList {
   name: string;
   description: string;
   rules: Rule[];
+  isGlobal?: boolean;
 }
 
 export interface ParamDefinition {

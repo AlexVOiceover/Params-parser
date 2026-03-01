@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight, Library, Upload, Settings } from "lucide-react";
+import { Filter, Library, Upload, Settings } from "lucide-react";
 import type { Metadata } from "next";
 import { createSessionClient } from "@/lib/supabase/server";
 
@@ -37,7 +37,7 @@ export default async function CatalogLayout({ children }: { children: React.Reac
         {canUpload && (
           <Link
             href="/upload"
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
           >
             <Upload className="h-3.5 w-3.5" />
             Upload
@@ -46,7 +46,7 @@ export default async function CatalogLayout({ children }: { children: React.Reac
         {isAdmin && (
           <Link
             href="/admin"
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
           >
             <Settings className="h-3.5 w-3.5" />
             Admin
@@ -54,9 +54,9 @@ export default async function CatalogLayout({ children }: { children: React.Reac
         )}
         <Link
           href="/"
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer whitespace-nowrap"
         >
-          <ChevronRight className="h-3.5 w-3.5 rotate-180" />
+          <Filter className="h-3.5 w-3.5" />
           Filter Tool
         </Link>
       </header>

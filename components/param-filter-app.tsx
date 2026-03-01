@@ -486,9 +486,9 @@ const handleSave = useCallback(() => {
               <div className="flex items-center gap-1.5">
                 <span
                   className="text-xs text-foreground/70 font-mono truncate max-w-30"
-                  title={activeListName}
+                  title={activeListName === "__no_filter__" ? "No Filter" : activeListName}
                 >
-                  {activeListName}
+                  {activeListName === "__no_filter__" ? "No Filter" : activeListName}
                 </span>
                 {isProtectionModified && (
                   <button

@@ -47,12 +47,7 @@ export default async function CatalogPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-10">
-      <p className="text-muted-foreground mb-8">
-        Browse community-verified param configurations by drone type. Download any set
-        directly into Mission Planner.
-      </p>
-
-      {droneTypes.length === 0 && !isAdmin ? (
+{droneTypes.length === 0 && !isAdmin ? (
         <p className="text-sm text-muted-foreground">No drone types found.</p>
       ) : (
         <DroneTypeGrid droneTypes={droneTypes} isAdmin={isAdmin} />

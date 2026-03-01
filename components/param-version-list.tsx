@@ -204,14 +204,14 @@ export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId,
                 <button
                   onClick={() => openClone(v)}
                   title={`Clone version ${v.version_label}`}
-                  className="absolute top-1/2 -translate-y-1/2 right-10 rounded p-1.5 opacity-0 group-hover/row:opacity-100 bg-card border border-border text-muted-foreground hover:text-primary hover:border-primary/50 transition-all cursor-pointer"
+                  className="absolute top-1/2 -translate-y-1/2 right-10 rounded p-1.5 bg-card border border-border text-muted-foreground hover:text-primary hover:border-primary/50 transition-all cursor-pointer"
                 >
                   <Copy className="h-3.5 w-3.5" />
                 </button>
                 <button
                   onClick={() => { setDeleteError(null); setDeleteId(v.id); }}
                   title={`Delete version ${v.version_label}`}
-                  className="absolute top-1/2 -translate-y-1/2 right-3 rounded p-1.5 opacity-0 group-hover/row:opacity-100 bg-card border border-border text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-all cursor-pointer"
+                  className="absolute top-1/2 -translate-y-1/2 right-3 rounded p-1.5 bg-card border border-border text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-all cursor-pointer"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
