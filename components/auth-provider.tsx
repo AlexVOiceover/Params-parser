@@ -18,16 +18,20 @@ const AuthContext = createContext<AuthContextValue>({
   signOut: async () => {},
 });
 
-async function fetchRole(supabase: ReturnType<typeof createClient>, userId: string): Promise<string | null> {
-  const { data } = await supabase.from("profiles").select("role").eq("id", userId).single();
-  return data?.role ?? null;
+async function fetchRoleFromServer(): Promise<string | null> {
+  try {
+    const res = await fetch("/api/me");
+    const { role } = await res.json();
+    return role ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  // Ref so signOut uses the same instance as the auth listener
   const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null);
 
   useEffect(() => {
@@ -36,13 +40,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setUser(session?.user ?? null);
-      if (session?.user) setRole(await fetchRole(supabase, session.user.id));
+      if (session?.user) setRole(await fetchRoleFromServer());
       setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session?.user ?? null);
-      if (session?.user) setRole(await fetchRole(supabase, session.user.id));
+      if (session?.user) setRole(await fetchRoleFromServer());
       else setRole(null);
     });
 

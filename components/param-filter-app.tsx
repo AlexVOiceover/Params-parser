@@ -397,10 +397,10 @@ const handleSave = useCallback(() => {
               <span className="font-mono text-xs font-medium text-foreground max-w-40 truncate">{user.email}</span>
               <button
                 onClick={signOut}
-                className="rounded p-1 hover:text-foreground transition-colors cursor-pointer"
-                title="Sign out"
+                className="flex items-center gap-1 rounded px-2 py-1 text-xs hover:text-foreground hover:bg-secondary/50 transition-colors cursor-pointer ml-0.5"
               >
                 <LogOut className="h-3 w-3" />
+                Sign out
               </button>
             </>
           ) : (
