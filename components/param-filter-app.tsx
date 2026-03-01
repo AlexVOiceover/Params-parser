@@ -7,7 +7,6 @@ import { FileText, FilePlus, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, U
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
 import { writeParamFile } from "@/lib/param-engine";
-import type { Param } from "@/lib/types";
 import { FileUpload } from "@/components/file-upload";
 import { ProtectionListSelect } from "@/components/protection-list-select";
 import { ParamPanel } from "@/components/param-panel";
@@ -86,6 +85,7 @@ export function ParamFilterApp() {
     setDefsLoading,
     protectionLists,
     setProtectionLists,
+    activeListName,
     isProtectionModified,
     createFromDefs,
     setUser,
@@ -95,6 +95,7 @@ export function ParamFilterApp() {
 
   const [appMode, setAppMode] = useState<"idle" | "edit" | "create">("idle");
   const [editorOpen, setEditorOpen] = useState(false);
+  const [activePanel, setActivePanel] = useState<"protected" | "applied">("applied");
 const [saveResumeOpen, setSaveResumeOpen] = useState(false);
   const [remainingOverrides, setRemainingOverrides] = useState<Map<string, string>>(new Map());
   const [flyingRows, setFlyingRows] = useState<FlyingRow[]>([]);
@@ -287,8 +288,12 @@ const handleSave = useCallback(() => {
     setSaveResumeOpen(true);
   }, [remainingParams]);
 
-  const handleConfirmSave = useCallback((params: Param[]) => {
-    const content = writeParamFile(params);
+  const handleConfirmSave = useCallback((header: string | null) => {
+    const merged = remainingParams.map((p) => ({
+      ...p,
+      value: remainingOverrides.get(p.name) || p.value,
+    }));
+    const content = (header ?? "") + writeParamFile(merged);
     const blob = new Blob([content], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -301,24 +306,34 @@ const handleSave = useCallback(() => {
     a.click();
     URL.revokeObjectURL(url);
     log(
-      `Saved '${outName}' \u2014 ${params.length} written${appMode !== "create" ? `, ${protectedParams.length} removed` : ""}`
+      `Saved '${outName}' \u2014 ${merged.length} written${appMode !== "create" ? `, ${protectedParams.length} removed` : ""}`
     );
-  }, [appMode, protectedParams, fileName, log]);
+  }, [appMode, protectedParams, remainingParams, remainingOverrides, fileName, log]);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       {/* Toolbar */}
       <header className={cn(
-        "flex items-center gap-3 border-b border-border px-4 py-2.5 shrink-0 flex-wrap transition-colors duration-300",
+        "flex items-center gap-3 border-b border-border px-4 py-2.5 shrink-0 transition-colors duration-300",
         appMode === "create" ? "bg-emerald-950/25 border-b-emerald-800/50" : "bg-toolbar"
       )}>
+        {/* Left: file operations */}
         <FileUpload onFileLoaded={() => { setAppMode("edit"); setRemainingOverrides(new Map()); }} />
+        {appMode === "edit" && fileName && (
+          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <FileText className="h-3.5 w-3.5" />
+            <span className="font-mono font-medium text-foreground">{fileName}</span>
+          </div>
+        )}
+
+        <div className="w-px h-5 bg-border shrink-0" />
+
         <button
           onClick={handleCreateNew}
           disabled={defsLoading}
           title="Browse all ArduPilot params — values will be 0 (pdef.json has no defaults)"
           className={cn(
-            "flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors",
+            "flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors cursor-pointer",
             appMode === "create"
               ? "bg-emerald-600 hover:bg-emerald-500 text-white"
               : "bg-emerald-800/70 hover:bg-emerald-700 text-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -327,40 +342,34 @@ const handleSave = useCallback(() => {
           <FilePlus className="h-4 w-4" />
           New Config
         </button>
-
-        {/* Mode / file indicator */}
         {appMode === "create" && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-900/50 text-emerald-300 border border-emerald-700/60"
-            title="Values are 0 — ArduPilot pdef.json does not publish firmware defaults">
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-900/50 text-emerald-300 border border-emerald-700/60"
+            title="Values are 0 — ArduPilot pdef.json does not publish firmware defaults"
+          >
             <FilePlus className="h-3 w-3" />
-            New Config · values are 0
-          </div>
-        )}
-        {appMode === "edit" && fileName && (
-          <div className="flex items-center gap-1.5 text-sm text-foreground">
-            <FileText className="h-4 w-4 text-muted-foreground" />
-            <span className="font-medium">{fileName}</span>
+            values are 0
           </div>
         )}
 
-        {/* Username badge */}
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Right: list selector + user */}
+        <ProtectionListSelect onEditLists={() => setEditorOpen(true)} />
         {username && (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground border-l border-border pl-3">
             <User className="h-3.5 w-3.5" />
-            <span className="font-mono font-medium text-foreground">
-              {username}
-            </span>
+            <span className="font-mono font-medium text-foreground">{username}</span>
             <button
               onClick={clearUser}
-              className="hover:text-foreground transition-colors"
+              className="hover:text-foreground transition-colors cursor-pointer"
               title="Change username"
             >
               · change
             </button>
           </div>
         )}
-        <div className="flex-1" />
-        <ProtectionListSelect onEditLists={() => setEditorOpen(true)} />
       </header>
 
       {/* Main content */}
@@ -370,11 +379,12 @@ const handleSave = useCallback(() => {
         <div className="flex flex-1 min-w-0 min-h-0">
 
         {/* Protected panel */}
-        <div ref={protectedPanelRef} className="flex flex-col flex-1 min-w-0 p-2">
+        <div ref={protectedPanelRef} className="flex flex-col flex-1 min-w-0 p-2" onMouseEnter={() => setActivePanel("protected")}>
           <ParamPanel
             title="PROTECTED — will be removed"
             headerColor="bg-protected-header"
             variant="protected"
+            isActive={activePanel === "protected"}
             params={protectedParams}
             checkedNames={checkedProtected}
             pdefGroups={pdefGroups}
@@ -383,16 +393,24 @@ const handleSave = useCallback(() => {
             onToggleGroup={toggleGroupProtected}
             onSelectParam={selectParam}
             headerAction={
-              isProtectionModified ? (
-                <button
-                  onClick={openSaveList}
-                  className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-semibold text-foreground/80 hover:bg-black/20 transition-colors whitespace-nowrap"
-                  title="Save the current protected params as a new protection list"
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="text-xs text-foreground/70 font-mono truncate max-w-30"
+                  title={activeListName}
                 >
-                  <BookmarkPlus className="h-3.5 w-3.5" />
-                  Save as list
-                </button>
-              ) : undefined
+                  {activeListName}
+                </span>
+                {isProtectionModified && (
+                  <button
+                    onClick={openSaveList}
+                    className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-semibold text-foreground/80 hover:bg-black/20 transition-colors whitespace-nowrap cursor-pointer"
+                    title="Save the current protected params as a new protection list"
+                  >
+                    <BookmarkPlus className="h-3.5 w-3.5" />
+                    Save as list
+                  </button>
+                )}
+              </div>
             }
           />
         </div>
@@ -424,11 +442,12 @@ const handleSave = useCallback(() => {
         </div>
 
         {/* Applied panel */}
-        <div ref={appliedPanelRef} className="flex flex-col flex-1 min-w-0 p-2">
+        <div ref={appliedPanelRef} className="flex flex-col flex-1 min-w-0 p-2" onMouseEnter={() => setActivePanel("applied")}>
           <ParamPanel
             title={appMode === "create" ? "DEFAULT VALUES" : "WILL BE APPLIED"}
             headerColor={appMode === "create" ? "bg-emerald-900/40" : "bg-applied-header"}
             variant="applied"
+            isActive={activePanel === "applied"}
             params={remainingParams}
             checkedNames={checkedRemaining}
             pdefGroups={pdefGroups}
@@ -514,11 +533,10 @@ const handleSave = useCallback(() => {
         <SaveResumeModal
           protectedParams={protectedParams}
           remainingParams={remainingParams}
+          remainingOverrides={remainingOverrides}
           fileName={fileName}
-          initialOverrides={remainingOverrides}
           onConfirm={handleConfirmSave}
           onClose={() => setSaveResumeOpen(false)}
-          onOverridesChange={setRemainingOverrides}
         />
       )}
 

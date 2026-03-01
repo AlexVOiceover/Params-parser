@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { CircleCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function DroneIcon({ className }: { className?: string }) {
@@ -82,12 +83,14 @@ export function ValueCell({
   override,
   onOverride,
   isInvalid,
+  isAcknowledged,
   className,
 }: {
   originalValue: string;
   override: string | undefined;
   onOverride: (value: string) => void;
   isInvalid?: boolean;
+  isAcknowledged?: boolean;
   className?: string;
 }) {
   const [editing, setEditing] = useState(false);
@@ -159,10 +162,13 @@ export function ValueCell({
       )}
       <span
         className={cn(
-          "relative font-mono text-xs tabular-nums",
-          isInvalid ? "text-red-400" : hasOverride ? "text-amber-400" : "text-muted-foreground"
+          "relative flex items-center gap-0.5 font-mono text-xs tabular-nums",
+          isInvalid
+            ? isAcknowledged ? "text-blue-400" : "text-red-400"
+            : hasOverride ? "text-amber-400" : "text-muted-foreground"
         )}
       >
+        {isInvalid && isAcknowledged && <CircleCheck className="h-2.5 w-2.5 shrink-0" />}
         {hasOverride ? override : originalValue}
       </span>
     </div>

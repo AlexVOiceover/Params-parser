@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
-import { ChevronRight, ChevronDown, X } from "lucide-react";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { ChevronRight, ChevronDown, X, TriangleAlert, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { buildGroups, validateParam } from "@/lib/param-engine";
@@ -62,6 +62,7 @@ interface ParamPanelProps {
   title: string;
   headerColor: string;
   variant?: "protected" | "applied";
+  isActive?: boolean;
   params: Param[];
   checkedNames: Set<string>;
   pdefGroups: string[];
@@ -78,6 +79,7 @@ export function ParamPanel({
   title,
   headerColor,
   variant,
+  isActive,
   params,
   checkedNames,
   pdefGroups,
@@ -89,13 +91,27 @@ export function ParamPanel({
   valueOverrides,
   onOverrideValue,
 }: ParamPanelProps) {
-  const { paramDefs, paramNotes, selectedParam } = useApp();
+  const { paramDefs, paramNotes, selectedParam, acknowledgedInvalid } = useApp();
 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMode, setSearchMode] = useState<SearchMode>("name");
+  const [showInvalidOnly, setShowInvalidOnly] = useState(false);
 
   const groups = useMemo(() => buildGroups(params, pdefGroups), [params, pdefGroups]);
+
+  const invalidNames = useMemo(() => {
+    if (!onOverrideValue) return new Set<string>();
+    const set = new Set<string>();
+    for (const p of params) {
+      if (acknowledgedInvalid.has(p.name)) continue;
+      const def = paramDefs[p.name];
+      if (!def) continue;
+      const effectiveValue = valueOverrides?.get(p.name) ?? p.value;
+      if (validateParam(effectiveValue, def) !== null) set.add(p.name);
+    }
+    return set;
+  }, [params, valueOverrides, paramDefs, onOverrideValue, acknowledgedInvalid]);
 
   const filteredGroups = useMemo(() => {
     const q = searchQuery.trim().toUpperCase();
@@ -121,6 +137,13 @@ export function ParamPanel({
       .filter((g) => g.params.length > 0);
   }, [groups, searchQuery, searchMode, paramDefs, paramNotes]);
 
+  const displayGroups = useMemo(() => {
+    if (!showInvalidOnly) return filteredGroups;
+    return filteredGroups
+      .map((g) => ({ ...g, params: g.params.filter((p) => invalidNames.has(p.name)) }))
+      .filter((g) => g.params.length > 0);
+  }, [filteredGroups, showInvalidOnly, invalidNames]);
+
   const allChecked = params.length > 0 && params.every((p) => checkedNames.has(p.name));
   const someChecked = params.some((p) => checkedNames.has(p.name));
 
@@ -132,6 +155,29 @@ export function ParamPanel({
       return next;
     });
   }, []);
+
+  const expandAll = useCallback(() => {
+    setExpandedGroups(new Set(groups.map((g) => g.label)));
+  }, [groups]);
+
+  const collapseAll = useCallback(() => {
+    setExpandedGroups(new Set());
+  }, []);
+
+  useEffect(() => {
+    if (!isActive) return;
+    const handler = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement
+      ) return;
+      if (e.key === "e" || e.key === "E") { e.preventDefault(); expandAll(); }
+      if (e.key === "c" || e.key === "C") { e.preventDefault(); collapseAll(); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isActive, expandAll, collapseAll]);
 
   const q = searchQuery.trim();
   const isSearching = q.length > 0;
@@ -192,14 +238,55 @@ export function ParamPanel({
             <option value="description">Description</option>
             <option value="both">Both</option>
           </select>
+          {onOverrideValue && invalidNames.size > 0 && (
+            <button
+              onClick={() => setShowInvalidOnly((v) => !v)}
+              title={showInvalidOnly ? "Show all params" : "Show only invalid params"}
+              className={cn(
+                "shrink-0 flex items-center gap-1 rounded px-2 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap",
+                showInvalidOnly
+                  ? "bg-red-900/60 text-red-200 border border-red-700/60"
+                  : "bg-muted text-red-400 hover:bg-red-900/30"
+              )}
+            >
+              <TriangleAlert className="h-3 w-3" />
+              {showInvalidOnly ? "All" : invalidNames.size}
+            </button>
+          )}
+          {groups.length > 0 && !isSearching && (
+            <>
+              <div className="relative group shrink-0">
+                <button
+                  onClick={collapseAll}
+                  className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer"
+                >
+                  <ChevronsDownUp className="h-3.5 w-3.5" />
+                </button>
+                <div className="absolute top-full right-0 mt-0.5 hidden group-hover:block bg-popover border border-border rounded px-2 py-1 text-xs text-foreground whitespace-nowrap shadow-md pointer-events-none z-50">
+                  Collapse all (<u>c</u>)
+                </div>
+              </div>
+              <div className="relative group shrink-0">
+                <button
+                  onClick={expandAll}
+                  className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer"
+                >
+                  <ChevronsUpDown className="h-3.5 w-3.5" />
+                </button>
+                <div className="absolute top-full right-0 mt-0.5 hidden group-hover:block bg-popover border border-border rounded px-2 py-1 text-xs text-foreground whitespace-nowrap shadow-md pointer-events-none z-50">
+                  Expand all (<u>e</u>)
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
       {/* Scrollable list */}
       <div className="flex-1 overflow-y-auto min-h-0">
-        {filteredGroups.length === 0 ? (
+        {displayGroups.length === 0 ? (
           <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
-            {params.length === 0 ? "No parameters loaded" : "No matching parameters"}
+            {params.length === 0 ? "No parameters loaded" : showInvalidOnly ? "No invalid parameters" : "No matching parameters"}
           </div>
         ) : (
           <>
@@ -214,14 +301,21 @@ export function ParamPanel({
               </div>
             </div>
 
-            {filteredGroups.map((group) => {
+            <AnimatePresence initial={false}>
+            {displayGroups.map((group) => {
               const isOpen = isSearching || expandedGroups.has(group.label);
               const groupNames = group.params.map((p) => p.name);
               const groupAllChecked = groupNames.every((n) => checkedNames.has(n));
               const groupSomeChecked = groupNames.some((n) => checkedNames.has(n));
 
               return (
-                <div key={group.label}>
+                <motion.div
+                  key={group.label}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                >
                   {/* Sticky group header — sits below the column header */}
                   <div
                     onClick={() => onToggleGroup(groupNames)}
@@ -284,6 +378,12 @@ export function ParamPanel({
                       const snippet = descMatches ? getSnippet(descSource, q) : null;
                       const noteSnippet = noteMatches ? getSnippet(noteSource, q) : null;
 
+                      const isSelected = selectedParam?.name === param.name;
+                      const hasOverride = !!onOverrideValue && valueOverrides?.has(param.name) === true;
+                      const effectiveValue = valueOverrides?.get(param.name) ?? param.value;
+                      const rowIsInvalid = !!onOverrideValue && !!def && validateParam(effectiveValue, def) !== null;
+                      const rowIsAcknowledged = !!onOverrideValue && acknowledgedInvalid.has(param.name);
+
                       return (
                         <motion.div
                           key={param.name}
@@ -294,10 +394,22 @@ export function ParamPanel({
                           transition={{ duration: 0.15, ease: "easeOut" }}
                           className={cn(
                             "flex items-start border-b border-border/30 pl-8 pr-2 py-1 transition-colors cursor-pointer border-l-4",
-                            selectedParam?.name === param.name
-                              ? "bg-primary/10 border-l-primary/60"
+                            isSelected
+                              ? cn(
+                                  "bg-primary/10",
+                                  rowIsInvalid && !rowIsAcknowledged ? "border-l-red-500/70"
+                                  : rowIsAcknowledged ? "border-l-blue-500/60"
+                                  : hasOverride ? "border-l-amber-500/50"
+                                  : "border-l-primary/60"
+                                )
                               : variant === "protected"
                               ? "bg-protected/5 hover:bg-protected/12 border-l-red-400/35"
+                              : rowIsInvalid && !rowIsAcknowledged
+                              ? "bg-red-950/30 hover:bg-red-950/40 border-l-red-500/70"
+                              : rowIsAcknowledged
+                              ? "bg-blue-950/25 hover:bg-blue-950/35 border-l-blue-500/60"
+                              : hasOverride
+                              ? "bg-amber-950/20 hover:bg-amber-950/30 border-l-amber-500/50"
                               : variant === "applied"
                               ? "bg-secondary/10 hover:bg-secondary/20 border-l-group-text/30"
                               : "hover:bg-secondary/30 border-l-transparent"
@@ -318,7 +430,13 @@ export function ParamPanel({
 
                           {/* Name col */}
                           <div className={cn(COL_NAME, "flex flex-col gap-0.5 pl-1")}>
-                            <span className="font-mono text-xs text-foreground truncate">
+                            <span className={cn(
+                              "font-mono text-xs truncate",
+                              !isSelected && rowIsInvalid && !rowIsAcknowledged ? "text-red-300"
+                              : !isSelected && rowIsAcknowledged ? "text-blue-300"
+                              : !isSelected && hasOverride ? "text-amber-300"
+                              : "text-foreground"
+                            )}>
                               {nameMatches ? highlightText(param.name, q) : param.name}
                             </span>
                             {snippet && (
@@ -346,6 +464,7 @@ export function ParamPanel({
                                 }
                               }}
                               isInvalid={!!def && validateParam(valueOverrides?.get(param.name) ?? param.value, def) !== null}
+                              isAcknowledged={acknowledgedInvalid.has(param.name)}
                             />
                           ) : (
                             <div className={cn(COL_VALUE, "font-mono text-xs text-muted-foreground tabular-nums pt-0.5 pr-1 text-right")}>
@@ -356,9 +475,10 @@ export function ParamPanel({
                       );
                     })}
                   </AnimatePresence>
-                </div>
+                </motion.div>
               );
             })}
+            </AnimatePresence>
           </>
         )}
       </div>

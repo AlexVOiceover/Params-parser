@@ -116,6 +116,8 @@ export function validateParam(value: string, def: ParamDefinition): string | nul
     const lo = parseFloat(def.Range.low);
     const hi = parseFloat(def.Range.high);
     if (num >= lo && num <= hi) return null;
+    // Some params document special out-of-range states in their Values map (e.g. 0 = Disabled).
+    if (def.Values && Object.keys(def.Values).some((k) => Math.abs(parseFloat(k) - num) < 0.001)) return null;
     return `Out of range ${def.Range.low} – ${def.Range.high}`;
   }
 

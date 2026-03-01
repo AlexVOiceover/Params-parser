@@ -1,12 +1,13 @@
 "use client";
 
-import { TriangleAlert } from "lucide-react";
+import { TriangleAlert, CircleCheck } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
 import { validateParam } from "@/lib/param-engine";
 import type { ParamDefinition } from "@/lib/types";
 
 export function DetailPanel() {
-  const { selectedParam, paramDefs, paramNotes, setParamNote, username } = useApp();
+  const { selectedParam, paramDefs, paramNotes, setParamNote, username, acknowledgedInvalid, acknowledgeParam } = useApp();
 
   if (!selectedParam) {
     return (
@@ -18,16 +19,41 @@ export function DetailPanel() {
 
   const meta: ParamDefinition = paramDefs[selectedParam.name] ?? {};
   const validationReason = Object.keys(meta).length ? validateParam(selectedParam.value, meta) : null;
+  const isAcknowledged = acknowledgedInvalid.has(selectedParam.name);
 
   return (
     <div className="flex flex-col gap-3 p-4 overflow-y-auto h-full">
       {validationReason && (
-        <div className="rounded border border-red-800/50 bg-red-950/40 px-3 py-2 flex flex-col gap-1">
-          <span className="flex items-center gap-1.5 text-xs font-semibold text-red-400">
-            <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
-            Value out of specification
-          </span>
-          <p className="text-xs text-red-300/80">{validationReason}</p>
+        <div className={cn(
+          "rounded border px-3 py-2 flex flex-col gap-1.5",
+          isAcknowledged ? "border-blue-700/50 bg-blue-950/30" : "border-red-800/50 bg-red-950/40"
+        )}>
+          <div className="flex items-center justify-between gap-2">
+            <span className={cn(
+              "flex items-center gap-1.5 text-xs font-semibold",
+              isAcknowledged ? "text-blue-400" : "text-red-400"
+            )}>
+              {isAcknowledged
+                ? <CircleCheck className="h-3.5 w-3.5 shrink-0" />
+                : <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+              }
+              {isAcknowledged ? "Acknowledged" : "Value out of specification"}
+            </span>
+            <button
+              onClick={() => acknowledgeParam(selectedParam.name)}
+              className={cn(
+                "shrink-0 text-[10px] rounded px-1.5 py-0.5 cursor-pointer transition-colors",
+                isAcknowledged
+                  ? "bg-blue-900/40 text-blue-300 hover:bg-blue-800/50"
+                  : "bg-red-900/50 text-red-300 hover:bg-red-800/50"
+              )}
+            >
+              {isAcknowledged ? "Undo" : "Acknowledge"}
+            </button>
+          </div>
+          <p className={cn("text-xs", isAcknowledged ? "text-blue-300/70" : "text-red-300/80")}>
+            {validationReason}
+          </p>
         </div>
       )}
       <div>

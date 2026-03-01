@@ -117,6 +117,9 @@ interface AppState {
 
   // Per-param user notes
   paramNotes: ParamNotes;
+
+  // Params flagged invalid but explicitly acknowledged by the user
+  acknowledgedInvalid: Set<string>;
 }
 
 interface AppActions {
@@ -145,6 +148,7 @@ interface AppActions {
   setDefsLoading: (loading: boolean) => void;
   setProtectionLists: (lists: ProtectionList[]) => void;
   setParamNote: (name: string, note: string) => void;
+  acknowledgeParam: (name: string) => void;
   createFromDefs: () => void;
   log: (message: string, level?: "INFO" | "WARN" | "ERROR") => void;
   clearConsole: () => void;
@@ -186,6 +190,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [pdefGroups, setPdefGroups] = useState<string[]>([]);
   const [cacheAge, setCacheAge] = useState("No cache");
   const [defsLoading, setDefsLoading] = useState(true);
+
+  // --- acknowledged invalids ---
+  const [acknowledgedInvalid, setAcknowledgedInvalid] = useState<Set<string>>(new Set());
 
   // --- notes ---
   const [paramNotes, setParamNotesState] = useState<ParamNotes>({});
@@ -322,11 +329,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ---------- file ----------
 
+  const acknowledgeParam = useCallback((name: string) => {
+    setAcknowledgedInvalid((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }, []);
+
   const loadFile = useCallback(
     (name: string, content: string) => {
       const params = parseParamFile(content);
       setFileName(name);
       setAllParams(params);
+      setAcknowledgedInvalid(new Set());
       const { p, r } = doFilter(params, activeListName, protectionLists);
       log(
         `Opened '${name}' \u2014 ${params.length} params loaded. Filter '${activeListName}': ${p.length} protected, ${r.length} applied`
@@ -342,6 +359,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }));
     setFileName("new_config.param");
     setAllParams(params);
+    setAcknowledgedInvalid(new Set());
     setActiveListName("__no_filter__");
     const { protected: p, remaining: r } = applyFilter(params, []);
     setProtectedParams(p);
@@ -591,6 +609,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setProtectionLists: updateProtectionLists,
         paramNotes,
         setParamNote,
+        acknowledgedInvalid,
+        acknowledgeParam,
         log,
         clearConsole,
       }}
