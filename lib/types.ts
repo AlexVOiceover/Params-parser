@@ -39,3 +39,43 @@ export interface ConsoleEntry {
 }
 
 export type ParamNotes = Record<string, string>;
+
+// ── Catalog types (Supabase) ──────────────────────────────────────────────
+
+export interface DroneType {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+}
+
+export interface Firmware {
+  id: string;
+  drone_type_id: string;
+  version: string;
+  release_date: string | null;
+}
+
+export interface ParamSet {
+  id: string;
+  name: string;
+  description: string | null;
+  drone_type_id: string | null;
+  firmware_id: string | null;
+  published: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  firmwares?: Firmware | null;
+}
+
+export interface ParamVersion {
+  id: string;
+  param_set_id: string;
+  version_label: string;
+  storage_path: string;
+  changelog: string | null;
+  created_by: string | null;
+  created_at: string;
+  is_latest: boolean;
+}

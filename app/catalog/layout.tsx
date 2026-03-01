@@ -1,0 +1,28 @@
+import Link from "next/link";
+import { ChevronRight, Library } from "lucide-react";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Param Catalog — AIR6",
+};
+
+export default function CatalogLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex h-screen flex-col overflow-hidden">
+      <header className="flex items-center gap-3 border-b border-border bg-toolbar px-4 py-2.5 shrink-0">
+        <Link href="/catalog" className="flex items-center gap-2 text-sm font-semibold text-foreground hover:text-primary transition-colors cursor-pointer">
+          <Library className="h-4 w-4 text-primary" />
+          Param Catalog
+        </Link>
+        <div className="flex-1" />
+        <Link href="/" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+          <ChevronRight className="h-3.5 w-3.5 rotate-180" />
+          Filter Tool
+        </Link>
+      </header>
+      <main className="flex-1 overflow-y-auto">
+        {children}
+      </main>
+    </div>
+  );
+}

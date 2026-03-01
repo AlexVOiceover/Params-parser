@@ -3,7 +3,8 @@
 import { useEffect, useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
-import { FileText, FilePlus, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, User } from "lucide-react";
+import Link from "next/link";
+import { FileText, FilePlus, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, User, Library } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
 import { writeParamFile } from "@/lib/param-engine";
@@ -351,6 +352,14 @@ const handleSave = useCallback(() => {
             values are 0
           </div>
         )}
+
+        <Link
+          href="/catalog"
+          className="flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
+        >
+          <Library className="h-4 w-4" />
+          Catalog
+        </Link>
 
         {/* Spacer */}
         <div className="flex-1" />
