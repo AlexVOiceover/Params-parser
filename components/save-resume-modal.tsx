@@ -8,6 +8,24 @@ import { useApp } from "@/lib/app-context";
 import { useLongPress, ValueCell } from "@/components/value-cell";
 import type { Param } from "@/lib/types";
 
+// ---------- drone icon ----------
+
+function DroneIcon({ className }: { className?: string }) {
+  return (
+    <svg width="36" height="24" viewBox="0 0 36 24" fill="none" className={className}>
+      <line x1="18" y1="12" x2="7"  y2="5"  stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="18" y1="12" x2="29" y2="5"  stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="18" y1="12" x2="7"  y2="19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="18" y1="12" x2="29" y2="19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="7"  cy="5"  r="3" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="29" cy="5"  r="3" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="7"  cy="19" r="3" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="29" cy="19" r="3" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="18" cy="12" r="2" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
 // ---------- helpers ----------
 
 type ParamGroup = { prefix: string; params: Param[] };
@@ -76,14 +94,19 @@ function StatusCell({
       {...lp.handlers}
     >
       {lp.pressing && (
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{ animation: `longPressFill ${lp.fillDuration}ms linear forwards`, transformOrigin: "left center", background: fillBg }}
-        />
+        <>
+          <div className="absolute inset-0 pointer-events-none" style={{ background: fillBg }} />
+          <div
+            className="absolute pointer-events-none flex items-center z-10"
+            style={{ top: 0, bottom: 0, animation: `dronefly ${lp.fillDuration}ms linear forwards` }}
+          >
+            <DroneIcon className={isProtected ? "text-emerald-400" : "text-red-400/80"} />
+          </div>
+        </>
       )}
       <span
         className={cn(
-          "relative text-[11px] transition-opacity whitespace-nowrap",
+          "relative z-20 text-[11px] transition-opacity whitespace-nowrap",
           isProtected ? "text-red-400/70" : "text-applied-text/80",
           lp.pressing && "opacity-40"
         )}
@@ -133,10 +156,15 @@ function PrefixGroupRows({
         title={`Hold 2s to ${isProtected ? "move all to Write" : "move all to Protected"}`}
       >
         {lp.pressing && (
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={{ animation: `longPressFill ${lp.fillDuration}ms linear forwards`, transformOrigin: "left center", background: fillBg }}
-          />
+          <>
+            <div className="absolute inset-0 pointer-events-none" style={{ background: fillBg }} />
+            <div
+              className="absolute pointer-events-none flex items-center z-10"
+              style={{ top: 0, bottom: 0, animation: `dronefly ${lp.fillDuration}ms linear forwards` }}
+            >
+              <DroneIcon className={isProtected ? "text-emerald-400" : "text-red-400/80"} />
+            </div>
+          </>
         )}
         <button
           onClick={() => { if (!lp.completedRef.current) setOpen((v) => !v); }}

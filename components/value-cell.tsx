@@ -3,6 +3,22 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 
+function DroneIcon({ className }: { className?: string }) {
+  return (
+    <svg width="36" height="24" viewBox="0 0 36 24" fill="none" className={className}>
+      <line x1="18" y1="12" x2="7"  y2="5"  stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="18" y1="12" x2="29" y2="5"  stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="18" y1="12" x2="7"  y2="19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="18" y1="12" x2="29" y2="19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="7"  cy="5"  r="3" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="29" cy="5"  r="3" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="7"  cy="19" r="3" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="29" cy="19" r="3" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="18" cy="12" r="2" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
 // ---------- useLongPress ----------
 
 export function useLongPress(onLongPress: () => void, duration = 2000, pressDelay = 0) {
@@ -124,14 +140,15 @@ export function ValueCell({
       {...lp.handlers}
     >
       {lp.pressing && (
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            animation: `longPressFill ${lp.fillDuration}ms linear forwards`,
-            transformOrigin: "left center",
-            background: "rgba(59,130,246,0.15)",
-          }}
-        />
+        <>
+          <div className="absolute inset-0 pointer-events-none" style={{ background: "rgba(59,130,246,0.12)" }} />
+          <div
+            className="absolute pointer-events-none flex items-center z-10"
+            style={{ top: 0, bottom: 0, animation: `dronefly ${lp.fillDuration}ms linear forwards` }}
+          >
+            <DroneIcon className="text-blue-400" />
+          </div>
+        </>
       )}
       {hasOverride && (
         <span className="relative font-mono text-[10px] tabular-nums text-muted-foreground/50 line-through leading-none">

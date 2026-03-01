@@ -65,3 +65,8 @@ body {
   to   { transform: scaleX(1); }
 }
 
+@keyframes dronefly {
+  from { left: -50px; }
+  to   { left: 110%; }
+}
+
