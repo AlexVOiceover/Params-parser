@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Filter, Library, Upload, Settings } from "lucide-react";
+import { Filter, Library, Upload, Settings, Columns2 } from "lucide-react";
 import type { Metadata } from "next";
 import { createSessionClient } from "@/lib/supabase/server";
 
@@ -34,6 +34,13 @@ export default async function CatalogLayout({ children }: { children: React.Reac
           Param Catalog
         </Link>
         <div className="flex-1" />
+        <Link
+          href="/catalog/compare"
+          className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
+        >
+          <Columns2 className="h-3.5 w-3.5" />
+          Compare
+        </Link>
         {canUpload && (
           <Link
             href="/upload"
@@ -60,7 +67,7 @@ export default async function CatalogLayout({ children }: { children: React.Reac
           Filter Tool
         </Link>
       </header>
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto min-h-0">
         {children}
       </main>
     </div>
