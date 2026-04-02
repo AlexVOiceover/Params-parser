@@ -179,6 +179,13 @@ export function ParamPanel({
     return () => window.removeEventListener("keydown", handler);
   }, [isActive, expandAll, collapseAll]);
 
+  // Auto-clear the invalid-only filter when no invalid params remain
+  useEffect(() => {
+    if (showInvalidOnly && invalidNames.size === 0) {
+      setShowInvalidOnly(false);
+    }
+  }, [showInvalidOnly, invalidNames.size]);
+
   const q = searchQuery.trim();
   const isSearching = q.length > 0;
 
@@ -199,7 +206,7 @@ export function ParamPanel({
         <span className="flex-1 text-sm font-semibold text-foreground truncate">
           {title} ({params.length})
         </span>
-        {headerAction}
+        {headerAction && <div className="shrink-0">{headerAction}</div>}
       </div>
 
       {/* Search bar */}
