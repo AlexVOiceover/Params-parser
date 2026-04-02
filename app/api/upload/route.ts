@@ -1,80 +1,124 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createSessionClient, createAdminClient } from "@/lib/supabase/server";
 import { parseParamFile } from "@/lib/param-engine";
 
 export async function POST(request: NextRequest) {
-  // 1. Verify session
-  const supabase = await createSessionClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const encoder = new TextEncoder();
 
-  // 2. Verify role
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-  if (!profile || !["contributor", "admin"].includes(profile.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  function msg(text: string, error = false) {
+    return encoder.encode(JSON.stringify({ text, error }) + "\n");
   }
 
-  // 3. Parse form data
-  const formData = await request.formData();
-  const droneTypeId = formData.get("droneTypeId") as string;
-  const paramSetId = formData.get("paramSetId") as string;
-  const versionLabel = formData.get("versionLabel") as string;
-  const changelog = (formData.get("changelog") as string | null) || null;
-  const file = formData.get("file") as File | null;
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        // 1. Verify session
+        controller.enqueue(msg("Verifying session…"));
+        const supabase = await createSessionClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          controller.enqueue(msg("Unauthorized", true));
+          controller.close();
+          return;
+        }
 
-  if (!file || !versionLabel || !droneTypeId || !paramSetId) {
-    return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
-  }
-  if (!/^\d+\.\d+$/.test(versionLabel.trim())) {
-    return NextResponse.json({ error: "Version must be in format number.number (e.g. 1.0)" }, { status: 400 });
-  }
+        // 2. Verify role
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .single();
+        if (!profile || !["contributor", "admin"].includes(profile.role)) {
+          controller.enqueue(msg("Forbidden — insufficient role", true));
+          controller.close();
+          return;
+        }
 
-  const admin = createAdminClient();
+        // 3. Parse form data
+        controller.enqueue(msg("Reading file…"));
+        const formData = await request.formData();
+        const droneTypeId = formData.get("droneTypeId") as string;
+        const paramSetId = formData.get("paramSetId") as string;
+        const versionLabel = formData.get("versionLabel") as string;
+        const changelog = (formData.get("changelog") as string | null) || null;
+        const file = formData.get("file") as File | null;
 
-  // 4. Upload file to storage
-  const storagePath = `${paramSetId}/${versionLabel}.param`;
-  const fileBuffer = await file.arrayBuffer();
+        if (!file || !versionLabel || !droneTypeId || !paramSetId) {
+          controller.enqueue(msg("Missing required fields", true));
+          controller.close();
+          return;
+        }
+        if (!/^\d+\.\d+$/.test(versionLabel.trim())) {
+          controller.enqueue(msg("Invalid version format", true));
+          controller.close();
+          return;
+        }
 
-  const { error: uploadError } = await admin.storage
-    .from("param-files")
-    .upload(storagePath, fileBuffer, { contentType: "text/plain", upsert: true });
+        const fileBuffer = await file.arrayBuffer();
+        controller.enqueue(msg(`File read — ${(fileBuffer.byteLength / 1024).toFixed(1)} KB`));
 
-  if (uploadError) {
-    return NextResponse.json({ error: uploadError.message }, { status: 500 });
-  }
+        const admin = createAdminClient();
 
-  // 5. Mark previous versions as not latest
-  await admin.from("param_versions").update({ is_latest: false }).eq("param_set_id", paramSetId);
+        // 4. Upload file to storage
+        const storagePath = `${paramSetId}/${versionLabel}.param`;
+        controller.enqueue(msg(`Uploading to storage (${storagePath})…`));
+        const { error: uploadError } = await admin.storage
+          .from("param-files")
+          .upload(storagePath, fileBuffer, { contentType: "text/plain", upsert: true });
 
-  // 6. Insert new version
-  const { data: pv, error: pvError } = await admin.from("param_versions").insert({
-    param_set_id: paramSetId,
-    version_label: versionLabel,
-    storage_path: storagePath,
-    changelog,
-    created_by: user.id,
-    is_latest: true,
-  }).select("id").single();
+        if (uploadError) {
+          controller.enqueue(msg(`Storage upload failed: ${uploadError.message}`, true));
+          controller.close();
+          return;
+        }
+        controller.enqueue(msg("File stored successfully"));
 
-  if (pvError || !pv) {
-    return NextResponse.json({ error: pvError?.message ?? "Failed to create version" }, { status: 500 });
-  }
+        // 5. Mark previous versions as not latest
+        controller.enqueue(msg("Updating version history…"));
+        await admin.from("param_versions").update({ is_latest: false }).eq("param_set_id", paramSetId);
 
-  // 7. Parse and store individual param values for analytics
-  const fileText = Buffer.from(fileBuffer).toString("utf-8");
-  const paramValues = parseParamFile(fileText).map(({ name, value }) => ({
-    param_version_id: pv.id,
-    name,
-    value,
-  }));
+        // 6. Insert new version record
+        controller.enqueue(msg(`Creating version record (v${versionLabel})…`));
+        const { data: pv, error: pvError } = await admin.from("param_versions").insert({
+          param_set_id: paramSetId,
+          version_label: versionLabel,
+          storage_path: storagePath,
+          changelog,
+          created_by: user.id,
+          is_latest: true,
+        }).select("id").single();
 
-  if (paramValues.length > 0) {
-    await admin.from("param_values").insert(paramValues);
-  }
+        if (pvError || !pv) {
+          controller.enqueue(msg(`Failed to create version: ${pvError?.message ?? "unknown error"}`, true));
+          controller.close();
+          return;
+        }
 
-  return NextResponse.json({ ok: true, paramSetId });
+        // 7. Parse and store param values
+        const fileText = Buffer.from(fileBuffer).toString("utf-8");
+        const paramValues = parseParamFile(fileText).map(({ name, value }) => ({
+          param_version_id: pv.id,
+          name,
+          value,
+        }));
+
+        controller.enqueue(msg(`Indexing ${paramValues.length} parameters…`));
+        if (paramValues.length > 0) {
+          await admin.from("param_values").insert(paramValues);
+        }
+
+        controller.enqueue(msg(`Done — v${versionLabel} uploaded with ${paramValues.length} params`));
+        controller.enqueue(encoder.encode(JSON.stringify({ done: true, paramSetId }) + "\n"));
+      } catch (e) {
+        const msg2 = (e instanceof Error ? e.message : "Unexpected error");
+        controller.enqueue(encoder.encode(JSON.stringify({ text: msg2, error: true }) + "\n"));
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: { "Content-Type": "text/plain; charset=utf-8", "X-Content-Type-Options": "nosniff" },
+  });
 }

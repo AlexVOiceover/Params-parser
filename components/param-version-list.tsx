@@ -3,7 +3,7 @@
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Filter, Download, Trash2, Copy, X, AlertTriangle } from "lucide-react";
+import { Filter, Download, Trash2, Copy, X, AlertTriangle, Upload } from "lucide-react";
 
 interface ParamVersionRow {
   id: string;
@@ -44,6 +44,21 @@ function storageUrl(path: string) {
   return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/param-files/${path}`;
 }
 
+function nextVersions(versions: ParamVersionRow[]): { major: string; minor: string | null } {
+  const parsed = versions
+    .map((v) => v.version_label.match(/^(\d+)\.(\d+)$/))
+    .filter(Boolean)
+    .map((m) => ({ maj: parseInt(m![1]), min: parseInt(m![2]) }));
+
+  if (parsed.length === 0) return { major: "1.0", minor: null };
+
+  const latest = parsed.reduce((a, b) => (a.maj > b.maj || (a.maj === b.maj && a.min > b.min) ? a : b));
+  return {
+    major: `${latest.maj + 1}.0`,
+    minor: `${latest.maj}.${latest.min + 1}`,
+  };
+}
+
 export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId, isAdmin, droneName, paramSetName }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -52,6 +67,14 @@ export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId,
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // ── Upload state ──────────────────────────────────────────
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadVersionType, setUploadVersionType] = useState<"major" | "minor" | null>(null);
+  const [uploadChangelog, setUploadChangelog] = useState("");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadLog, setUploadLog] = useState<{ text: string; error?: boolean }[]>([]);
 
   // ── Clone state ───────────────────────────────────────────
   const [cloneId, setCloneId] = useState<string | null>(null);
@@ -95,6 +118,66 @@ export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId,
         });
       });
   }, [cloneDroneTypeId, cloneId]);
+
+  const { major: nextMajor, minor: nextMinor } = nextVersions(versions);
+  const uploadVersionLabel = uploadVersionType === "major" ? nextMajor : uploadVersionType === "minor" ? nextMinor! : "";
+
+  function openUpload() {
+    setUploadVersionType(nextMinor ? null : "major");
+    setUploadChangelog("");
+    setUploadFile(null);
+    setUploadLog([]);
+    setUploadOpen(true);
+  }
+
+  async function handleUpload() {
+    if (!uploadFile || !uploadVersionLabel) return;
+    setUploading(true);
+    setUploadLog([]);
+
+    const fd = new FormData();
+    fd.set("droneTypeId", droneTypeId);
+    fd.set("paramSetId", paramSetId);
+    fd.set("versionLabel", uploadVersionLabel);
+    if (uploadChangelog) fd.set("changelog", uploadChangelog);
+    fd.set("file", uploadFile);
+
+    const res = await fetch("/api/upload", { method: "POST", body: fd });
+    const reader = res.body?.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    if (!reader) {
+      setUploadLog([{ text: "No response from server", error: true }]);
+      setUploading(false);
+      return;
+    }
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const parsed = JSON.parse(line);
+          if (parsed.done) {
+            setUploading(false);
+            setTimeout(() => {
+              setUploadOpen(false);
+              startTransition(() => router.refresh());
+            }, 800);
+            return;
+          }
+          setUploadLog((prev) => [...prev, { text: parsed.text, error: parsed.error }]);
+        } catch {}
+      }
+    }
+
+    setUploading(false);
+  }
 
   function openClone(v: ParamVersionRow) {
     setCloneError(null);
@@ -156,9 +239,126 @@ export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId,
     !versionLabelValid ||
     (isNewParamSet && !newParamSetName.trim());
 
+  const uploadDisabled = uploading || !uploadVersionType || !uploadFile;
+  const uploadHasError = uploadLog.some((l) => l.error);
+
   return (
     <>
       <div className="flex flex-col gap-3">
+        {isAdmin && (
+          <div className="rounded-lg border border-dashed border-border bg-card overflow-hidden">
+            {!uploadOpen ? (
+              <button
+                onClick={openUpload}
+                className="flex w-full items-center gap-2 px-5 py-4 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors cursor-pointer"
+              >
+                <Upload className="h-4 w-4 shrink-0" />
+                Upload new version…
+              </button>
+            ) : (
+              <div className="px-5 py-4 flex flex-col gap-3">
+                <p className="text-xs font-semibold text-foreground">Upload new version</p>
+
+                {/* Version type selector */}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={uploading}
+                    onClick={() => setUploadVersionType("major")}
+                    className={`flex flex-col items-start gap-1 rounded-lg border px-4 py-3 text-left transition-colors cursor-pointer disabled:opacity-40 ${
+                      uploadVersionType === "major"
+                        ? "border-primary bg-primary/10"
+                        : "border-border bg-secondary/50 hover:border-primary/40"
+                    }`}
+                  >
+                    <span className="text-xs font-medium text-foreground">New version</span>
+                    <span className="font-mono text-lg font-bold text-foreground leading-none">{nextMajor}</span>
+                    <span className="text-[10px] text-muted-foreground leading-snug">Full config overhaul</span>
+                  </button>
+
+                  {nextMinor && (
+                    <button
+                      type="button"
+                      disabled={uploading}
+                      onClick={() => setUploadVersionType("minor")}
+                      className={`flex flex-col items-start gap-1 rounded-lg border px-4 py-3 text-left transition-colors cursor-pointer disabled:opacity-40 ${
+                        uploadVersionType === "minor"
+                          ? "border-primary bg-primary/10"
+                          : "border-border bg-secondary/50 hover:border-primary/40"
+                      }`}
+                    >
+                      <span className="text-xs font-medium text-foreground">Revision</span>
+                      <span className="font-mono text-lg font-bold text-foreground leading-none">{nextMinor}</span>
+                      <span className="text-[10px] text-muted-foreground leading-snug">Incremental update</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Changelog */}
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">Changelog</span>
+                  <textarea
+                    value={uploadChangelog}
+                    onChange={(e) => setUploadChangelog(e.target.value)}
+                    disabled={uploading}
+                    rows={2}
+                    placeholder="Optional"
+                    className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring resize-none disabled:opacity-40"
+                  />
+                </label>
+
+                {/* File */}
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">.param file <span className="text-destructive">*</span></span>
+                  <input
+                    type="file"
+                    accept=".param"
+                    disabled={uploading}
+                    onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+                    className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground file:mr-3 file:rounded file:border-0 file:bg-primary/20 file:px-2 file:py-1 file:text-xs file:text-primary file:cursor-pointer cursor-pointer disabled:opacity-40"
+                  />
+                  {uploadFile && (
+                    <span className="text-xs text-muted-foreground">{uploadFile.name} ({(uploadFile.size / 1024).toFixed(1)} KB)</span>
+                  )}
+                </label>
+
+                {uploadLog.length > 0 && (
+                  <div className="rounded-md border border-border bg-black/30 px-3 py-2 flex flex-col gap-0.5">
+                    {uploadLog.map((entry, i) => (
+                      <p key={i} className={`font-mono text-[11px] leading-relaxed ${entry.error ? "text-destructive-foreground" : "text-muted-foreground"}`}>
+                        <span className="text-muted-foreground/50 mr-1.5">›</span>{entry.text}
+                      </p>
+                    ))}
+                    {uploading && (
+                      <p className="font-mono text-[11px] text-muted-foreground/50 animate-pulse">
+                        <span className="mr-1.5">›</span>…
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button onClick={() => { setUploadOpen(false); setUploadLog([]); }} disabled={uploading} className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary transition-colors cursor-pointer disabled:opacity-40 whitespace-nowrap">Cancel</button>
+                  <button
+                    onClick={handleUpload}
+                    disabled={uploadDisabled || uploadHasError}
+                    className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    {uploading ? "Uploading…" : "Upload"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {versions.length === 0 && !isAdmin && (
+          <div className="rounded-lg border border-border bg-card px-6 py-10 text-center">
+            <p className="text-sm text-muted-foreground">No versions uploaded yet.</p>
+          </div>
+        )}
+
         {versions.map((v) => (
           <div key={v.id} className="relative group/row">
             <div className={`rounded-lg border border-border bg-card px-5 py-4${isAdmin ? " pr-20" : ""}`}>

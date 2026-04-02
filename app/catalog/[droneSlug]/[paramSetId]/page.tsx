@@ -84,21 +84,15 @@ export default async function ParamSetPage({
         </h2>
       </div>
 
-      {versions.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card px-6 py-10 text-center">
-          <p className="text-sm text-muted-foreground">No versions uploaded yet.</p>
-        </div>
-      ) : (
-        <ParamVersionList
-          versions={versions}
-          droneSlug={droneSlug}
-          droneTypeId={(droneType as DroneType & { id: string }).id}
-          paramSetId={paramSetId}
-          isAdmin={isAdmin}
-          droneName={droneType.name}
-          paramSetName={paramSet.name}
-        />
-      )}
+      <ParamVersionList
+        versions={versions}
+        droneSlug={droneSlug}
+        droneTypeId={(droneType as DroneType & { id: string }).id}
+        paramSetId={paramSetId}
+        isAdmin={isAdmin}
+        droneName={droneType.name}
+        paramSetName={paramSet.name}
+      />
     </div>
   );
 }
