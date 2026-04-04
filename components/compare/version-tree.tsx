@@ -9,7 +9,9 @@ import {
   FolderOpen,
   GitCommitHorizontal,
   GitCompareArrows,
+  Usb,
 } from "lucide-react";
+import { useDroneParams, DRONE_VERSION_ID } from "@/lib/drone-params-context";
 
 interface VersionNode {
   id: string;
@@ -36,6 +38,9 @@ interface Props {
 
 export function VersionTree({ tree }: Props) {
   const router = useRouter();
+  const { droneParams } = useDroneParams();
+  const hasDroneParams = droneParams !== null && droneParams.length > 0;
+  console.log("[VersionTree] droneParams:", droneParams ? `${droneParams.length} params` : "null");
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [collapsedDrones, setCollapsedDrones] = useState<Set<string>>(new Set());
   const [collapsedSets, setCollapsedSets] = useState<Set<string>>(new Set());
@@ -70,7 +75,9 @@ export function VersionTree({ tree }: Props) {
   function handleCompare() {
     const params = new URLSearchParams();
     for (const id of checked) params.append("v", id);
-    router.push(`/catalog/compare?${params.toString()}`);
+    const url = `/catalog/compare?${params.toString()}`;
+    console.log("[VersionTree] handleCompare checked:", [...checked], "url:", url);
+    router.push(url);
   }
 
   const selectedCount = checked.size;
@@ -87,7 +94,28 @@ export function VersionTree({ tree }: Props) {
 
       {/* Tree */}
       <div className="flex-1 overflow-y-auto py-2">
-        {tree.length === 0 ? (
+        {/* Connected drone — appears when params are imported */}
+        {hasDroneParams && (
+          <div
+            onClick={() => toggleCheck(DRONE_VERSION_ID)}
+            className="flex items-center gap-2 w-full px-4 py-2 hover:bg-secondary/50 cursor-pointer border-b border-border/50 mb-1"
+          >
+            <input
+              type="checkbox"
+              checked={checked.has(DRONE_VERSION_ID)}
+              onChange={() => toggleCheck(DRONE_VERSION_ID)}
+              onClick={(e) => e.stopPropagation()}
+              className="h-3.5 w-3.5 rounded border-border cursor-pointer accent-primary shrink-0"
+            />
+            <Usb className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+            <span className="text-sm font-medium text-foreground">Connected drone</span>
+            <span className="rounded-full bg-emerald-900/50 border border-emerald-700/60 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300 leading-none">
+              {droneParams!.length} params
+            </span>
+          </div>
+        )}
+
+        {tree.length === 0 && !hasDroneParams ? (
           <p className="px-6 py-6 text-sm text-muted-foreground">
             No versions available in the catalog yet.
           </p>
@@ -145,7 +173,7 @@ export function VersionTree({ tree }: Props) {
                             <div
                               key={v.id}
                               onClick={() => toggleCheck(v.id)}
-                              className="flex items-center gap-2 pl-[4.5rem] pr-4 py-1.5 hover:bg-secondary/50 cursor-pointer"
+                              className="flex items-center gap-2 pl-18 pr-4 py-1.5 hover:bg-secondary/50 cursor-pointer"
                             >
                               <input
                                 type="checkbox"
@@ -181,11 +209,11 @@ export function VersionTree({ tree }: Props) {
         </span>
         <button
           onClick={handleCompare}
-          disabled={selectedCount < 2}
+          disabled={selectedCount < 1}
           className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
         >
           <GitCompareArrows className="h-3.5 w-3.5" />
-          Compare{selectedCount >= 2 ? ` (${selectedCount})` : ""}
+          {selectedCount >= 2 ? `Compare (${selectedCount})` : selectedCount === 1 ? "View" : "Select versions"}
         </button>
       </div>
     </div>

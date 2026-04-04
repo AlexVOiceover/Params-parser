@@ -4,7 +4,7 @@ import { useEffect, useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { FileText, FilePlus, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, User, Library, LogOut, Settings } from "lucide-react";
+import { FileText, FilePlus, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, User, Library, LogOut, Settings, Usb } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
 import { useAuth } from "@/components/auth-provider";
@@ -17,6 +17,8 @@ import { ConsolePanel } from "@/components/console-panel";
 import { ListEditorDialog } from "@/components/list-editor-dialog";
 import { SaveResumeModal } from "@/components/save-resume-modal";
 import { CatalogUploadModal } from "@/components/catalog-upload-modal";
+import { ConnectDroneDialog } from "@/components/connect-drone-dialog";
+import { saveDroneParamsToStorage } from "@/lib/drone-params-context";
 
 // ---------- flying rows portal ----------
 
@@ -117,6 +119,9 @@ export function ParamFilterApp({ loadUrl, catalogSource }: { loadUrl?: string; c
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadUrl]);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [droneDialogOpen, setDroneDialogOpen] = useState(false);
+  const [hasWebSerial, setHasWebSerial] = useState(false);
+  useEffect(() => { setHasWebSerial("serial" in navigator); }, []);
   const [activePanel, setActivePanel] = useState<"protected" | "applied">("applied");
 const [saveResumeOpen, setSaveResumeOpen] = useState(false);
   const [catalogUpload, setCatalogUpload] = useState<{ content: string; suggestedName: string } | null>(null);
@@ -424,6 +429,23 @@ const handleSave = useCallback(() => {
           </div>
         )}
 
+        {hasWebSerial && (
+          <>
+            <div className="w-px h-4 bg-border shrink-0" />
+            {/* 4. Connect drone */}
+            <button
+              onClick={() => setDroneDialogOpen(true)}
+              className={cn(
+                "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all cursor-pointer whitespace-nowrap bg-secondary border border-border hover:border-primary/50 hover:text-primary text-foreground",
+                fileSource && "opacity-40 hover:opacity-90"
+              )}
+            >
+              <Usb className="h-3.5 w-3.5" />
+              Connect drone
+            </button>
+          </>
+        )}
+
         {/* Spacer */}
         <div className="flex-1" />
 
@@ -613,6 +635,21 @@ const handleSave = useCallback(() => {
       {/* List Editor Dialog */}
       {editorOpen && (
         <ListEditorDialog onClose={() => setEditorOpen(false)} />
+      )}
+
+      {/* Connect Drone Dialog */}
+      {droneDialogOpen && (
+        <ConnectDroneDialog
+          onParamsLoaded={(params) => {
+            loadFile("drone.param", params.map((p) => `${p.name},${p.value}`).join("\n"));
+            saveDroneParamsToStorage(params.map((p) => ({ name: p.name, value: p.value })));
+            setAppMode("edit");
+            setRemainingOverrides(new Map());
+            setActiveCatalogSource(undefined);
+            log(`Drone connection — ${params.length} params loaded`);
+          }}
+          onClose={() => setDroneDialogOpen(false)}
+        />
       )}
 
       {/* Save resume modal */}

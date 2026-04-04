@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { createClient, createAdminClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient, createSessionClient } from "@/lib/supabase/server";
 import { parseParamFile } from "@/lib/param-engine";
 import { VersionTree } from "@/components/compare/version-tree";
-import { CompareTable } from "@/components/compare/compare-table";
+import { CompareTableWrapper } from "@/components/compare/compare-table-wrapper";
+import { DRONE_VERSION_ID } from "@/lib/drone-params-shared";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +47,7 @@ type SetRow = { id: string; name: string; drone_type_id: string | null };
 type VersionRow = { id: string; version_label: string; is_latest: boolean; param_set_id: string };
 
 async function fetchTree(): Promise<DroneNode[]> {
-  const supabase = createClient();
+  const supabase = await createSessionClient().catch(() => createClient());
 
   const { data: drones } = await supabase
     .from("drone_types")
@@ -116,7 +117,7 @@ async function fetchTree(): Promise<DroneNode[]> {
 async function fetchCompareData(
   versionIds: string[]
 ): Promise<{ versions: CompareVersion[]; rows: CompareRow[] }> {
-  const supabase = createClient();
+  const supabase = await createSessionClient().catch(() => createClient());
   const admin = createAdminClient();
 
   const [{ data: versionsData }, { data: paramValuesData }] = await Promise.all([
@@ -205,10 +206,16 @@ export default async function ComparePage({
   searchParams: Promise<{ v?: string | string[] }>;
 }) {
   const { v } = await searchParams;
-  const versionIds = Array.isArray(v) ? v : v ? [v] : [];
+  const allIds = Array.isArray(v) ? v : v ? [v] : [];
+  const hasDroneVersion = allIds.includes(DRONE_VERSION_ID);
+  console.log("[ComparePage SERVER] v:", v, "allIds:", allIds, "hasDroneVersion:", hasDroneVersion);
+  const dbVersionIds = allIds.filter((id) => id !== DRONE_VERSION_ID);
 
-  if (versionIds.length >= 2) {
-    const { versions, rows } = await fetchCompareData(versionIds);
+  if (dbVersionIds.length >= 1 || hasDroneVersion) {
+    const { versions, rows } = dbVersionIds.length > 0
+      ? await fetchCompareData(dbVersionIds)
+      : { versions: [], rows: [] };
+    const totalCount = versions.length + (hasDroneVersion ? 1 : 0);
     return (
       <div className="h-full flex flex-col">
         <div className="flex items-center gap-1.5 px-6 py-3 border-b border-border text-xs text-muted-foreground shrink-0">
@@ -223,10 +230,16 @@ export default async function ComparePage({
             Compare
           </Link>
           <ChevronRight className="h-3 w-3" />
-          <span className="text-foreground">{versions.length} versions</span>
+          <span className="text-foreground">
+            {totalCount} version{totalCount !== 1 ? "s" : ""}
+          </span>
         </div>
         <div className="flex-1 overflow-hidden">
-          <CompareTable versions={versions} rows={rows} />
+          <CompareTableWrapper
+            versions={versions}
+            rows={rows}
+            hasDroneVersion={hasDroneVersion}
+          />
         </div>
       </div>
     );

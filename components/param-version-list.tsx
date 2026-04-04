@@ -3,7 +3,7 @@
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Filter, Download, Trash2, Copy, X, AlertTriangle, Upload } from "lucide-react";
+import { Filter, Download, Trash2, Copy, X, AlertTriangle, Upload, Eye } from "lucide-react";
 
 interface ParamVersionRow {
   id: string;
@@ -376,8 +376,15 @@ export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId,
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <Link
+                    href={`/catalog/compare?v=${v.id}`}
+                    className="flex items-center gap-1.5 rounded-md bg-secondary border border-border hover:bg-secondary/80 px-3 py-1.5 text-xs font-medium text-foreground transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    View
+                  </Link>
+                  <Link
                     href={`/?load=${encodeURIComponent(storageUrl(v.storage_path))}&drone=${encodeURIComponent(droneName)}&set=${encodeURIComponent(paramSetName)}&version=${encodeURIComponent(v.version_label)}`}
-                    className="flex items-center gap-1.5 rounded-md bg-secondary border border-border hover:bg-secondary/80 px-3 py-1.5 text-xs font-medium text-foreground transition-colors cursor-pointer"
+                    className="flex items-center gap-1.5 rounded-md bg-secondary border border-border hover:bg-secondary/80 px-3 py-1.5 text-xs font-medium text-foreground transition-colors cursor-pointer whitespace-nowrap"
                   >
                     <Filter className="h-3.5 w-3.5" />
                     Open in Filter
