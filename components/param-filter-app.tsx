@@ -19,6 +19,7 @@ import { SaveResumeModal } from "@/components/save-resume-modal";
 import { CatalogUploadModal } from "@/components/catalog-upload-modal";
 import { ConnectDroneDialog } from "@/components/connect-drone-dialog";
 import { saveDroneParamsToStorage } from "@/lib/drone-params-context";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 // ---------- flying rows portal ----------
 
@@ -452,6 +453,7 @@ const handleSave = useCallback(() => {
         {/* Right: list selector + admin icon + user */}
         <ProtectionListSelect onEditLists={() => setEditorOpen(true)} />
         <div className="flex items-center gap-1 border-l border-border pl-2 text-muted-foreground">
+          <ThemeToggle />
           {role === "admin" && (
             <Link
               href="/admin"

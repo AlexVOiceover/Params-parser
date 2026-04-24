@@ -208,7 +208,6 @@ export default async function ComparePage({
   const { v } = await searchParams;
   const allIds = Array.isArray(v) ? v : v ? [v] : [];
   const hasDroneVersion = allIds.includes(DRONE_VERSION_ID);
-  console.log("[ComparePage SERVER] v:", v, "allIds:", allIds, "hasDroneVersion:", hasDroneVersion);
   const dbVersionIds = allIds.filter((id) => id !== DRONE_VERSION_ID);
 
   if (dbVersionIds.length >= 1 || hasDroneVersion) {

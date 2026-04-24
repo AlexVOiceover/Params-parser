@@ -39,12 +39,10 @@ export function DroneParamsProvider({ children }: { children: ReactNode }) {
   // Hydrate from localStorage on mount
   useEffect(() => {
     const stored = readStorage();
-    console.log("[DroneParams] hydrate from localStorage:", stored ? `${stored.length} params` : "null");
     setDroneParamsState(stored);
   }, []);
 
   const setDroneParams = useCallback((params: DroneParam[]) => {
-    console.log("[DroneParams] setDroneParams called:", params.length, "params");
     setDroneParamsState(params);
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(params)); } catch {}
   }, []);
@@ -67,6 +65,5 @@ export function useDroneParams(): DroneParamsContextValue {
 
 /** Save drone params from outside the context (e.g., from the filter page). */
 export function saveDroneParamsToStorage(params: DroneParam[]): void {
-  console.log("[DroneParams] saveDroneParamsToStorage:", params.length, "params");
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(params)); } catch {}
 }

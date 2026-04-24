@@ -40,7 +40,6 @@ export function VersionTree({ tree }: Props) {
   const router = useRouter();
   const { droneParams } = useDroneParams();
   const hasDroneParams = droneParams !== null && droneParams.length > 0;
-  console.log("[VersionTree] droneParams:", droneParams ? `${droneParams.length} params` : "null");
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [collapsedDrones, setCollapsedDrones] = useState<Set<string>>(new Set());
   const [collapsedSets, setCollapsedSets] = useState<Set<string>>(new Set());
@@ -76,7 +75,6 @@ export function VersionTree({ tree }: Props) {
     const params = new URLSearchParams();
     for (const id of checked) params.append("v", id);
     const url = `/catalog/compare?${params.toString()}`;
-    console.log("[VersionTree] handleCompare checked:", [...checked], "url:", url);
     router.push(url);
   }
 

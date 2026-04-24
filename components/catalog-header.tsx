@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Filter, Library, Upload, Settings, Columns2, Usb } from "lucide-react";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { ConnectDroneDialog } from "@/components/connect-drone-dialog";
+import { ThemeToggle } from "@/components/theme-toggle";
 import type { Param } from "@/lib/types";
 
 interface Props {
@@ -63,6 +64,7 @@ export function CatalogHeader({ canUpload, isAdmin }: Props) {
           <Columns2 className="h-3.5 w-3.5" />
           Compare
         </Link>
+        <ThemeToggle />
         {canUpload && (
           <Link
             href="/upload"

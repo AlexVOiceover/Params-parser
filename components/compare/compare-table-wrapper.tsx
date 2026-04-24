@@ -13,7 +13,6 @@ interface Props {
 
 export function CompareTableWrapper({ versions, rows, hasDroneVersion }: Props) {
   const { droneParams } = useDroneParams();
-  console.log("[CompareWrapper] hasDroneVersion:", hasDroneVersion, "droneParams:", droneParams ? `${droneParams.length} params` : "null", "server versions:", versions.length, "server rows:", rows.length);
 
   const merged = useMemo(() => {
     if (!hasDroneVersion || !droneParams) return { versions, rows };

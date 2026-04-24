@@ -1,39 +1,115 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --bg: #ffffff;
+  --fg: #0f172a;
+  --card: #ffffff;
+  --card-fg: #0f172a;
+  --popover: #ffffff;
+  --popover-fg: #0f172a;
+  --primary: #2563eb;
+  --primary-fg: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-fg: #475569;
+  --muted: #f1f5f9;
+  --muted-fg: #64748b;
+  --accent: #f1f5f9;
+  --accent-fg: #0f172a;
+  --destructive: #fee2e2;
+  --destructive-fg: #991b1b;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #2563eb;
+
+  --protected: #fee2e2;
+  --protected-header: #fca5a5;
+  --protected-text: #991b1b;
+  --applied: #dcfce7;
+  --applied-header: #86efac;
+  --applied-text: #14532d;
+  --console-bg: #0f172a;
+  --console-text: #15803d;
+  --group-text: #64748b;
+  --toolbar: #f8fafc;
+
+  --scrollbar-thumb: #cbd5e1;
+  --scrollbar-thumb-hover: #94a3b8;
+  --scrollbar-track: #f1f5f9;
+}
+
+:root.dark {
+  --bg: #0d0f14;
+  --fg: #e0e4ee;
+  --card: #141620;
+  --card-fg: #e0e4ee;
+  --popover: #141620;
+  --popover-fg: #e0e4ee;
+  --primary: #3b82f6;
+  --primary-fg: #ffffff;
+  --secondary: #1e2230;
+  --secondary-fg: #a0a8c0;
+  --muted: #1a1d2a;
+  --muted-fg: #6b7394;
+  --accent: #1e2230;
+  --accent-fg: #e0e4ee;
+  --destructive: #8b2a2a;
+  --destructive-fg: #fca5a5;
+  --border: #252940;
+  --input: #252940;
+  --ring: #3b82f6;
+
+  --protected: #6b2a2a;
+  --protected-header: #7f3333;
+  --protected-text: #fca5a5;
+  --applied: #1a4a2a;
+  --applied-header: #2a6b3a;
+  --applied-text: #86efac;
+  --console-bg: #0a0c10;
+  --console-text: #6ee77a;
+  --group-text: #8898c0;
+  --toolbar: #12141c;
+
+  --scrollbar-thumb: #252940;
+  --scrollbar-thumb-hover: #3a3f55;
+  --scrollbar-track: #1a1d2a;
+}
+
 @theme inline {
   --font-sans: var(--font-inter);
   --font-mono: var(--font-jetbrains);
 
-  --color-background: #0d0f14;
-  --color-foreground: #e0e4ee;
-  --color-card: #141620;
-  --color-card-foreground: #e0e4ee;
-  --color-popover: #141620;
-  --color-popover-foreground: #e0e4ee;
-  --color-primary: #3b82f6;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #1e2230;
-  --color-secondary-foreground: #a0a8c0;
-  --color-muted: #1a1d2a;
-  --color-muted-foreground: #6b7394;
-  --color-accent: #1e2230;
-  --color-accent-foreground: #e0e4ee;
-  --color-destructive: #8b2a2a;
-  --color-destructive-foreground: #fca5a5;
-  --color-border: #252940;
-  --color-input: #252940;
-  --color-ring: #3b82f6;
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-fg);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-fg);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-fg);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-fg);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-fg);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-fg);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-fg);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 
-  --color-protected: #6b2a2a;
-  --color-protected-header: #7f3333;
-  --color-protected-text: #fca5a5;
-  --color-applied: #1a4a2a;
-  --color-applied-header: #2a6b3a;
-  --color-applied-text: #86efac;
-  --color-console-bg: #0a0c10;
-  --color-console-text: #6ee77a;
-  --color-group-text: #8898c0;
-  --color-toolbar: #12141c;
+  --color-protected: var(--protected);
+  --color-protected-header: var(--protected-header);
+  --color-protected-text: var(--protected-text);
+  --color-applied: var(--applied);
+  --color-applied-header: var(--applied-header);
+  --color-applied-text: var(--applied-text);
+  --color-console-bg: var(--console-bg);
+  --color-console-text: var(--console-text);
+  --color-group-text: var(--group-text);
+  --color-toolbar: var(--toolbar);
 }
 
 * {
@@ -50,14 +126,17 @@ body {
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--color-muted);
+  background: var(--scrollbar-track);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3f55;
+  background: var(--scrollbar-thumb-hover);
+}
+* {
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 input[type="checkbox"] {
@@ -98,4 +177,3 @@ input[type="checkbox"]:indeterminate {
   from { left: -50px; }
   to   { left: 110%; }
 }
-
