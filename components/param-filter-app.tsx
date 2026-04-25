@@ -20,6 +20,7 @@ import { CatalogUploadModal } from "@/components/catalog-upload-modal";
 import { ConnectDroneDialog } from "@/components/connect-drone-dialog";
 import { saveDroneParamsToStorage, clearDroneParamsFromStorage } from "@/lib/drone-params-context";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { useSerialMode } from "@/lib/use-serial-mode";
 
 // ---------- flying rows portal ----------
 
@@ -121,8 +122,8 @@ export function ParamFilterApp({ loadUrl, catalogSource }: { loadUrl?: string; c
   }, [loadUrl]);
   const [editorOpen, setEditorOpen] = useState(false);
   const [droneDialogOpen, setDroneDialogOpen] = useState(false);
-  const [hasWebSerial, setHasWebSerial] = useState(false);
-  useEffect(() => { setHasWebSerial("serial" in navigator); }, []);
+  const serialMode = useSerialMode();
+  const hasWebSerial = serialMode !== "unsupported";
   const [activePanel, setActivePanel] = useState<"protected" | "applied">("applied");
 const [saveResumeOpen, setSaveResumeOpen] = useState(false);
   const [catalogUpload, setCatalogUpload] = useState<{ content: string; suggestedName: string } | null>(null);

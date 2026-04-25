@@ -1,220 +1,196 @@
-01 Main page, hide protected if not in use. Icon to collapse like a side panel?
+# Android USB drone support
 
-02 Make it a PWA (Progressive Web App)
+Goal: let users connect a flight controller to their Android phone via USB-OTG and read/write params from the existing app — no native app required.
 
-Goal: installable app on desktop & mobile, with offline support for the filter tool and graceful degradation for the catalog (which needs network for Supabase).
+## Decision
 
-## Why PWA fits this app
+Use **WebUSB + `web-serial-polyfill`** as the primary path. When Chrome 148+ stable lands native Web Serial on Android (Q2 2026 per Google's roadmap), the polyfill becomes a no-op fallback automatically.
 
-- **Filter tool** is fully client-side once `apm.pdef.json` is fetched — perfect offline candidate.
-- **Web Serial API** works in installed PWAs on Chromium (Chrome / Edge desktop).
-- **Drone params** stored in `localStorage` — already persists without network.
-- **Catalog** needs Supabase — must show "offline" state cleanly, not crash.
-- **Installability** improves the workshop UX: launch from desktop icon, full-screen, no browser chrome.
+Why not wait for native Web Serial:
+- Beta-only as of April 2026; gated to a "limited set of devices" initially.
+- Polyfill works on every Android Chrome that supports WebUSB (years of stable history).
+- Same `navigator.serial` interface — zero changes to our existing `openDroneConnection` / `writeDroneParams` code.
 
-## What needs to be built
+## Architecture
 
-### 1. Web App Manifest
+Single shim at app startup decides which `navigator.serial` to use:
 
-`public/manifest.webmanifest`:
-
-```json
-{
-  "name": "AIR6 Param Filter",
-  "short_name": "AIR6 Params",
-  "description": "Filter Mission Planner .param files for ArduCopter drones",
-  "start_url": "/",
-  "scope": "/",
-  "display": "standalone",
-  "orientation": "any",
-  "background_color": "#0d0f14",
-  "theme_color": "#0d0f14",
-  "icons": [
-    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
-  ]
+```ts
+// lib/serial-shim.ts
+async function ensureSerial(): Promise<void> {
+  if ("serial" in navigator) return;        // native (desktop, future Android)
+  if (!("usb" in navigator)) return;         // not even WebUSB — give up
+  const { serial } = await import("web-serial-polyfill");
+  Object.defineProperty(navigator, "serial", { value: serial });
 }
 ```
 
-Linked in `app/layout.tsx`:
+Call it from `PwaBootstrap` (already runs once on mount). Everything downstream of `navigator.serial` keeps working as-is.
 
-```tsx
-export const metadata: Metadata = {
-  manifest: "/manifest.webmanifest",
-  // ...
-};
-```
+## Step-by-step implementation
 
-`viewport.themeColor` already exists — keep both light + dark variants.
-
-### 2. Icons
-
-Generate from a single source SVG:
-- `public/icons/icon-192.png` (192×192) — Android home screen
-- `public/icons/icon-512.png` (512×512) — splash screen
-- `public/icons/icon-maskable-512.png` (512×512, with safe-zone padding) — Android adaptive icons
-- `public/apple-touch-icon.png` (180×180) — iOS home screen
-- `public/favicon.ico` — already exists
-
-Use `pwa-asset-generator` or similar to bulk-generate from `public/icons/source.svg`.
-
-### 3. Service worker
-
-Next.js 15 App Router has no built-in SW. Two options:
-
-**Option A — Serwist** (recommended; App Router compatible, Workbox successor):
+### 1. Install the polyfill
 
 ```bash
-npm install @serwist/next serwist
+npm install web-serial-polyfill
 ```
 
-`next.config.ts`:
+Bundle size: ~10 KB gzipped. Lazy-loaded so desktop users never download it.
+
+### 2. Create the shim
+
+`lib/serial-shim.ts`:
 
 ```ts
-import withSerwistInit from "@serwist/next";
+let installed = false;
 
-const withSerwist = withSerwistInit({
-  swSrc: "app/sw.ts",
-  swDest: "public/sw.js",
-});
-
-export default withSerwist({
-  // existing config
-});
-```
-
-`app/sw.ts`:
-
-```ts
-import { defaultCache } from "@serwist/next/worker";
-import { Serwist } from "serwist";
-import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
-
-declare global {
-  interface WorkerGlobalScope extends SerwistGlobalConfig {
-    __SW_MANIFEST: (PrecacheEntry | string)[] | undefined;
+export async function ensureWebSerial(): Promise<"native" | "polyfill" | "unsupported"> {
+  if ("serial" in navigator) return "native";
+  if (installed) return "polyfill";
+  if (!("usb" in navigator)) return "unsupported";
+  try {
+    const mod = await import("web-serial-polyfill");
+    Object.defineProperty(navigator, "serial", { value: mod.serial, configurable: true });
+    installed = true;
+    return "polyfill";
+  } catch {
+    return "unsupported";
   }
 }
-
-declare const self: ServiceWorkerGlobalScope;
-
-const serwist = new Serwist({
-  precacheEntries: self.__SW_MANIFEST,
-  skipWaiting: true,
-  clientsClaim: true,
-  navigationPreload: true,
-  runtimeCaching: defaultCache,
-});
-
-serwist.addEventListeners();
 ```
 
-Register in `app/layout.tsx` via a small client component that calls `navigator.serviceWorker.register("/sw.js")` on mount.
+Returns the active mode so the UI can adjust copy.
 
-**Option B — manual**: write `public/sw.js` by hand, register from a client component, use `caches` API. More work but zero dependencies. Skip unless dependency cost matters.
+### 3. Wire it into the app
 
-### 4. Caching strategy
-
-Per-route policy (configured in `app/sw.ts` or via Serwist's `runtimeCaching`):
-
-| Resource | Strategy | Notes |
-|---|---|---|
-| Filter page (`/`) | StaleWhileRevalidate | App shell — works offline |
-| Catalog routes (`/catalog/**`) | NetworkFirst, fallback to cached | Show stale UI when offline |
-| `/api/param-definitions` | StaleWhileRevalidate, 24h max-age | Already ISR-cached server-side; SW caches client-side |
-| Supabase API (`*.supabase.co/**`) | NetworkOnly | Auth + dynamic data — never cache |
-| Storage downloads (`*.supabase.co/storage/v1/**`) | CacheFirst with quota cap | Param files; large but immutable |
-| `_next/static/**` | CacheFirst, 1 year | Hashed assets, safe to cache forever |
-| Images, fonts | CacheFirst | |
-| Everything else | NetworkFirst | |
-
-**Critical**: never cache `POST` / `PUT` / `DELETE` to API routes (defaults handle this).
-
-### 5. Offline UI
-
-Add a small banner / toast that listens to `online`/`offline` events:
+In `components/pwa-bootstrap.tsx` (or a new `<SerialShim />` client component):
 
 ```ts
-// hooks/use-online-status.ts (already partly exists?)
-window.addEventListener("offline", () => setOnline(false));
-window.addEventListener("online", () => setOnline(true));
-```
-
-When offline:
-- Filter tool: works fully (params + lists from localStorage, defs from cache).
-- Catalog: show "Offline — showing cached data, some actions disabled". Disable Upload, Delete, Clone, drone Write. Allow View / Compare with previously-cached versions.
-- Login: show clear "Cannot sign in offline" message.
-
-### 6. Install prompt
-
-Capture `beforeinstallprompt` and store the event. Show a small "Install app" button in the header (next to the theme toggle?) when:
-- Event fired (browser supports install)
-- App not already in standalone mode (`window.matchMedia('(display-mode: standalone)').matches`)
-- User hasn't dismissed before (track in localStorage)
-
-```tsx
-// components/install-prompt.tsx
-const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
 useEffect(() => {
-  const handler = (e: Event) => { e.preventDefault(); setDeferred(e as BeforeInstallPromptEvent); };
-  window.addEventListener("beforeinstallprompt", handler);
-  return () => window.removeEventListener("beforeinstallprompt", handler);
+  ensureWebSerial();
 }, []);
-// Button calls deferred.prompt() then deferred.userChoice
 ```
 
-### 7. Update flow
+In existing `hasWebSerial` checks (e.g. catalog header, filter page), expand to:
 
-Service workers update silently. Need UX for "new version available":
-- On `swRegistration.waiting` event, show toast: "New version available. Reload to update."
-- On click → `waiting.postMessage({ type: 'SKIP_WAITING' })` → `window.location.reload()`.
-- Without this, users stay on old cached version indefinitely.
+```ts
+const [serialMode, setSerialMode] = useState<"native" | "polyfill" | "unsupported">("unsupported");
+useEffect(() => { ensureWebSerial().then(setSerialMode); }, []);
+const hasWebSerial = serialMode !== "unsupported";
+```
 
-### 8. iOS quirks
+### 4. WebUSB device filter (polyfill only)
 
-iOS Safari supports PWAs but with limitations:
-- No `beforeinstallprompt` — must instruct user to "Add to Home Screen" manually.
-- No Web Serial API (so drone connection only works on Chromium desktop installed).
-- Must add `apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style` meta tags.
-- Splash screens require multiple sized PNGs in specific iOS dimensions.
+The polyfill calls `navigator.usb.requestDevice()` which needs a `filters` array. Without filters Chrome shows zero devices. Common ArduPilot USB IDs:
 
-For this app's use case (workshop / desktop), iOS support is low priority — document as "use Chromium desktop for best experience".
+```ts
+const ARDUPILOT_USB_FILTERS = [
+  { classCode: 2 },                       // CDC class — catches every CDC-ACM device
+  { vendorId: 0x1209 },                   // Generic / pid.codes (ArduPilot)
+  { vendorId: 0x26ac },                   // 3DR (Pixhawk 1, Pixhawk Cube)
+  { vendorId: 0x2dae },                   // Hex Technology (Cube Orange / Black)
+  { vendorId: 0x0483 },                   // STMicroelectronics (most STM32-based FCs)
+  { vendorId: 0x1a86 },                   // QinHeng CH340 (some clones)
+];
+```
 
-### 9. Web Serial inside PWA
+The polyfill API: `polyfillSerial.requestPort({ filters: ARDUPILOT_USB_FILTERS })`. Native Web Serial has `serial.requestPort({ filters: [{ usbVendorId: 0x26ac }] })` — a slightly different shape, so we pass per-mode filters.
 
-No code changes needed — Web Serial already works in standalone PWAs on Chromium. Key things to verify after install:
-- USB permissions persist across PWA sessions (they do, per-origin)
-- "Reuse previously-granted port" via `navigator.serial.getPorts()` keeps working
-- HTTPS / localhost still required — PWA install respects this
+Update `mavlink-serial.ts` to accept and pass filters:
 
-### 10. Build & test checklist
+```ts
+const filters = serialMode === "polyfill" ? ARDUPILOT_USB_FILTERS : [{ usbVendorId: 0x26ac }, ...];
+port = await serial.requestPort({ filters });
+```
 
-- [ ] Run `npm run build` — verify `public/sw.js` is generated
-- [ ] Test in Chrome DevTools → Application → Manifest (check installability)
-- [ ] Test in Application → Service Workers (check registration, update flow)
-- [ ] Test offline (DevTools → Network → Offline) — filter tool should still work
-- [ ] Test install on Chrome desktop — launch from icon, verify standalone mode
-- [ ] Test on Android Chrome — install banner, home screen icon, splash screen
-- [ ] Lighthouse PWA audit — should score 90+
-- [ ] Verify Web Serial still works after install
-- [ ] Verify drone params persist across PWA restarts
+### 5. UX adjustments for Android
 
-## Order of implementation
+Update `ConnectDroneDialog`:
 
-1. Manifest + icons (10 min) — gets "Add to Home Screen" working immediately, even without SW
-2. Serwist setup + basic precache (30 min) — installable + offline shell
-3. Runtime caching rules (30 min) — per-resource strategy
-4. Offline UI banner + disabled states (1h)
-5. Install prompt button (30 min)
-6. Update notification flow (30 min)
-7. Lighthouse / cross-browser polish (1h)
+- Detect mobile via `navigator.userAgent` or coarse pointer media query.
+- Replace the existing "Connect your flight controller via USB" copy:
+  - Mobile: **"Connect via USB-OTG cable. A USB-C-to-C cable will not work — you need an OTG adapter that puts the phone in host mode."** Link to a $5 OTG adapter on Amazon.
+  - Desktop: keep current copy.
+- After clicking Connect, browser shows USB device picker. First-time pick triggers a permission prompt; subsequent connects to the same device skip it.
 
-Total: ~4 hours of focused work for a production-quality PWA.
+### 6. Verify USB OTG / host mode
 
-## Risks / things to watch
+Phones without OTG support will throw immediately on `requestDevice()`. Handle gracefully:
 
-- **Cache invalidation on deploy**: hashed `_next/static` assets are safe; the SW itself updates on the next page load. The manifest doesn't change often, so a stale manifest isn't a real problem.
-- **Storage quota**: param files can be hundreds of KB. Cap with `expirationManager` (Workbox/Serwist) — keep last 20 downloads, max 50MB total.
-- **Auth + offline**: Supabase session cookies still work offline (cookie-based), but any RPC call will fail. Make sure UI handles fetch errors gracefully (already done in most places — audit during step 4).
-- **Turbopack dev mode**: SW may not register cleanly in dev. Restrict registration to production: `if (process.env.NODE_ENV === "production") navigator.serviceWorker.register(...)`.
+```ts
+try {
+  port = await serial.requestPort({ filters });
+} catch (e) {
+  if (/host mode|not supported|not allowed/i.test(String(e))) {
+    onError("This Android device does not support USB host mode (OTG). A native app is required.");
+  } else {
+    onError(`No port selected: ${e}`);
+  }
+}
+```
+
+### 7. Handle Android Chrome quirks
+
+- **No `setSignals` on polyfill.** The polyfill exposes `setSignals` but it's a no-op on USB CDC-ACM. Our existing optional-chain (`port.setSignals?.()`) already handles this.
+- **`bufferSize` is a hint, not a contract.** Some Android USB stacks ignore it. Our 16 KB hint is fine.
+- **Read loop occasionally returns short chunks.** Already handled by `MavlinkSplitter`'s buffer-concat logic.
+- **DTR/RTS does nothing** on most CDC-ACM connections — the FC doesn't need it asserted to start streaming.
+
+### 8. PWA install on Android
+
+Already covered by the existing PWA setup. Things to verify after install:
+
+- USB device permissions persist across PWA launches (per-origin, in Chrome's storage).
+- Service worker still registers in standalone mode.
+- "Reuse previously-granted port" via `navigator.serial.getPorts()` works through the polyfill (it does — calls `navigator.usb.getDevices()` under the hood).
+
+### 9. Testing matrix
+
+| Device | Chrome version | Expected | Actual |
+|---|---|---|---|
+| Pixel 6+, Chrome stable | 145+ | Polyfill, works | TBD |
+| Pixel 9, Chrome 148+ Beta | 148+ | Native Web Serial (Bluetooth only initially) — polyfill still used for USB | TBD |
+| Samsung S22+, Chrome stable | 145+ | Polyfill, works | TBD |
+| Cheap Android tablet w/o OTG | 145+ | Error message: "host mode not supported" | TBD |
+| iPhone Safari | any | "Not supported — use Chromium browser" | TBD |
+
+Hardware: AIR4Rugged or AIR8 with USB cable + USB-C OTG adapter ($3–10 online).
+
+## Testing
+
+Local dev tunnel for HTTPS (required for WebUSB):
+```bash
+npx cloudflared tunnel --url http://localhost:3000
+```
+Open the tunnel URL on the Android phone in Chrome → connect drone via OTG → tap "Import from drone".
+
+For Vercel deployments: just open the production URL on the phone.
+
+## Edge cases
+
+- **iOS Safari**: no WebUSB / Web Serial roadmap. Show platform-detection message: "USB drone connection is not supported on iOS. Use Chromium-based browser on Android, Windows, macOS, or Linux."
+- **Multiple FCs visible**: e.g., a Pixhawk + a USB-to-serial dongle plugged into a hub. Browser picker handles selection — we just pass filters.
+- **Sleeping phone during long write**: Web Serial connection drops when screen sleeps. Document for users: keep screen on during writes (already done in our existing safety prompt, just expand wording).
+- **PARAM_REQUEST_LIST flooding low-bandwidth Android USB**: not observed in practice — USB CDC-ACM is fast — but our existing batching (50 params per batch with 200 ms pause) is conservative and stays useful.
+- **Permission revoke**: Chrome lets users revoke USB permission per-origin. App should handle the resulting `NetworkError` gracefully and re-prompt next connect.
+
+## Order of work (~3 hours total)
+
+1. Install `web-serial-polyfill` + write `serial-shim.ts` (15 min)
+2. Wire shim into bootstrap + expand `hasWebSerial` checks (30 min)
+3. Add USB filters and update `requestPort` calls (30 min)
+4. Mobile-aware copy in `ConnectDroneDialog` (30 min)
+5. Error handling: OTG-not-supported, permission-denied (30 min)
+6. iOS detection + clear "unsupported" message (15 min)
+7. Test on real Android device with a drone (30 min)
+
+## Risks
+
+- **Polyfill abandonment**: `web-serial-polyfill` is in `google/` org but lightly maintained. If it breaks on a future Chrome version, we'd need to fork. Low risk near-term — the WebUSB API surface is stable.
+- **Native Web Serial supersedes polyfill mid-rollout**: when Chrome stable adds USB Web Serial on Android, the polyfill check (`"serial" in navigator`) means we use native automatically. Risk: native might pick a different default behavior (e.g., requiring filters, returning errors differently). Re-test when Chrome 150 lands.
+- **FTDI-only USB radios won't work**: some old telemetry radios use FTDI chips, not CDC-ACM. The polyfill doesn't support FTDI. Direct flight-controller USB connections are CDC-ACM and unaffected. Document as a limitation.
+
+## Out of scope
+
+- Bluetooth telemetry on Android (Web Bluetooth or RFCOMM via Web Serial). Possible future work but adds significant UX complexity (pairing, signal-strength UI).
+- iOS support. Would require either a native app or waiting for Apple to ship WebUSB (no roadmap).

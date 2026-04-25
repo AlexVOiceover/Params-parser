@@ -1,6 +1,8 @@
 // MAVLink v1+v2 browser serial connection for ArduPilot parameter reading.
 // Frame parsing modelled after ArduPilot/node-mavlink (MIT).
 
+import { ARDUPILOT_USB_FILTERS } from "@/lib/serial-shim";
+
 // ── CRC_EXTRA (magic numbers) ─────────────────────────────────────────────────
 // Full common + ardupilotmega table subset — covers all messages ArduPilot
 // regularly streams so we can validate and detect frames correctly.
@@ -266,8 +268,9 @@ interface SerialPort {
   writable: WritableStream<Uint8Array> | null;
   setSignals?(signals: SerialPortSignals): Promise<void>;
 }
+interface UsbFilter { usbVendorId?: number; usbProductId?: number; }
 interface Serial {
-  requestPort(options?: unknown): Promise<SerialPort>;
+  requestPort(options?: { filters?: UsbFilter[] }): Promise<SerialPort>;
   getPorts(): Promise<SerialPort[]>;
 }
 
@@ -285,7 +288,7 @@ export async function openDroneConnection(
   const serial = (navigator as unknown as { serial: Serial }).serial;
   let port: SerialPort;
   try {
-    port = await serial.requestPort();
+    port = await serial.requestPort({ filters: ARDUPILOT_USB_FILTERS });
   } catch {
     onError("No port selected.");
     return () => {};
@@ -294,7 +297,7 @@ export async function openDroneConnection(
   onLog(`Opening port at ${baudRate} baud…`);
   try {
     // Some boards/radios require DTR/RTS to be asserted to stream data
-    await port.open({ 
+    await port.open({
       baudRate,
       bufferSize: 16 * 1024,
       // dataBits: 8, stopBits: 1, parity: "none" are defaults
@@ -506,7 +509,7 @@ export async function writeDroneParams(
       port = existing[0];
       onLog("Reusing previously-granted port");
     } else {
-      port = await serial.requestPort();
+      port = await serial.requestPort({ filters: ARDUPILOT_USB_FILTERS });
     }
   } catch {
     onError("No port selected.");

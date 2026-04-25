@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { Filter, Library, Upload, Settings, Columns2, Usb } from "lucide-react";
 import { useDroneParams, DRONE_VERSION_ID } from "@/lib/drone-params-context";
 import { ConnectDroneDialog } from "@/components/connect-drone-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { useSerialMode } from "@/lib/use-serial-mode";
 import type { Param } from "@/lib/types";
 
 interface Props {
@@ -20,11 +21,8 @@ export function CatalogHeader({ canUpload, isAdmin }: Props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [showDroneDialog, setShowDroneDialog] = useState(false);
-  const [hasWebSerial, setHasWebSerial] = useState(false);
-
-  useEffect(() => {
-    setHasWebSerial("serial" in navigator);
-  }, []);
+  const serialMode = useSerialMode();
+  const hasWebSerial = serialMode !== "unsupported";
 
   const handleParamsLoaded = useCallback(
     (params: Param[]) => {

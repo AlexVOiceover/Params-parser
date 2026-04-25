@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Download, RefreshCw, WifiOff, X } from "lucide-react";
+import { ensureWebSerial } from "@/lib/serial-shim";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -15,6 +16,11 @@ export function PwaBootstrap() {
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [installDismissed, setInstallDismissed] = useState(true);
   const [isOnline, setIsOnline] = useState(true);
+
+  // Install the Web Serial polyfill ASAP if needed (Android Chrome)
+  useEffect(() => {
+    ensureWebSerial();
+  }, []);
 
   // Online / offline tracking
   useEffect(() => {
