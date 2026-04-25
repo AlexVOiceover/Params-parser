@@ -10,23 +10,30 @@ export type SerialMode = "native" | "polyfill" | "unsupported";
 let installed = false;
 let cachedMode: SerialMode | null = null;
 
+function isAndroid(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /Android/i.test(navigator.userAgent);
+}
+
 export async function ensureWebSerial(): Promise<SerialMode> {
   if (typeof navigator === "undefined") return "unsupported";
-  if ("serial" in navigator) {
+  if (cachedMode && (cachedMode !== "polyfill" || installed)) return cachedMode;
+
+  // On Android, force the WebUSB polyfill path even if Chrome 148+ exposes
+  // navigator.serial — native Web Serial on Android currently only supports
+  // Bluetooth, so the USB device picker would be empty.
+  const preferPolyfill = isAndroid();
+
+  if ("serial" in navigator && !preferPolyfill) {
     cachedMode = "native";
     return "native";
   }
-  if (cachedMode === "polyfill" && installed) return "polyfill";
   if (!("usb" in navigator)) {
     cachedMode = "unsupported";
     return "unsupported";
   }
   try {
-    const mod = await import("web-serial-polyfill");
-    Object.defineProperty(navigator, "serial", {
-      value: mod.serial,
-      configurable: true,
-    });
+    await import("web-serial-polyfill");
     installed = true;
     cachedMode = "polyfill";
     return "polyfill";
@@ -96,19 +103,18 @@ export async function requestDronePort(): Promise<OpenableSerialPort> {
   if (mode === "unsupported") throw new Error("Web Serial / WebUSB not supported");
 
   if (mode === "native") {
+    // Native Web Serial: empty filters show every available serial port.
     const native = (navigator as unknown as { serial: NativeSerial }).serial;
-    return native.requestPort({ filters: ARDUPILOT_USB_FILTERS });
+    return native.requestPort({});
   }
 
-  // Polyfill path — request via WebUSB directly with vendor-only filters
+  // Polyfill path — request via WebUSB directly. Empty filter object {}
+  // matches all USB devices, letting the user pick whichever they want.
+  // The polyfill's SerialPort constructor inspects INTERFACE-level class
+  // codes (CDC control = 0x02, CDC data = 0x0A), so composite flight
+  // controllers (device class 0xEF or 0x00) work correctly.
   const usb = (navigator as unknown as { usb: WebUsb }).usb;
-  const filters: WebUsbDeviceFilter[] = ARDUPILOT_USB_FILTERS.map((f) => {
-    const wf: WebUsbDeviceFilter = {};
-    if (f.usbVendorId !== undefined) wf.vendorId = f.usbVendorId;
-    if (f.usbProductId !== undefined) wf.productId = f.usbProductId;
-    return wf;
-  });
-  const device = await usb.requestDevice({ filters });
+  const device = await usb.requestDevice({ filters: [{}] });
   const polyfillModule = await import("web-serial-polyfill");
   const PolyfillSerialPort = (polyfillModule as unknown as { SerialPort: new (d: unknown) => OpenableSerialPort }).SerialPort;
   return new PolyfillSerialPort(device);
