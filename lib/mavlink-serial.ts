@@ -1,7 +1,7 @@
 // MAVLink v1+v2 browser serial connection for ArduPilot parameter reading.
 // Frame parsing modelled after ArduPilot/node-mavlink (MIT).
 
-import { ARDUPILOT_USB_FILTERS } from "@/lib/serial-shim";
+import { requestDronePort, getGrantedDronePorts } from "@/lib/serial-shim";
 
 // ── CRC_EXTRA (magic numbers) ─────────────────────────────────────────────────
 // Full common + ardupilotmega table subset — covers all messages ArduPilot
@@ -268,11 +268,6 @@ interface SerialPort {
   writable: WritableStream<Uint8Array> | null;
   setSignals?(signals: SerialPortSignals): Promise<void>;
 }
-interface UsbFilter { usbVendorId?: number; usbProductId?: number; }
-interface Serial {
-  requestPort(options?: { filters?: UsbFilter[] }): Promise<SerialPort>;
-  getPorts(): Promise<SerialPort[]>;
-}
 
 export async function openDroneConnection(
   baudRate: number,
@@ -280,17 +275,11 @@ export async function openDroneConnection(
 ): Promise<() => void> {
   const { onProgress, onDone, onError, onLog } = callbacks;
 
-  if (!("serial" in navigator)) {
-    onError("Web Serial API not supported. Use Chrome or Edge.");
-    return () => {};
-  }
-
-  const serial = (navigator as unknown as { serial: Serial }).serial;
   let port: SerialPort;
   try {
-    port = await serial.requestPort({ filters: ARDUPILOT_USB_FILTERS });
-  } catch {
-    onError("No port selected.");
+    port = await requestDronePort() as SerialPort;
+  } catch (e) {
+    onError(`No port selected: ${e instanceof Error ? e.message : String(e)}`);
     return () => {};
   }
 
@@ -495,24 +484,18 @@ export async function writeDroneParams(
 ): Promise<() => void> {
   const { onProgress, onDone, onError, onLog } = callbacks;
 
-  if (!("serial" in navigator)) {
-    onError("Web Serial API not supported. Use Chrome or Edge.");
-    return () => {};
-  }
-
-  const serial = (navigator as unknown as { serial: Serial }).serial;
   let port: SerialPort;
   try {
     // Try to reuse a previously-granted port (same session, already picked during read)
-    const existing = await serial.getPorts();
+    const existing = await getGrantedDronePorts();
     if (existing.length === 1) {
-      port = existing[0];
+      port = existing[0] as SerialPort;
       onLog("Reusing previously-granted port");
     } else {
-      port = await serial.requestPort({ filters: ARDUPILOT_USB_FILTERS });
+      port = await requestDronePort() as SerialPort;
     }
-  } catch {
-    onError("No port selected.");
+  } catch (e) {
+    onError(`No port selected: ${e instanceof Error ? e.message : String(e)}`);
     return () => {};
   }
 
