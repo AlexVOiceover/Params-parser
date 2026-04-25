@@ -1,132 +1,220 @@
 01 Main page, hide protected if not in use. Icon to collapse like a side panel?
 
-02 Installable app? log on the console last time params fetched
+02 Make it a PWA (Progressive Web App)
 
+Goal: installable app on desktop & mobile, with offline support for the filter tool and graceful degradation for the catalog (which needs network for Supabase).
 
-03 Direct drone connection via Web Serial API (read params without Mission Planner)
+## Why PWA fits this app
 
-### Overview
-Use the browser's Web Serial API to connect directly to the drone over USB or telemetry radio,
-send a MAVLink PARAM_REQUEST_LIST command, and stream all PARAM_VALUE messages into the app.
-Chrome/Edge desktop only (Web Serial is not supported in Firefox/Safari).
+- **Filter tool** is fully client-side once `apm.pdef.json` is fetched — perfect offline candidate.
+- **Web Serial API** works in installed PWAs on Chromium (Chrome / Edge desktop).
+- **Drone params** stored in `localStorage` — already persists without network.
+- **Catalog** needs Supabase — must show "offline" state cleanly, not crash.
+- **Installability** improves the workshop UX: launch from desktop icon, full-screen, no browser chrome.
 
----
+## What needs to be built
 
-### Phase 1 — MAVLink parser library (`lib/mavlink-serial.ts`)
+### 1. Web App Manifest
 
-**MAVLink v2 frame structure** (what we need to parse):
-  - Byte 0: `0xFD` (magic/STX)
-  - Byte 1: payload length
-  - Byte 2: incompat flags
-  - Byte 3: compat flags
-  - Byte 4: sequence number
-  - Byte 5: system ID
-  - Byte 6: component ID
-  - Bytes 7–9: message ID (3 bytes, little-endian)
-  - Bytes 10…(10+len-1): payload
-  - Last 2 bytes: CRC (CRC-16/MCRF4XX seeded with a per-message-ID magic byte)
+`public/manifest.webmanifest`:
 
-**PARAM_VALUE message (ID 22, 0x16)** payload layout (25 bytes):
-  - Bytes 0–3: `param_value` (float32, little-endian)
-  - Bytes 4–7: `param_count` (uint16 → use 2 bytes, padded to 4)
-  - Bytes 6–7: `param_index` (uint16)
-  - Bytes 8–23: `param_id` (char[16], null-padded ASCII)
-  - Byte 24: `param_type` (uint8, MAVLink type enum)
+```json
+{
+  "name": "AIR6 Param Filter",
+  "short_name": "AIR6 Params",
+  "description": "Filter Mission Planner .param files for ArduCopter drones",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0d0f14",
+  "theme_color": "#0d0f14",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
+```
 
-  Note: MAVLink uses "wire reordering" (fields sorted by size, largest first). Actual byte
-  offsets must be confirmed against the official ardupilotmega.xml / common.xml definition.
+Linked in `app/layout.tsx`:
 
-**PARAM_REQUEST_LIST message (ID 21, 0x15)** payload (2 bytes):
-  - Byte 0: `target_system` (uint8, typically 1)
-  - Byte 1: `target_component` (uint8, typically 1)
+```tsx
+export const metadata: Metadata = {
+  manifest: "/manifest.webmanifest",
+  // ...
+};
+```
 
-**PARAM_REQUEST_READ message (ID 20, 0x14)** payload (4 bytes):
-  - Bytes 0–1: `param_index` (int16, -1 to request by name)
-  - Byte 2: `target_system`
-  - Byte 3: `target_component`
-  - Bytes 4–19: `param_id` (char[16], only used if param_index == -1)
+`viewport.themeColor` already exists — keep both light + dark variants.
 
-**CRC implementation:**
-  - CRC-16/MCRF4XX algorithm
-  - Seeded with a per-message "CRC_EXTRA" byte derived from the message XML definition
-  - CRC_EXTRA for PARAM_VALUE = 220, for PARAM_REQUEST_LIST = 159, for PARAM_REQUEST_READ = 214
-  - These are hardcoded constants (don't change between ArduPilot versions)
+### 2. Icons
 
-**What the module exports:**
-  ```ts
-  type MavlinkConnectionCallbacks = {
-    onParam: (name: string, value: number, index: number, total: number) => void;
-    onDone: (params: Param[]) => void;
-    onError: (msg: string) => void;
-    onProgress: (received: number, total: number) => void;
-  };
+Generate from a single source SVG:
+- `public/icons/icon-192.png` (192×192) — Android home screen
+- `public/icons/icon-512.png` (512×512) — splash screen
+- `public/icons/icon-maskable-512.png` (512×512, with safe-zone padding) — Android adaptive icons
+- `public/apple-touch-icon.png` (180×180) — iOS home screen
+- `public/favicon.ico` — already exists
 
-  async function openDroneConnection(
-    baudRate: number,
-    callbacks: MavlinkConnectionCallbacks
-  ): Promise<() => void>; // returns disconnect function
-  ```
+Use `pwa-asset-generator` or similar to bulk-generate from `public/icons/source.svg`.
 
-**Internal logic:**
-  1. Call `navigator.serial.requestPort()` — browser shows COM picker
-  2. `port.open({ baudRate })`
-  3. Pipe `port.readable` through a byte accumulator (reassemble chunks into frames)
-  4. On each valid frame: if message ID === 22, decode PARAM_VALUE, call `onParam`
-  5. Also handle HEARTBEAT (ID 0) to confirm live connection before requesting params
-  6. Send `PARAM_REQUEST_LIST` once a HEARTBEAT is received (or immediately after open)
-  7. Track received indices in a `Set<number>`; once `param_count` is known, set a
-     3-second inactivity timer that fires `PARAM_REQUEST_READ` for any missing indices
-  8. Retry missing up to 3 times; then call `onDone` with whatever was received
-  9. Release read lock and close port on disconnect
+### 3. Service worker
 
----
+Next.js 15 App Router has no built-in SW. Two options:
 
-### Phase 2 — Connect dialog (`components/connect-drone-dialog.tsx`)
+**Option A — Serwist** (recommended; App Router compatible, Workbox successor):
 
-**Trigger:** A "Connect drone" button in the main toolbar (next to the existing file upload button).
-Only render the button if `"serial" in navigator` (feature-detect Web Serial support).
+```bash
+npm install @serwist/next serwist
+```
 
-**Dialog states:**
-  - `idle` — baud rate selector (115200 default, also offer 57600, 921600) + "Connect" button
-  - `picking` — waiting for user to pick a port in the browser's native picker (no UI needed)
-  - `connecting` — "Waiting for heartbeat…" spinner
-  - `downloading` — progress bar: "Reading params… 342 / 718"
-  - `done` — "718 params loaded" + Close button
-  - `error` — error message + Retry button
+`next.config.ts`:
 
-**Baud rate options to present:**
-  | Label | Value | Typical use |
-  |---|---|---|
-  | 115200 (USB) | 115200 | Direct USB cable to flight controller |
-  | 57600 (SiK radio) | 57600 | 3DR/RFD900 telemetry radio |
-  | 921600 (fast) | 921600 | RFD900x / newer radios at high speed |
+```ts
+import withSerwistInit from "@serwist/next";
 
-**On success:** call existing `setParams(loaded)` — the rest of the app (filter, groups,
-protection list, export) requires zero changes since it already works on `Param[]`.
+const withSerwist = withSerwistInit({
+  swSrc: "app/sw.ts",
+  swDest: "public/sw.js",
+});
 
-**Missing-param UX:** If retries still leave gaps, show a warning: "23 params missing —
-try reconnecting" rather than silently dropping them.
+export default withSerwist({
+  // existing config
+});
+```
 
----
+`app/sw.ts`:
 
-### Phase 3 — Toolbar integration (`components/param-filter-app.tsx`)
+```ts
+import { defaultCache } from "@serwist/next/worker";
+import { Serwist } from "serwist";
+import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
 
-- Add "Connect drone" button next to the Upload button (or replace it with a split button)
-- Wrap in `typeof navigator !== "undefined" && "serial" in navigator` check so it
-  renders only in Chrome/Edge (SSR-safe)
-- The button opens `<ConnectDroneDialog>` as a controlled dialog (same pattern as
-  the existing list-editor dialog)
-- After successful param load, log to console panel: `Connected to drone — 718 params loaded`
-- Show a "drone" source badge near the param count (so user knows params came from live
-  connection, not a file) — optional cosmetic touch
+declare global {
+  interface WorkerGlobalScope extends SerwistGlobalConfig {
+    __SW_MANIFEST: (PrecacheEntry | string)[] | undefined;
+  }
+}
 
----
+declare const self: ServiceWorkerGlobalScope;
 
-### Phase 4 — (Optional / future) Write params back to drone
+const serwist = new Serwist({
+  precacheEntries: self.__SW_MANIFEST,
+  skipWaiting: true,
+  clientsClaim: true,
+  navigationPreload: true,
+  runtimeCaching: defaultCache,
+});
 
-Once read is working, the inverse is possible:
-- Send `PARAM_SET` (ID 23) for each modified param
-- Drone echoes `PARAM_VALUE` to confirm each write
-- This would allow the full workflow: connect → filter → write protected params back
-  (currently the app only writes a filtered .param file, not to the drone directly)
-- Scope this as a separate future feature; do not implement in this phase
+serwist.addEventListeners();
+```
+
+Register in `app/layout.tsx` via a small client component that calls `navigator.serviceWorker.register("/sw.js")` on mount.
+
+**Option B — manual**: write `public/sw.js` by hand, register from a client component, use `caches` API. More work but zero dependencies. Skip unless dependency cost matters.
+
+### 4. Caching strategy
+
+Per-route policy (configured in `app/sw.ts` or via Serwist's `runtimeCaching`):
+
+| Resource | Strategy | Notes |
+|---|---|---|
+| Filter page (`/`) | StaleWhileRevalidate | App shell — works offline |
+| Catalog routes (`/catalog/**`) | NetworkFirst, fallback to cached | Show stale UI when offline |
+| `/api/param-definitions` | StaleWhileRevalidate, 24h max-age | Already ISR-cached server-side; SW caches client-side |
+| Supabase API (`*.supabase.co/**`) | NetworkOnly | Auth + dynamic data — never cache |
+| Storage downloads (`*.supabase.co/storage/v1/**`) | CacheFirst with quota cap | Param files; large but immutable |
+| `_next/static/**` | CacheFirst, 1 year | Hashed assets, safe to cache forever |
+| Images, fonts | CacheFirst | |
+| Everything else | NetworkFirst | |
+
+**Critical**: never cache `POST` / `PUT` / `DELETE` to API routes (defaults handle this).
+
+### 5. Offline UI
+
+Add a small banner / toast that listens to `online`/`offline` events:
+
+```ts
+// hooks/use-online-status.ts (already partly exists?)
+window.addEventListener("offline", () => setOnline(false));
+window.addEventListener("online", () => setOnline(true));
+```
+
+When offline:
+- Filter tool: works fully (params + lists from localStorage, defs from cache).
+- Catalog: show "Offline — showing cached data, some actions disabled". Disable Upload, Delete, Clone, drone Write. Allow View / Compare with previously-cached versions.
+- Login: show clear "Cannot sign in offline" message.
+
+### 6. Install prompt
+
+Capture `beforeinstallprompt` and store the event. Show a small "Install app" button in the header (next to the theme toggle?) when:
+- Event fired (browser supports install)
+- App not already in standalone mode (`window.matchMedia('(display-mode: standalone)').matches`)
+- User hasn't dismissed before (track in localStorage)
+
+```tsx
+// components/install-prompt.tsx
+const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
+useEffect(() => {
+  const handler = (e: Event) => { e.preventDefault(); setDeferred(e as BeforeInstallPromptEvent); };
+  window.addEventListener("beforeinstallprompt", handler);
+  return () => window.removeEventListener("beforeinstallprompt", handler);
+}, []);
+// Button calls deferred.prompt() then deferred.userChoice
+```
+
+### 7. Update flow
+
+Service workers update silently. Need UX for "new version available":
+- On `swRegistration.waiting` event, show toast: "New version available. Reload to update."
+- On click → `waiting.postMessage({ type: 'SKIP_WAITING' })` → `window.location.reload()`.
+- Without this, users stay on old cached version indefinitely.
+
+### 8. iOS quirks
+
+iOS Safari supports PWAs but with limitations:
+- No `beforeinstallprompt` — must instruct user to "Add to Home Screen" manually.
+- No Web Serial API (so drone connection only works on Chromium desktop installed).
+- Must add `apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style` meta tags.
+- Splash screens require multiple sized PNGs in specific iOS dimensions.
+
+For this app's use case (workshop / desktop), iOS support is low priority — document as "use Chromium desktop for best experience".
+
+### 9. Web Serial inside PWA
+
+No code changes needed — Web Serial already works in standalone PWAs on Chromium. Key things to verify after install:
+- USB permissions persist across PWA sessions (they do, per-origin)
+- "Reuse previously-granted port" via `navigator.serial.getPorts()` keeps working
+- HTTPS / localhost still required — PWA install respects this
+
+### 10. Build & test checklist
+
+- [ ] Run `npm run build` — verify `public/sw.js` is generated
+- [ ] Test in Chrome DevTools → Application → Manifest (check installability)
+- [ ] Test in Application → Service Workers (check registration, update flow)
+- [ ] Test offline (DevTools → Network → Offline) — filter tool should still work
+- [ ] Test install on Chrome desktop — launch from icon, verify standalone mode
+- [ ] Test on Android Chrome — install banner, home screen icon, splash screen
+- [ ] Lighthouse PWA audit — should score 90+
+- [ ] Verify Web Serial still works after install
+- [ ] Verify drone params persist across PWA restarts
+
+## Order of implementation
+
+1. Manifest + icons (10 min) — gets "Add to Home Screen" working immediately, even without SW
+2. Serwist setup + basic precache (30 min) — installable + offline shell
+3. Runtime caching rules (30 min) — per-resource strategy
+4. Offline UI banner + disabled states (1h)
+5. Install prompt button (30 min)
+6. Update notification flow (30 min)
+7. Lighthouse / cross-browser polish (1h)
+
+Total: ~4 hours of focused work for a production-quality PWA.
+
+## Risks / things to watch
+
+- **Cache invalidation on deploy**: hashed `_next/static` assets are safe; the SW itself updates on the next page load. The manifest doesn't change often, so a stale manifest isn't a real problem.
+- **Storage quota**: param files can be hundreds of KB. Cap with `expirationManager` (Workbox/Serwist) — keep last 20 downloads, max 50MB total.
+- **Auth + offline**: Supabase session cookies still work offline (cookie-based), but any RPC call will fail. Make sure UI handles fetch errors gracefully (already done in most places — audit during step 4).
+- **Turbopack dev mode**: SW may not register cleanly in dev. Restrict registration to production: `if (process.env.NODE_ENV === "production") navigator.serviceWorker.register(...)`.

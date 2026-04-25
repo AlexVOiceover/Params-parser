@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Trash2, Plus, X, Pencil } from "lucide-react";
+import { ConnectedDroneCard } from "@/components/connected-drone-card";
 
 interface DroneTypeRow {
   id: string;
@@ -96,6 +97,7 @@ export function DroneTypeGrid({ droneTypes, isAdmin }: Props) {
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <ConnectedDroneCard />
       {droneTypes.map((dt) =>
         editingId === dt.id ? (
           <form

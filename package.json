@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@serwist/next": "^9.5.7",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.98.0",
     "clsx": "^2.1.1",
@@ -16,6 +17,7 @@
     "next": "^15.5.12",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "serwist": "^9.5.7",
     "tailwind-merge": "^3.0.0"
   },
   "devDependencies": {

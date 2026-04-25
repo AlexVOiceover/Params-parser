@@ -120,6 +120,25 @@ export function buildParamRequestRead(index: number, v1: boolean): Uint8Array {
   return v1 ? buildV1(20, p) : buildV2(20, p);
 }
 
+// PARAM_SET wire layout (largest fields first):
+//   [0-3]  param_value      float32
+//   [4]    target_system    uint8
+//   [5]    target_component uint8
+//   [6-21] param_id         char[16]
+//   [22]   param_type       uint8 (MAV_PARAM_TYPE: 9 = REAL32)
+export function buildParamSet(name: string, value: number, v1: boolean): Uint8Array {
+  const payload = new Uint8Array(23);
+  const view = new DataView(payload.buffer);
+  view.setFloat32(0, value, true);
+  payload[4] = TARGET_SYS;
+  payload[5] = TARGET_COMP;
+  for (let i = 0; i < Math.min(16, name.length); i++) {
+    payload[6 + i] = name.charCodeAt(i);
+  }
+  payload[22] = 9; // MAV_PARAM_TYPE_REAL32 — ArduPilot accepts this for all params
+  return v1 ? buildV1(23, payload) : buildV2(23, payload);
+}
+
 // ── PARAM_VALUE parser ────────────────────────────────────────────────────────
 // Wire layout (largest fields first):
 //   [0-3]  param_value  float32
@@ -247,7 +266,10 @@ interface SerialPort {
   writable: WritableStream<Uint8Array> | null;
   setSignals?(signals: SerialPortSignals): Promise<void>;
 }
-interface Serial { requestPort(options?: unknown): Promise<SerialPort>; }
+interface Serial {
+  requestPort(options?: unknown): Promise<SerialPort>;
+  getPorts(): Promise<SerialPort[]>;
+}
 
 export async function openDroneConnection(
   baudRate: number,
@@ -317,6 +339,13 @@ export async function openDroneConnection(
     await writer.write(frame);
   }
 
+  async function closePort() {
+    aborted = true;
+    try { await reader?.cancel(); } catch {}
+    try { writer?.releaseLock(); } catch {}
+    try { await port.close(); } catch {}
+  }
+
   function finish() {
     if (done) return;
     done = true;
@@ -325,6 +354,8 @@ export async function openDroneConnection(
     const params = Array.from(received.values());
     onLog(`Complete — ${params.length} params loaded`);
     onDone(params);
+    // Release the port so subsequent writes can re-open it
+    closePort();
   }
 
   function scheduleRetry() {
@@ -428,11 +459,184 @@ export async function openDroneConnection(
   }, 5000);
 
   return async function disconnect() {
-    aborted = true; done = true;
+    done = true;
     clearInterval(watchdog);
     if (retryTimer) clearTimeout(retryTimer);
+    await closePort();
+  };
+}
+
+// ── Write ─────────────────────────────────────────────────────────────────────
+
+export interface ParamWriteChange { name: string; value: number; }
+
+export interface ParamWriteResult {
+  name: string;
+  requested: number;
+  actual?: number;
+  success: boolean;
+  error?: string;
+}
+
+export interface ParamWriteCallbacks {
+  onProgress: (done: number, total: number, lastName: string) => void;
+  onDone: (results: ParamWriteResult[]) => void;
+  onError: (msg: string) => void;
+  onLog: (msg: string) => void;
+}
+
+export async function writeDroneParams(
+  baudRate: number,
+  changes: ParamWriteChange[],
+  callbacks: ParamWriteCallbacks
+): Promise<() => void> {
+  const { onProgress, onDone, onError, onLog } = callbacks;
+
+  if (!("serial" in navigator)) {
+    onError("Web Serial API not supported. Use Chrome or Edge.");
+    return () => {};
+  }
+
+  const serial = (navigator as unknown as { serial: Serial }).serial;
+  let port: SerialPort;
+  try {
+    // Try to reuse a previously-granted port (same session, already picked during read)
+    const existing = await serial.getPorts();
+    if (existing.length === 1) {
+      port = existing[0];
+      onLog("Reusing previously-granted port");
+    } else {
+      port = await serial.requestPort();
+    }
+  } catch {
+    onError("No port selected.");
+    return () => {};
+  }
+
+  onLog(`Opening port at ${baudRate} baud…`);
+  try {
+    await port.open({ baudRate, bufferSize: 16 * 1024 });
+    await port.setSignals?.({ dataTerminalReady: true, requestToSend: true });
+  } catch (e) {
+    onError(`Failed to open port: ${e instanceof Error ? e.message : String(e)}`);
+    return () => {};
+  }
+  onLog("Port open — waiting for heartbeat…");
+
+  const splitter = new MavlinkSplitter();
+  const writer = port.writable?.getWriter();
+  const results: ParamWriteResult[] = [];
+  let aborted = false;
+  let done = false;
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+
+  // Promise/resolver for each PARAM_VALUE response
+  const pending = new Map<string, (pv: { name: string; value: number }) => void>();
+
+  async function sendFrame(frame: Uint8Array) {
+    if (!writer) return;
+    await writer.write(frame);
+  }
+
+  async function finish(errMsg?: string) {
+    if (done) return;
+    done = true;
     try { await reader?.cancel(); } catch {}
     try { writer?.releaseLock(); } catch {}
     try { await port.close(); } catch {}
+    if (errMsg) { onError(errMsg); return; }
+    onDone(results);
+  }
+
+  // Read loop — dispatches incoming PARAM_VALUE responses to waiting pending[] promises
+  (async function readLoop() {
+    try {
+      reader = port.readable!.getReader();
+      while (!aborted) {
+        const { done: sd, value } = await reader.read();
+        if (sd || !value) break;
+        const result = splitter.feed(value);
+        for (const pv of result.params) {
+          const resolver = pending.get(pv.name);
+          if (resolver) {
+            pending.delete(pv.name);
+            resolver({ name: pv.name, value: pv.value });
+          }
+        }
+      }
+    } catch {
+      if (!done) onLog("⚠ Read loop ended unexpectedly");
+    } finally {
+      try { reader?.releaseLock(); } catch {}
+    }
+  })();
+
+  // Wait briefly so MAVLink version is detected (and the FC is clearly alive)
+  const waitForFrames = new Promise<void>((resolve) => {
+    const start = Date.now();
+    const poll = setInterval(() => {
+      if (splitter.detectedVersion !== null || Date.now() - start > 5000) {
+        clearInterval(poll);
+        resolve();
+      }
+    }, 100);
+  });
+  await waitForFrames;
+
+  if (splitter.detectedVersion === null) {
+    onLog("⚠ No MAVLink frames detected — writing blind as v2");
+  } else {
+    onLog(`MAVLink v${splitter.detectedVersion} — writing ${changes.length} param${changes.length === 1 ? "" : "s"}…`);
+  }
+  const v1 = splitter.detectedVersion === 1;
+
+  function waitFor(name: string, timeoutMs: number): Promise<{ name: string; value: number } | null> {
+    return new Promise((resolve) => {
+      pending.set(name, resolve);
+      setTimeout(() => {
+        if (pending.has(name)) {
+          pending.delete(name);
+          resolve(null);
+        }
+      }, timeoutMs);
+    });
+  }
+
+  // Write each change sequentially; up to 3 attempts per param
+  for (let i = 0; i < changes.length; i++) {
+    if (aborted) break;
+    const { name, value } = changes[i];
+
+    let confirmed: { name: string; value: number } | null = null;
+    for (let attempt = 0; attempt < 3 && !confirmed; attempt++) {
+      const respPromise = waitFor(name, 2000);
+      await sendFrame(buildParamSet(name, value, v1));
+      confirmed = await respPromise;
+      if (!confirmed && attempt < 2) await new Promise((r) => setTimeout(r, 200));
+    }
+
+    if (confirmed) {
+      const ok = Math.abs(confirmed.value - value) < 1e-5;
+      results.push({
+        name,
+        requested: value,
+        actual: confirmed.value,
+        success: ok,
+        error: ok ? undefined : `returned ${confirmed.value}, expected ${value}`,
+      });
+      onLog(`${ok ? "✓" : "⚠"} ${name} = ${confirmed.value}${ok ? "" : ` (expected ${value})`}`);
+    } else {
+      results.push({ name, requested: value, success: false, error: "no confirmation" });
+      onLog(`✗ ${name}: no confirmation after 3 tries`);
+    }
+
+    onProgress(i + 1, changes.length, name);
+  }
+
+  await finish();
+
+  return async function disconnect() {
+    aborted = true;
+    await finish();
   };
 }

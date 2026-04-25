@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { SlidersHorizontal, Info } from "lucide-react";
+import { SlidersHorizontal, Info, Pencil, Upload, X, RotateCcw } from "lucide-react";
 import { validateParam } from "@/lib/param-engine";
 import type { CompareVersion, CompareRow } from "@/app/catalog/compare/page";
 import type { ParamDefinition } from "@/lib/types";
@@ -9,15 +9,37 @@ import type { ParamDefinition } from "@/lib/types";
 interface Props {
   versions: CompareVersion[];
   rows: CompareRow[];
+  /** Version id whose column is writable (e.g. the connected drone). */
+  writableVersionId?: string;
+  writeMode?: boolean;
+  pendingEdits?: Map<string, number>;
+  onToggleWriteMode?: () => void;
+  onEditParam?: (name: string, value: number) => void;
+  onClearEdit?: (name: string) => void;
+  onClearAllEdits?: () => void;
+  onWriteToDrone?: () => void;
 }
 
 const PARAM_COL_DEFAULT = 200;
 const VERSION_COL_DEFAULT = 160;
 const COL_MIN = 60;
 
-export function CompareTable({ versions, rows }: Props) {
+export function CompareTable({
+  versions,
+  rows,
+  writableVersionId,
+  writeMode = false,
+  pendingEdits,
+  onToggleWriteMode,
+  onEditParam,
+  onClearEdit,
+  onClearAllEdits,
+  onWriteToDrone,
+}: Props) {
   const [showDiffsOnly, setShowDiffsOnly] = useState(false);
   const [paramDefs, setParamDefs] = useState<Record<string, ParamDefinition> | null>(null);
+  const [editingCell, setEditingCell] = useState<string | null>(null);
+  const [editInput, setEditInput] = useState("");
   const [expandedParam, setExpandedParam] = useState<string | null>(null);
   const [copiedCell, setCopiedCell] = useState<string | null>(null);
 
@@ -82,12 +104,14 @@ export function CompareTable({ versions, rows }: Props) {
   const versionIds = versions.map((v) => v.id);
 
   const processedRows = rows.map((row) => {
-    const presentValues = versionIds.map((id) => row.values[id]).filter((v) => v !== undefined);
-    const isDiff = presentValues.length > 0 && new Set(presentValues).size > 1;
+    // Treat missing as a distinct state: present-vs-missing counts as a difference.
+    const states = versionIds.map((id) => row.values[id] ?? "\0missing");
+    const isDiff = new Set(states).size > 1;
     return { ...row, isDiff };
   });
 
-  const visibleRows = showDiffsOnly ? processedRows.filter((r) => r.isDiff) : processedRows;
+  const canDiff = versions.length >= 2;
+  const visibleRows = showDiffsOnly && canDiff ? processedRows.filter((r) => r.isDiff) : processedRows;
   const diffCount = processedRows.filter((r) => r.isDiff).length;
 
   function ResizeHandle({ colIndex }: { colIndex: number }) {
@@ -106,22 +130,68 @@ export function CompareTable({ versions, rows }: Props) {
       {/* Toolbar */}
       <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-toolbar shrink-0">
         <span className="text-xs text-muted-foreground">
-          <span className="text-amber-400 font-medium">{diffCount}</span>
-          {" param"}
-          {diffCount !== 1 ? "s" : ""} differ · {rows.length} total
+          {canDiff ? (
+            <>
+              <span className="text-amber-600 dark:text-amber-400 font-medium">{diffCount}</span>
+              {" param"}
+              {diffCount !== 1 ? "s" : ""} differ · {rows.length} total
+            </>
+          ) : (
+            <>{rows.length} total</>
+          )}
+          {writeMode && pendingEdits && pendingEdits.size > 0 && (
+            <span className="ml-3 text-amber-600 dark:text-amber-400 font-medium">
+              · {pendingEdits.size} pending edit{pendingEdits.size === 1 ? "" : "s"}
+            </span>
+          )}
         </span>
         <div className="flex-1" />
         <button
           onClick={() => setShowDiffsOnly((v) => !v)}
-          className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-            showDiffsOnly
-              ? "border-amber-400/50 bg-amber-400/10 text-amber-300"
+          disabled={!canDiff}
+          title={canDiff ? undefined : "Select 2+ versions to see differences"}
+          className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent ${
+            showDiffsOnly && canDiff
+              ? "border-amber-500/50 bg-amber-400/10 text-amber-700 dark:border-amber-400/50 dark:text-amber-300"
               : "border-border text-foreground hover:bg-secondary"
           }`}
         >
           <SlidersHorizontal className="h-3.5 w-3.5" />
-          {showDiffsOnly ? "Differences only" : "Show differences only"}
+          {showDiffsOnly && canDiff ? "Differences only" : "Show differences only"}
         </button>
+        {writableVersionId && onToggleWriteMode && (
+          <button
+            onClick={onToggleWriteMode}
+            className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              writeMode
+                ? "border-amber-500/50 bg-amber-400/10 text-amber-700 dark:border-amber-400/50 dark:text-amber-300"
+                : "border-border text-foreground hover:bg-secondary"
+            }`}
+            title={writeMode ? "Exit write mode" : "Enable write mode (edit drone values)"}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            {writeMode ? "Editing" : "Write mode"}
+          </button>
+        )}
+        {writeMode && pendingEdits && pendingEdits.size > 0 && (
+          <>
+            <button
+              onClick={onClearAllEdits}
+              title="Discard all pending edits"
+              className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Discard
+            </button>
+            <button
+              onClick={onWriteToDrone}
+              className="flex items-center gap-1.5 rounded-md bg-amber-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600 transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <Upload className="h-3.5 w-3.5" />
+              Write {pendingEdits.size} to drone
+            </button>
+          </>
+        )}
       </div>
 
       {/* Table */}
@@ -169,7 +239,7 @@ export function CompareTable({ versions, rows }: Props) {
                     <td className="sticky left-0 z-10 bg-card border-r border-border overflow-hidden" style={{ maxWidth: 0 }}>
                       <div className="flex items-center gap-1 px-4 py-2 group/name">
                         {row.isDiff && (
-                          <span className="mr-0.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-400 align-middle shrink-0" />
+                          <span className="mr-0.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-500 dark:bg-amber-400 align-middle shrink-0" />
                         )}
                         <span
                           onClick={() => copyValue(row.name, `name:${row.name}`)}
@@ -196,34 +266,100 @@ export function CompareTable({ versions, rows }: Props) {
 
                     {/* Value cells */}
                     {versionIds.map((vid) => {
-                      const value = row.values[vid];
-                      const isMissing = value === undefined;
-                      const isInvalid = !isMissing && def ? validateParam(value, def) !== null : false;
+                      const rawValue = row.values[vid];
+                      const isMissing = rawValue === undefined;
+                      const isWritable = writeMode && vid === writableVersionId && !isMissing;
+                      const pendingValue = pendingEdits?.get(row.name);
+                      const hasPending = isWritable && pendingValue !== undefined;
+                      const displayValue = hasPending ? String(pendingValue) : rawValue;
+                      const isInvalid = !isMissing && def ? validateParam(displayValue ?? "", def) !== null : false;
                       const isDiffCell = row.isDiff && !isMissing;
                       const cellKey = `${row.name}:${vid}`;
                       const copied = copiedCell === cellKey;
+                      const isEditing = editingCell === cellKey;
 
                       let cellClass = "px-4 py-2 font-mono text-xs overflow-hidden whitespace-nowrap transition-colors max-w-0 ";
                       if (copied) {
                         cellClass += "bg-emerald-500/20 text-emerald-300";
+                      } else if (hasPending) {
+                        cellClass += "bg-amber-500/25 text-amber-900 dark:text-amber-100 font-semibold";
                       } else if (isInvalid) {
                         cellClass += "bg-destructive/20 text-destructive-foreground";
                       } else if (isDiffCell) {
-                        cellClass += "bg-amber-400/15 text-amber-200";
+                        cellClass += "bg-amber-400/15 text-amber-900 dark:text-amber-200";
                       } else if (isMissing) {
                         cellClass += "text-muted-foreground italic";
                       } else {
                         cellClass += "text-foreground";
                       }
 
+                      if (isEditing) {
+                        return (
+                          <td key={vid} className="px-2 py-1 max-w-0 bg-amber-400/20">
+                            <div className="flex items-center gap-1">
+                              <input
+                                autoFocus
+                                type="text"
+                                value={editInput}
+                                onChange={(e) => setEditInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    (e.target as HTMLInputElement).blur();
+                                  } else if (e.key === "Escape") {
+                                    setEditInput("__cancel__");
+                                    setTimeout(() => setEditingCell(null), 0);
+                                  }
+                                }}
+                                onBlur={() => {
+                                  if (editInput === "__cancel__") {
+                                    setEditingCell(null);
+                                    return;
+                                  }
+                                  const trimmed = editInput.trim();
+                                  const originalValue = displayValue ?? "";
+                                  if (trimmed === "" || trimmed === String(originalValue)) {
+                                    setEditingCell(null);
+                                    return;
+                                  }
+                                  const num = parseFloat(trimmed);
+                                  if (!isNaN(num)) onEditParam?.(row.name, num);
+                                  setEditingCell(null);
+                                }}
+                                className="flex-1 min-w-0 rounded-sm border border-amber-500 bg-card px-1.5 py-1 font-mono text-xs text-foreground outline-none focus:ring-1 focus:ring-amber-500"
+                              />
+                              {hasPending && (
+                                <button
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    onClearEdit?.(row.name);
+                                    setEditingCell(null);
+                                  }}
+                                  title="Discard edit"
+                                  className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-destructive-foreground transition-colors cursor-pointer"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        );
+                      }
+
                       return (
                         <td
                           key={vid}
-                          className={cellClass + (!isMissing ? " cursor-pointer hover:brightness-125" : "")}
-                          onClick={() => !isMissing && copyValue(value, cellKey)}
-                          title={!isMissing ? "Click to copy" : undefined}
+                          className={cellClass + (isWritable ? " cursor-text hover:bg-amber-400/20" : !isMissing ? " cursor-pointer hover:brightness-125" : "")}
+                          onClick={() => {
+                            if (isWritable) {
+                              setEditInput(displayValue ?? "");
+                              setEditingCell(cellKey);
+                            } else if (!isMissing) {
+                              copyValue(rawValue, cellKey);
+                            }
+                          }}
+                          title={isWritable ? "Click to edit" : !isMissing ? "Click to copy" : undefined}
                         >
-                          {copied ? "copied!" : isMissing ? "—" : value}
+                          {copied ? "copied!" : isMissing ? "—" : displayValue}
                         </td>
                       );
                     })}

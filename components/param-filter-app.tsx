@@ -18,7 +18,7 @@ import { ListEditorDialog } from "@/components/list-editor-dialog";
 import { SaveResumeModal } from "@/components/save-resume-modal";
 import { CatalogUploadModal } from "@/components/catalog-upload-modal";
 import { ConnectDroneDialog } from "@/components/connect-drone-dialog";
-import { saveDroneParamsToStorage } from "@/lib/drone-params-context";
+import { saveDroneParamsToStorage, clearDroneParamsFromStorage } from "@/lib/drone-params-context";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 // ---------- flying rows portal ----------
@@ -651,6 +651,10 @@ const handleSave = useCallback(() => {
             log(`Drone connection — ${params.length} params loaded`);
           }}
           onClose={() => setDroneDialogOpen(false)}
+          onForget={() => {
+            clearDroneParamsFromStorage();
+            log("Forgot stored drone params");
+          }}
         />
       )}
 

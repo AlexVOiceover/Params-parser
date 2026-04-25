@@ -67,3 +67,18 @@ export function useDroneParams(): DroneParamsContextValue {
 export function saveDroneParamsToStorage(params: DroneParam[]): void {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(params)); } catch {}
 }
+
+/** Count of params currently stored (0 if none / unavailable). */
+export function getStoredDroneParamsCount(): number {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return 0;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.length : 0;
+  } catch { return 0; }
+}
+
+/** Clear drone params from localStorage (used from pages without the provider). */
+export function clearDroneParamsFromStorage(): void {
+  try { localStorage.removeItem(STORAGE_KEY); } catch {}
+}

@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { Filter, Library, Upload, Settings, Columns2, Usb } from "lucide-react";
-import { useDroneParams } from "@/lib/drone-params-context";
+import { useDroneParams, DRONE_VERSION_ID } from "@/lib/drone-params-context";
 import { ConnectDroneDialog } from "@/components/connect-drone-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import type { Param } from "@/lib/types";
@@ -14,7 +15,10 @@ interface Props {
 }
 
 export function CatalogHeader({ canUpload, isAdmin }: Props) {
-  const { droneParams, setDroneParams } = useDroneParams();
+  const { droneParams, setDroneParams, clearDroneParams } = useDroneParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [showDroneDialog, setShowDroneDialog] = useState(false);
   const [hasWebSerial, setHasWebSerial] = useState(false);
 
@@ -28,6 +32,15 @@ export function CatalogHeader({ canUpload, isAdmin }: Props) {
     },
     [setDroneParams]
   );
+
+  const handleForget = useCallback(() => {
+    clearDroneParams();
+    // If currently viewing a compare page that depends on drone params, bounce back.
+    const viewing = searchParams.getAll("v");
+    if (pathname === "/catalog/compare" && viewing.includes(DRONE_VERSION_ID)) {
+      router.push("/catalog");
+    }
+  }, [clearDroneParams, pathname, searchParams, router]);
 
   const hasParams = droneParams !== null && droneParams.length > 0;
 
@@ -64,7 +77,6 @@ export function CatalogHeader({ canUpload, isAdmin }: Props) {
           <Columns2 className="h-3.5 w-3.5" />
           Compare
         </Link>
-        <ThemeToggle />
         {canUpload && (
           <Link
             href="/upload"
@@ -90,12 +102,15 @@ export function CatalogHeader({ canUpload, isAdmin }: Props) {
           <Filter className="h-3.5 w-3.5" />
           Filter Tool
         </Link>
+        <div className="w-px h-4 bg-border shrink-0 ml-1" />
+        <ThemeToggle />
       </header>
 
       {showDroneDialog && (
         <ConnectDroneDialog
           onParamsLoaded={handleParamsLoaded}
           onClose={() => setShowDroneDialog(false)}
+          onForget={handleForget}
         />
       )}
     </>

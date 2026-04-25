@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Usb, X } from "lucide-react";
+import { Usb, X, Trash2 } from "lucide-react";
 import { openDroneConnection } from "@/lib/mavlink-serial";
+import { getStoredDroneParamsCount } from "@/lib/drone-params-context";
 import type { Param } from "@/lib/types";
 
 const BAUD_RATE = 115200;
@@ -12,16 +13,23 @@ type Stage = "idle" | "running" | "done" | "error";
 interface Props {
   onParamsLoaded: (params: Param[]) => void;
   onClose: () => void;
+  /** Called when user clicks "Forget" to clear stored drone params. */
+  onForget?: () => void;
 }
 
-export function ConnectDroneDialog({ onParamsLoaded, onClose }: Props) {
+export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props) {
   const [stage, setStage] = useState<Stage>("idle");
   const [log, setLog] = useState<string[]>([]);
   const [received, setReceived] = useState(0);
   const [total, setTotal] = useState(0);
   const [error, setError] = useState("");
+  const [storedCount, setStoredCount] = useState(0);
   const disconnectRef = useRef<(() => void) | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setStoredCount(getStoredDroneParamsCount());
+  }, []);
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -64,6 +72,11 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose }: Props) {
   function handleClose() {
     disconnectRef.current?.();
     onClose();
+  }
+
+  function handleForget() {
+    onForget?.();
+    setStoredCount(0);
   }
 
   const pct = total > 0 ? Math.round((received / total) * 100) : 0;
@@ -138,7 +151,18 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 border-t border-border bg-toolbar px-5 py-3">
+        <div className="flex items-center gap-2 border-t border-border bg-toolbar px-5 py-3">
+          {onForget && storedCount > 0 && (stage === "idle" || stage === "error") && (
+            <button
+              onClick={handleForget}
+              title={`Forget ${storedCount} stored param${storedCount === 1 ? "" : "s"}`}
+              className="flex items-center gap-1.5 rounded-md border border-rose-500/40 text-rose-500 hover:bg-rose-500/10 px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Forget ({storedCount})
+            </button>
+          )}
+          <div className="flex-1" />
           {!busy && stage !== "done" && (
             <button
               onClick={handleClose}
