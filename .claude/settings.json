@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s \"https://raw.githubusercontent.com/ArduPilot/node-mavlink/main/lib/mavlink-packet-splitter.ts\")",
+      "WebFetch(domain:api.github.com)",
+      "Bash(gh api:*)",
+      "WebSearch",
+      "Read(//c/tmp/**)",
+      "Bash(gh repo:*)",
+      "Read(//tmp/**)",
+      "Read(//c/Users/Alexander/Documents/AIR6/Params parser/**)",
+      "Bash(python3 -c ':*)",
+      "Bash(node -e ':*)",
+      "Bash(xargs ls:*)"
+    ]
+  }
+}

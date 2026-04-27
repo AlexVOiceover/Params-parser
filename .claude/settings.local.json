@@ -18,7 +18,14 @@
       "Bash(git add package.json)",
       "Bash(npm install @vercel/kv)",
       "Bash(npx tsc --noEmit)",
-      "Bash(npx next build)"
+      "Bash(npx next build)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code} | time %{time_total}s\\\\n\" https://bsbomnirdjjcyapjvovm.supabase.co/rest/v1/ --max-time 10)",
+      "Bash(git add *)",
+      "Bash(git checkout *)",
+      "Bash(git push *)",
+      "Bash(git pull *)",
+      "Bash(git merge *)",
+      "Bash(git branch *)"
     ]
   }
 }
