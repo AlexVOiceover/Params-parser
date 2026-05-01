@@ -136,7 +136,7 @@ export function DroneTypeGrid({ droneTypes, isAdmin }: Props) {
         ) : (
           <div key={dt.id} className="relative group/card flex flex-col gap-1">
             <Link
-              href={`/catalog/${dt.slug}`}
+              href={`/${dt.slug}`}
               className={`flex flex-col gap-2 rounded-lg border border-border bg-card p-5 hover:border-primary/50 hover:bg-card/80 transition-colors cursor-pointer${isAdmin ? " pr-10" : ""}`}
             >
               <span className="font-semibold text-foreground group-hover/card:text-primary transition-colors">
@@ -181,7 +181,7 @@ export function DroneTypeGrid({ droneTypes, isAdmin }: Props) {
             )}
 
             {deleteErrors[dt.id] && (
-              <p className="text-xs text-destructive-foreground bg-destructive/20 border border-destructive/40 rounded-md px-2.5 py-1.5">
+              <p className="text-xs text-destructive bg-destructive/15 border border-destructive/40 rounded-md px-2.5 py-1.5">
                 {deleteErrors[dt.id]}
               </p>
             )}

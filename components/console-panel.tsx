@@ -36,7 +36,7 @@ export function ConsolePanel() {
             <span className="text-muted-foreground">[{entry.timestamp}]</span>{" "}
             <span
               className={cn(
-                entry.level === "ERROR" && "text-destructive-foreground",
+                entry.level === "ERROR" && "text-destructive",
                 entry.level === "WARN" && "text-yellow-400",
                 entry.level === "INFO" && "text-console-text"
               )}

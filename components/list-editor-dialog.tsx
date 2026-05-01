@@ -410,7 +410,7 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                 <button
                   onClick={handleDeleteList}
                   disabled={selectedIdx < 0 || isReadOnly}
-                  className="flex items-center justify-center rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-destructive/20 hover:border-destructive hover:text-destructive-foreground transition-colors disabled:opacity-30"
+                  className="flex items-center justify-center rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-destructive/20 hover:border-destructive hover:text-destructive transition-colors disabled:opacity-30"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
@@ -709,7 +709,7 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                                   {!isReadOnly && (
                                     <button
                                       onClick={() => removeRule(origIdx)}
-                                      className="text-muted-foreground hover:text-destructive-foreground transition-colors ml-0.5"
+                                      className="text-muted-foreground hover:text-destructive transition-colors ml-0.5"
                                       aria-label={`Remove rule ${rule.value}`}
                                     >
                                       <X className="h-3 w-3" />
@@ -770,7 +770,7 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                                   {!isReadOnly && (
                                     <button
                                       onClick={() => removeRule(origIdx)}
-                                      className="text-muted-foreground hover:text-destructive-foreground transition-colors ml-0.5"
+                                      className="text-muted-foreground hover:text-destructive transition-colors ml-0.5"
                                       aria-label={`Remove rule ${rule.value}`}
                                     >
                                       <X className="h-3 w-3" />
@@ -935,7 +935,7 @@ function ExactRuleInfo({
       )}
 
       {def.RebootRequired === "True" && (
-        <div className="rounded bg-destructive/20 px-3 py-2 text-xs font-medium text-destructive-foreground">
+        <div className="rounded bg-destructive/20 px-3 py-2 text-xs font-medium text-destructive">
           Reboot required after change
         </div>
       )}

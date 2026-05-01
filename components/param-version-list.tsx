@@ -325,7 +325,7 @@ export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId,
                 {uploadLog.length > 0 && (
                   <div className="rounded-md border border-border bg-black/30 px-3 py-2 flex flex-col gap-0.5">
                     {uploadLog.map((entry, i) => (
-                      <p key={i} className={`font-mono text-[11px] leading-relaxed ${entry.error ? "text-destructive-foreground" : "text-muted-foreground"}`}>
+                      <p key={i} className={`font-mono text-[11px] leading-relaxed ${entry.error ? "text-destructive" : "text-muted-foreground"}`}>
                         <span className="text-muted-foreground/50 mr-1.5">›</span>{entry.text}
                       </p>
                     ))}
@@ -376,14 +376,14 @@ export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId,
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <Link
-                    href={`/catalog/compare?v=${v.id}`}
+                    href={`/compare?v=${v.id}`}
                     className="flex items-center gap-1.5 rounded-md bg-secondary border border-border hover:bg-secondary/80 px-3 py-1.5 text-xs font-medium text-foreground transition-colors cursor-pointer whitespace-nowrap"
                   >
                     <Eye className="h-3.5 w-3.5" />
                     View
                   </Link>
                   <Link
-                    href={`/?load=${encodeURIComponent(storageUrl(v.storage_path))}&drone=${encodeURIComponent(droneName)}&set=${encodeURIComponent(paramSetName)}&version=${encodeURIComponent(v.version_label)}`}
+                    href={`/filter?load=${encodeURIComponent(storageUrl(v.storage_path))}&drone=${encodeURIComponent(droneName)}&set=${encodeURIComponent(paramSetName)}&version=${encodeURIComponent(v.version_label)}`}
                     className="flex items-center gap-1.5 rounded-md bg-secondary border border-border hover:bg-secondary/80 px-3 py-1.5 text-xs font-medium text-foreground transition-colors cursor-pointer whitespace-nowrap"
                   >
                     <Filter className="h-3.5 w-3.5" />
@@ -450,7 +450,7 @@ export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId,
                 The .param file and all associated data will be permanently removed. This cannot be undone.
               </p>
               {deleteError && (
-                <p className="text-xs text-destructive-foreground bg-destructive/30 border border-destructive/50 rounded-md px-3 py-2">{deleteError}</p>
+                <p className="text-xs text-destructive bg-destructive/15 border border-destructive/40 rounded-md px-3 py-2">{deleteError}</p>
               )}
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-border bg-toolbar px-5 py-3">
@@ -565,7 +565,7 @@ export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId,
               </label>
 
               {cloneError && (
-                <p className="text-xs text-destructive-foreground bg-destructive/30 border border-destructive/50 rounded-md px-3 py-2">{cloneError}</p>
+                <p className="text-xs text-destructive bg-destructive/15 border border-destructive/40 rounded-md px-3 py-2">{cloneError}</p>
               )}
             </div>
 

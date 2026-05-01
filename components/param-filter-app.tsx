@@ -4,7 +4,7 @@ import { useEffect, useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { FileText, FilePlus, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, User, Library, LogOut, Settings, Usb } from "lucide-react";
+import { FileText, FilePlus, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, Library, Usb, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
 import { useAuth } from "@/components/auth-provider";
@@ -17,10 +17,7 @@ import { ConsolePanel } from "@/components/console-panel";
 import { ListEditorDialog } from "@/components/list-editor-dialog";
 import { SaveResumeModal } from "@/components/save-resume-modal";
 import { CatalogUploadModal } from "@/components/catalog-upload-modal";
-import { ConnectDroneDialog } from "@/components/connect-drone-dialog";
-import { saveDroneParamsToStorage, clearDroneParamsFromStorage } from "@/lib/drone-params-context";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { useSerialMode } from "@/lib/use-serial-mode";
+import { useDroneParams } from "@/lib/drone-params-context";
 
 // ---------- flying rows portal ----------
 
@@ -97,7 +94,7 @@ export function ParamFilterApp({ loadUrl, catalogSource }: { loadUrl?: string; c
     log,
   } = useApp();
 
-  const { user, role, signOut } = useAuth();
+  const { user, role } = useAuth();
 
   useEffect(() => {
     if (user && role) log(`Signed in as ${user.email} (${role})`);
@@ -116,14 +113,15 @@ export function ParamFilterApp({ loadUrl, catalogSource }: { loadUrl?: string; c
         loadFile(filename, content);
         setAppMode("edit");
         setActiveCatalogSource(catalogSource);
+        setDroneLoaded(false);
       })
       .catch(() => log("Failed to load param file from URL", "ERROR"));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadUrl]);
   const [editorOpen, setEditorOpen] = useState(false);
-  const [droneDialogOpen, setDroneDialogOpen] = useState(false);
-  const serialMode = useSerialMode();
-  const hasWebSerial = serialMode !== "unsupported";
+  const [droneLoaded, setDroneLoaded] = useState(false);
+  const { droneParams } = useDroneParams();
+  const droneParamsCount = droneParams?.length ?? 0;
   const [activePanel, setActivePanel] = useState<"protected" | "applied">("applied");
 const [saveResumeOpen, setSaveResumeOpen] = useState(false);
   const [catalogUpload, setCatalogUpload] = useState<{ content: string; suggestedName: string } | null>(null);
@@ -205,7 +203,19 @@ const [saveResumeOpen, setSaveResumeOpen] = useState(false);
     setAppMode("create");
     setRemainingOverrides(new Map());
     setActiveCatalogSource(undefined);
+    setDroneLoaded(false);
   }, [paramDefs, createFromDefs, log]);
+
+  const handleOpenDrone = useCallback(() => {
+    if (!droneParams || droneParams.length === 0) return;
+    const content = droneParams.map((p) => `${p.name},${p.value}`).join("\n");
+    loadFile("drone.param", content);
+    setAppMode("edit");
+    setRemainingOverrides(new Map());
+    setActiveCatalogSource(undefined);
+    setDroneLoaded(true);
+    log(`Loaded ${droneParams.length} drone params from memory`);
+  }, [droneParams, loadFile, log]);
 
   // Info sidebar resize (horizontal)
   const [infoWidth, setInfoWidth] = useState(288);
@@ -353,14 +363,22 @@ const handleSave = useCallback(() => {
     setCatalogUpload({ content, suggestedName });
   }, [appMode, remainingParams, remainingOverrides, fileName]);
 
-  const fileSource: "local" | "catalog" | "new" | null =
+  const fileSource: "local" | "catalog" | "new" | "drone" | null =
     appMode === "create" ? "new" :
+    appMode === "edit" && droneLoaded ? "drone" :
     appMode === "edit" && activeCatalogSource ? "catalog" :
     appMode === "edit" ? "local" :
     null;
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden">
+    <div className="flex h-full flex-col overflow-hidden">
+      {/* Breadcrumb */}
+      <nav className="flex items-center gap-1.5 px-4 py-2 border-b border-border text-xs text-muted-foreground shrink-0">
+        <Link href="/" className="hover:text-foreground transition-colors cursor-pointer">Catalog</Link>
+        <ChevronRight className="h-3 w-3" />
+        <span className="text-foreground">Filter tool</span>
+      </nav>
+
       {/* Toolbar */}
       <header className={cn(
         "flex items-center gap-2 border-b border-border px-3 py-2 shrink-0 transition-colors duration-300",
@@ -370,7 +388,7 @@ const handleSave = useCallback(() => {
 
         {/* 1. Open .param */}
         <FileUpload
-          onFileLoaded={() => { setAppMode("edit"); setRemainingOverrides(new Map()); setActiveCatalogSource(undefined); }}
+          onFileLoaded={() => { setAppMode("edit"); setRemainingOverrides(new Map()); setActiveCatalogSource(undefined); setDroneLoaded(false); }}
           className={cn(fileSource && fileSource !== "local" && "opacity-40 hover:opacity-90")}
         />
         {fileSource === "local" && fileName && (
@@ -380,27 +398,20 @@ const handleSave = useCallback(() => {
           </div>
         )}
 
-        <div className="w-px h-4 bg-border shrink-0" />
-
-        {/* 2. Catalog */}
-        <Link
-          href="/catalog"
-          className={cn(
-            "flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-all cursor-pointer whitespace-nowrap",
-            fileSource && fileSource !== "catalog" && "opacity-40 hover:opacity-90"
-          )}
-        >
-          <Library className="h-3.5 w-3.5" />
-          Catalog
-        </Link>
         {fileSource === "catalog" && activeCatalogSource && (
-          <span className="text-xs text-foreground font-medium truncate max-w-52">
-            {activeCatalogSource.drone}
-            <span className="text-muted-foreground"> / </span>
-            {activeCatalogSource.set}
-            <span className="text-muted-foreground"> / </span>
-            <span className="font-mono">{activeCatalogSource.version}</span>
-          </span>
+          <>
+            <div className="w-px h-4 bg-border shrink-0" />
+            <div className="flex items-center gap-1.5 rounded-md bg-primary/15 border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary whitespace-nowrap">
+              <Library className="h-3.5 w-3.5" />
+              <span className="truncate max-w-52">
+                {activeCatalogSource.drone}
+                <span className="opacity-60"> / </span>
+                {activeCatalogSource.set}
+                <span className="opacity-60"> / </span>
+                <span className="font-mono">{activeCatalogSource.version}</span>
+              </span>
+            </div>
+          </>
         )}
 
         <div className="w-px h-4 bg-border shrink-0" />
@@ -431,60 +442,34 @@ const handleSave = useCallback(() => {
           </div>
         )}
 
-        {hasWebSerial && (
-          <>
-            <div className="w-px h-4 bg-border shrink-0" />
-            {/* 4. Connect drone */}
-            <button
-              onClick={() => setDroneDialogOpen(true)}
-              className={cn(
-                "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all cursor-pointer whitespace-nowrap bg-secondary border border-border hover:border-primary/50 hover:text-primary text-foreground",
-                fileSource && "opacity-40 hover:opacity-90"
-              )}
-            >
-              <Usb className="h-3.5 w-3.5" />
-              Connect drone
-            </button>
-          </>
-        )}
+        <div className="w-px h-4 bg-border shrink-0" />
+        <button
+          onClick={handleOpenDrone}
+          disabled={droneParamsCount === 0}
+          title={
+            droneParamsCount === 0
+              ? "Import from drone first using the header button"
+              : `Load ${droneParamsCount} drone params into the filter`
+          }
+          className={cn(
+            "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all cursor-pointer whitespace-nowrap",
+            fileSource === "drone"
+              ? "bg-emerald-600 hover:bg-emerald-500 text-white"
+              : "bg-secondary border border-border text-foreground hover:border-primary/50 hover:text-primary",
+            fileSource && fileSource !== "drone" && "opacity-40 hover:opacity-90",
+            droneParamsCount === 0 && "opacity-40 cursor-not-allowed hover:opacity-40 hover:text-foreground hover:border-border"
+          )}
+        >
+          <Usb className="h-3.5 w-3.5" />
+          {fileSource === "drone"
+            ? `Drone (${droneParamsCount} params)`
+            : "Load drone"}
+        </button>
 
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Right: list selector + admin icon + user */}
         <ProtectionListSelect onEditLists={() => setEditorOpen(true)} />
-        <div className="flex items-center gap-1 border-l border-border pl-2 text-muted-foreground">
-          <ThemeToggle />
-          {role === "admin" && (
-            <Link
-              href="/admin"
-              className="rounded p-1 hover:text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
-              title="Admin"
-            >
-              <Settings className="h-3.5 w-3.5" />
-            </Link>
-          )}
-          {user ? (
-            <>
-              <User className="h-3.5 w-3.5 shrink-0" />
-              <span className="font-mono text-xs font-medium text-foreground max-w-40 truncate">{user.email}</span>
-              <button
-                onClick={signOut}
-                title="Sign out"
-                className="rounded p-1 hover:text-foreground hover:bg-secondary/50 transition-colors cursor-pointer ml-0.5"
-              >
-                <LogOut className="h-3 w-3" />
-              </button>
-            </>
-          ) : (
-            <Link
-              href="/login"
-              className="text-xs hover:text-foreground transition-colors cursor-pointer px-1"
-            >
-              Sign in
-            </Link>
-          )}
-        </div>
       </header>
 
       {/* Main content */}
@@ -496,7 +481,7 @@ const handleSave = useCallback(() => {
         {/* Protected panel */}
         <div ref={protectedPanelRef} className="flex flex-col flex-1 min-w-0 p-2" onMouseEnter={() => setActivePanel("protected")}>
           <ParamPanel
-            title="PROTECTED — will be removed"
+            title="PROTECTED"
             headerColor="bg-protected-header"
             variant="protected"
             isActive={activePanel === "protected"}
@@ -509,51 +494,38 @@ const handleSave = useCallback(() => {
             onSelectParam={selectParam}
             headerAction={
               <div className="flex items-center gap-1.5">
-                <span
-                  className="text-xs text-foreground/70 font-mono truncate max-w-30"
-                  title={activeListName === "__no_filter__" ? "No Filter" : activeListName}
-                >
-                  {activeListName === "__no_filter__" ? "No Filter" : activeListName}
-                </span>
-                {isProtectionModified && (
+                {checkedProtected.size > 0 ? (
                   <button
-                    onClick={openSaveList}
-                    className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-semibold text-foreground/80 hover:bg-black/20 transition-colors whitespace-nowrap cursor-pointer"
-                    title="Save the current protected params as a new protection list"
+                    onClick={handleMoveToApplied}
+                    title="Move checked params back to applied"
+                    className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-semibold text-foreground/90 bg-black/20 hover:bg-black/30 transition-colors whitespace-nowrap cursor-pointer"
                   >
-                    <BookmarkPlus className="h-3.5 w-3.5" />
-                    Save as list
+                    Apply {checkedProtected.size}
+                    <ArrowRight className="h-3.5 w-3.5" />
                   </button>
+                ) : (
+                  <>
+                    <span
+                      className="text-xs text-foreground/70 font-mono truncate max-w-30"
+                      title={activeListName === "__no_filter__" ? "No Filter" : activeListName}
+                    >
+                      {activeListName === "__no_filter__" ? "No Filter" : activeListName}
+                    </span>
+                    {isProtectionModified && (
+                      <button
+                        onClick={openSaveList}
+                        className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-semibold text-foreground/80 hover:bg-black/20 transition-colors whitespace-nowrap cursor-pointer"
+                        title="Save the current protected params as a new protection list"
+                      >
+                        <BookmarkPlus className="h-3.5 w-3.5" />
+                        Save as list
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             }
           />
-        </div>
-
-        {/* Center: Move buttons */}
-        <div className="flex flex-col items-center justify-center gap-3 px-1 py-4 shrink-0">
-          <button
-            onClick={handleMoveToProtected}
-            disabled={checkedRemaining.size === 0}
-            className={cn(
-              "flex w-16 flex-col items-center justify-center rounded-lg py-3 text-xs font-bold transition-colors",
-              "bg-protected-header text-foreground hover:bg-[#8b3a3a] disabled:opacity-30 disabled:cursor-not-allowed"
-            )}
-          >
-            <ArrowLeft className="h-5 w-5" />
-            <span className="mt-0.5">Protect</span>
-          </button>
-          <button
-            onClick={handleMoveToApplied}
-            disabled={checkedProtected.size === 0}
-            className={cn(
-              "flex w-16 flex-col items-center justify-center rounded-lg py-3 text-xs font-bold transition-colors",
-              "bg-applied-header text-foreground hover:bg-[#3a7232] disabled:opacity-30 disabled:cursor-not-allowed"
-            )}
-          >
-            <span className="mb-0.5">Apply</span>
-            <ArrowRight className="h-5 w-5" />
-          </button>
         </div>
 
         {/* Applied panel */}
@@ -572,6 +544,18 @@ const handleSave = useCallback(() => {
             onSelectParam={selectParam}
             valueOverrides={remainingOverrides}
             onOverrideValue={handleRemainingOverride}
+            headerAction={
+              checkedRemaining.size > 0 ? (
+                <button
+                  onClick={handleMoveToProtected}
+                  title="Protect checked params (remove from output)"
+                  className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-semibold text-foreground/90 bg-black/20 hover:bg-black/30 transition-colors whitespace-nowrap cursor-pointer"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  Protect {checkedRemaining.size}
+                </button>
+              ) : null
+            }
           />
         </div>
 
@@ -638,25 +622,6 @@ const handleSave = useCallback(() => {
       {/* List Editor Dialog */}
       {editorOpen && (
         <ListEditorDialog onClose={() => setEditorOpen(false)} />
-      )}
-
-      {/* Connect Drone Dialog */}
-      {droneDialogOpen && (
-        <ConnectDroneDialog
-          onParamsLoaded={(params) => {
-            loadFile("drone.param", params.map((p) => `${p.name},${p.value}`).join("\n"));
-            saveDroneParamsToStorage(params.map((p) => ({ name: p.name, value: p.value })));
-            setAppMode("edit");
-            setRemainingOverrides(new Map());
-            setActiveCatalogSource(undefined);
-            log(`Drone connection — ${params.length} params loaded`);
-          }}
-          onClose={() => setDroneDialogOpen(false)}
-          onForget={() => {
-            clearDroneParamsFromStorage();
-            log("Forgot stored drone params");
-          }}
-        />
       )}
 
       {/* Save resume modal */}

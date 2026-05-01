@@ -14,12 +14,12 @@ const jetbrainsMono = JetBrains_Mono({
   variable: "--font-jetbrains",
 });
 
-const APP_NAME = "AIR6 Param Filter";
+const APP_NAME = "AIR6 Params";
 
 export const metadata: Metadata = {
-  title: APP_NAME,
+  title: { default: APP_NAME, template: "%s" },
   description:
-    "Filter Mission Planner .param files before applying them to your drone fleet. Protect calibration, hardware IDs, and RC configuration.",
+    "AIR6 drone parameter catalog and filter tool. Manage versioned param sets and apply them safely to your fleet.",
   applicationName: APP_NAME,
   manifest: "/manifest.webmanifest",
   appleWebApp: {

@@ -1,9 +1,12 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { DRONE_VERSION_ID, DRONE_STORAGE_KEY as STORAGE_KEY } from "@/lib/drone-params-shared";
+import { ConnectDroneDialog } from "@/components/connect-drone-dialog";
+import type { Param } from "@/lib/types";
 export { DRONE_VERSION_ID };
 
 interface DroneParam {
@@ -15,12 +18,14 @@ interface DroneParamsContextValue {
   droneParams: DroneParam[] | null;
   setDroneParams: (params: DroneParam[]) => void;
   clearDroneParams: () => void;
+  openImportDialog: () => void;
 }
 
 const DroneParamsContext = createContext<DroneParamsContextValue>({
   droneParams: null,
   setDroneParams: () => {},
   clearDroneParams: () => {},
+  openImportDialog: () => {},
 });
 
 function readStorage(): DroneParam[] | null {
@@ -35,6 +40,10 @@ function readStorage(): DroneParam[] | null {
 
 export function DroneParamsProvider({ children }: { children: ReactNode }) {
   const [droneParams, setDroneParamsState] = useState<DroneParam[] | null>(null);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   // Hydrate from localStorage on mount
   useEffect(() => {
@@ -50,11 +59,33 @@ export function DroneParamsProvider({ children }: { children: ReactNode }) {
   const clearDroneParams = useCallback(() => {
     setDroneParamsState(null);
     try { localStorage.removeItem(STORAGE_KEY); } catch {}
-  }, []);
+    const viewing = searchParams.getAll("v");
+    if (pathname === "/compare" && viewing.includes(DRONE_VERSION_ID)) {
+      router.push("/");
+    }
+  }, [pathname, searchParams, router]);
+
+  const openImportDialog = useCallback(() => setImportDialogOpen(true), []);
+
+  const handleParamsLoaded = useCallback(
+    (params: Param[]) => {
+      setDroneParams(params.map((p) => ({ name: p.name, value: p.value })));
+    },
+    [setDroneParams]
+  );
 
   return (
-    <DroneParamsContext.Provider value={{ droneParams, setDroneParams, clearDroneParams }}>
+    <DroneParamsContext.Provider
+      value={{ droneParams, setDroneParams, clearDroneParams, openImportDialog }}
+    >
       {children}
+      {importDialogOpen && (
+        <ConnectDroneDialog
+          onParamsLoaded={handleParamsLoaded}
+          onClose={() => setImportDialogOpen(false)}
+          onForget={clearDroneParams}
+        />
+      )}
     </DroneParamsContext.Provider>
   );
 }

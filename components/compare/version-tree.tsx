@@ -74,7 +74,7 @@ export function VersionTree({ tree }: Props) {
   function handleCompare() {
     const params = new URLSearchParams();
     for (const id of checked) params.append("v", id);
-    const url = `/catalog/compare?${params.toString()}`;
+    const url = `/compare?${params.toString()}`;
     router.push(url);
   }
 

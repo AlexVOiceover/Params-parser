@@ -94,8 +94,8 @@ export function ParamSetList({ droneSlug, droneTypeId, paramSets, isAdmin }: Pro
       setDeleting(false);
       startTransition(() => router.refresh());
     } else {
-      const { error: msg } = await res.json();
-      setDeleteError(msg ?? "Delete failed");
+      const msg = await res.json().then((b) => b?.error).catch(() => null);
+      setDeleteError(msg ?? `Delete failed (${res.status})`);
       setDeleting(false);
     }
   }
@@ -126,7 +126,7 @@ export function ParamSetList({ droneSlug, droneTypeId, paramSets, isAdmin }: Pro
         {paramSets.map((ps) => (
           <div key={ps.id} className="relative group/row">
             <Link
-              href={`/catalog/${droneSlug}/${ps.id}`}
+              href={`/${droneSlug}/${ps.id}`}
               className={`group flex items-start justify-between gap-4 rounded-lg border border-border bg-card px-5 py-4 hover:border-primary/50 transition-colors cursor-pointer${isAdmin ? " pr-20" : ""}`}
             >
               <div className="flex flex-col gap-1 min-w-0">
@@ -212,7 +212,7 @@ export function ParamSetList({ droneSlug, droneTypeId, paramSets, isAdmin }: Pro
               className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
             />
             {createError && (
-              <p className="text-xs text-destructive-foreground bg-destructive/30 border border-destructive/50 rounded-md px-3 py-2">
+              <p className="text-xs text-destructive bg-destructive/15 border border-destructive/40 rounded-md px-3 py-2">
                 {createError}
               </p>
             )}
@@ -267,7 +267,7 @@ export function ParamSetList({ droneSlug, droneTypeId, paramSets, isAdmin }: Pro
                 />
               </label>
               {editError && (
-                <p className="text-xs text-destructive-foreground bg-destructive/30 border border-destructive/50 rounded-md px-3 py-2">
+                <p className="text-xs text-destructive bg-destructive/15 border border-destructive/40 rounded-md px-3 py-2">
                   {editError}
                 </p>
               )}
@@ -321,7 +321,7 @@ export function ParamSetList({ droneSlug, droneTypeId, paramSets, isAdmin }: Pro
                 All versions and uploaded files in this param set will be permanently removed. This cannot be undone.
               </p>
               {deleteError && (
-                <p className="text-xs text-destructive-foreground bg-destructive/30 border border-destructive/50 rounded-md px-3 py-2">
+                <p className="text-xs text-destructive bg-destructive/15 border border-destructive/40 rounded-md px-3 py-2">
                   {deleteError}
                 </p>
               )}

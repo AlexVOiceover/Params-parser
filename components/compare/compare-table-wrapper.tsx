@@ -4,7 +4,7 @@ import { useMemo, useState, useCallback } from "react";
 import { useDroneParams, DRONE_VERSION_ID } from "@/lib/drone-params-context";
 import { CompareTable } from "@/components/compare/compare-table";
 import { WriteDroneDialog, type WriteChange } from "@/components/write-drone-dialog";
-import type { CompareVersion, CompareRow } from "@/app/catalog/compare/page";
+import type { CompareVersion, CompareRow } from "@/lib/types";
 import type { ParamWriteResult } from "@/lib/mavlink-serial";
 
 interface Props {

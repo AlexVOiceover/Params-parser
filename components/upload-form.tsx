@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, CheckCircle } from "lucide-react";
+import { Upload, CheckCircle, ChevronRight } from "lucide-react";
 import Link from "next/link";
 
 type DroneType = { id: string; name: string };
@@ -87,7 +87,7 @@ export function UploadForm({ droneTypes, paramSets }: Props) {
             Upload another
           </button>
           <Link
-            href="/catalog"
+            href="/"
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
           >
             Go to catalog
@@ -99,7 +99,12 @@ export function UploadForm({ droneTypes, paramSets }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="max-w-lg mx-auto px-6 py-10">
-      <h1 className="text-xl font-semibold text-foreground mb-6">Upload Param File</h1>
+      <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-6">
+        <Link href="/" className="hover:text-foreground transition-colors cursor-pointer">Catalog</Link>
+        <ChevronRight className="h-3 w-3" />
+        <span className="text-foreground">Upload</span>
+      </nav>
+      <h1 className="text-xl font-semibold text-foreground mb-6">Upload param file</h1>
 
       <div className="flex flex-col gap-4">
         {/* Drone type */}
@@ -189,7 +194,7 @@ export function UploadForm({ droneTypes, paramSets }: Props) {
         </label>
 
         {error && (
-          <p className="text-xs text-destructive-foreground bg-destructive/30 border border-destructive/50 rounded-md px-3 py-2">
+          <p className="text-xs text-destructive bg-destructive/15 border border-destructive/40 rounded-md px-3 py-2">
             {error}
           </p>
         )}

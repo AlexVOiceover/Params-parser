@@ -86,7 +86,7 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
             <p className="text-sm text-foreground font-medium">Published to catalog</p>
             <p className="text-xs text-muted-foreground">The param set is now visible in the catalog.</p>
             <a
-              href="/catalog"
+              href="/"
               className="flex items-center gap-1.5 mt-2 text-xs text-primary hover:underline cursor-pointer"
             >
               Go to catalog <ExternalLink className="h-3 w-3" />
@@ -127,7 +127,7 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
             </label>
 
             {error && (
-              <p className="text-xs text-destructive-foreground bg-destructive/30 border border-destructive/50 rounded-md px-3 py-2">
+              <p className="text-xs text-destructive bg-destructive/15 border border-destructive/40 rounded-md px-3 py-2">
                 {error}
               </p>
             )}

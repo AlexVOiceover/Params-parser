@@ -1,7 +1,7 @@
 {
-  "name": "AIR6 Param Filter",
+  "name": "AIR6 Params",
   "short_name": "AIR6 Params",
-  "description": "Filter Mission Planner .param files for ArduCopter drones",
+  "description": "AIR6 drone parameter catalog and filter tool",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

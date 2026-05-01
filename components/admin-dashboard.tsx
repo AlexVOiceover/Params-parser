@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { UserPlus } from "lucide-react";
+import Link from "next/link";
+import { UserPlus, ChevronRight } from "lucide-react";
 
 interface Profile {
   id: string;
@@ -79,7 +80,13 @@ export function AdminDashboard({ profiles }: Props) {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-10 flex flex-col gap-8">
+    <div className="max-w-4xl mx-auto px-6 py-10">
+      <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-6">
+        <Link href="/" className="hover:text-foreground transition-colors cursor-pointer">Catalog</Link>
+        <ChevronRight className="h-3 w-3" />
+        <span className="text-foreground">Admin</span>
+      </nav>
+      <div className="flex flex-col gap-8">
       <section>
         <h2 className="text-base font-semibold text-foreground mb-3">
           Users <span className="text-muted-foreground font-normal text-sm">({profiles.length})</span>
@@ -134,9 +141,10 @@ export function AdminDashboard({ profiles }: Props) {
           <p className="mt-2 text-xs text-green-400">Invite sent — they'll receive an email to set up their account.</p>
         )}
         {inviteError && (
-          <p className="mt-2 text-xs text-destructive-foreground">{inviteError}</p>
+          <p className="mt-2 text-xs text-destructive">{inviteError}</p>
         )}
       </section>
+      </div>
     </div>
   );
 }

@@ -1,10 +1,9 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { SlidersHorizontal, Info, Pencil, Upload, X, RotateCcw } from "lucide-react";
+import { SlidersHorizontal, Info, Pencil, Upload, X, RotateCcw, Search } from "lucide-react";
 import { validateParam } from "@/lib/param-engine";
-import type { CompareVersion, CompareRow } from "@/app/catalog/compare/page";
-import type { ParamDefinition } from "@/lib/types";
+import type { CompareVersion, CompareRow, ParamDefinition } from "@/lib/types";
 
 interface Props {
   versions: CompareVersion[];
@@ -42,6 +41,8 @@ export function CompareTable({
   const [editInput, setEditInput] = useState("");
   const [expandedParam, setExpandedParam] = useState<string | null>(null);
   const [copiedCell, setCopiedCell] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchMode, setSearchMode] = useState<"name" | "value" | "both">("name");
 
   // column widths: index 0 = param name col, 1..n = version cols
   const [colWidths, setColWidths] = useState<number[]>(() => [
@@ -111,8 +112,34 @@ export function CompareTable({
   });
 
   const canDiff = versions.length >= 2;
-  const visibleRows = showDiffsOnly && canDiff ? processedRows.filter((r) => r.isDiff) : processedRows;
   const diffCount = processedRows.filter((r) => r.isDiff).length;
+
+  const trimmedQuery = searchQuery.trim();
+  const queryLower = trimmedQuery.toLowerCase();
+  const queryAsNumber = trimmedQuery === "" ? NaN : Number(trimmedQuery);
+  const queryIsNumber = !Number.isNaN(queryAsNumber);
+
+  function valueMatches(value: string): boolean {
+    if (!trimmedQuery) return false;
+    if (value === trimmedQuery) return true;
+    if (queryIsNumber) {
+      const v = Number(value);
+      if (!Number.isNaN(v) && v === queryAsNumber) return true;
+    }
+    return false;
+  }
+
+  function rowMatchesSearch(row: typeof processedRows[number]): boolean {
+    if (!trimmedQuery) return true;
+    const nameMatch = row.name.toLowerCase().includes(queryLower);
+    const valueMatch = Object.values(row.values).some(valueMatches);
+    if (searchMode === "name") return nameMatch;
+    if (searchMode === "value") return valueMatch;
+    return nameMatch || valueMatch;
+  }
+
+  let visibleRows = showDiffsOnly && canDiff ? processedRows.filter((r) => r.isDiff) : processedRows;
+  if (trimmedQuery) visibleRows = visibleRows.filter(rowMatchesSearch);
 
   function ResizeHandle({ colIndex }: { colIndex: number }) {
     return (
@@ -139,6 +166,11 @@ export function CompareTable({
           ) : (
             <>{rows.length} total</>
           )}
+          {trimmedQuery && (
+            <span className="ml-3 text-primary font-medium">
+              · {visibleRows.length} match{visibleRows.length === 1 ? "" : "es"}
+            </span>
+          )}
           {writeMode && pendingEdits && pendingEdits.size > 0 && (
             <span className="ml-3 text-amber-600 dark:text-amber-400 font-medium">
               · {pendingEdits.size} pending edit{pendingEdits.size === 1 ? "" : "s"}
@@ -146,19 +178,51 @@ export function CompareTable({
           )}
         </span>
         <div className="flex-1" />
-        <button
-          onClick={() => setShowDiffsOnly((v) => !v)}
-          disabled={!canDiff}
-          title={canDiff ? undefined : "Select 2+ versions to see differences"}
-          className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent ${
-            showDiffsOnly && canDiff
-              ? "border-amber-500/50 bg-amber-400/10 text-amber-700 dark:border-amber-400/50 dark:text-amber-300"
-              : "border-border text-foreground hover:bg-secondary"
-          }`}
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5" />
-          {showDiffsOnly && canDiff ? "Differences only" : "Show differences only"}
-        </button>
+
+        <div className="flex items-center gap-1.5 max-w-xs flex-1">
+          <div className="relative flex-1">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={searchMode === "value" ? "Search value (e.g. 10)" : "Search…"}
+              className="w-full rounded-md border border-border bg-secondary pl-7 pr-7 py-1.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
+            />
+            {searchQuery && (
+              <button
+                onMouseDown={(e) => { e.preventDefault(); setSearchQuery(""); }}
+                title="Clear"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+          <select
+            value={searchMode}
+            onChange={(e) => setSearchMode(e.target.value as "name" | "value" | "both")}
+            className="shrink-0 rounded-md border border-border bg-secondary px-2 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+          >
+            <option value="name">Name</option>
+            <option value="value">Value</option>
+            <option value="both">Both</option>
+          </select>
+        </div>
+
+        {canDiff && (
+          <button
+            onClick={() => setShowDiffsOnly((v) => !v)}
+            className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              showDiffsOnly
+                ? "border-amber-500/50 bg-amber-400/10 text-amber-700 dark:border-amber-400/50 dark:text-amber-300"
+                : "border-border text-foreground hover:bg-secondary"
+            }`}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            {showDiffsOnly ? "Differences only" : "Show differences only"}
+          </button>
+        )}
         {writableVersionId && onToggleWriteMode && (
           <button
             onClick={onToggleWriteMode}
@@ -196,15 +260,16 @@ export function CompareTable({
 
       {/* Table */}
       <div className="flex-1 overflow-auto">
-        <table
-          className="border-collapse"
-          style={{ tableLayout: "fixed", width: colWidths.reduce((a, b) => a + b, 0) }}
-        >
-          <colgroup>
-            {colWidths.map((w, i) => (
-              <col key={i} style={{ width: w }} />
-            ))}
-          </colgroup>
+        <div className={versions.length === 1 ? "mx-auto max-w-3xl" : ""}>
+          <table
+            className="border-collapse w-full"
+            style={{ tableLayout: "fixed", minWidth: colWidths.reduce((a, b) => a + b, 0) }}
+          >
+            <colgroup>
+              {colWidths.map((w, i) => (
+                <col key={i} style={i === colWidths.length - 1 ? undefined : { width: w }} />
+              ))}
+            </colgroup>
           <thead className="sticky top-0 z-30">
             <tr className="border-b border-border text-xs text-muted-foreground">
               <th className="sticky left-0 z-20 bg-secondary px-4 py-2.5 text-left font-medium border-r border-border overflow-hidden" style={{ width: colWidths[0] }}>
@@ -280,11 +345,11 @@ export function CompareTable({
 
                       let cellClass = "px-4 py-2 font-mono text-xs overflow-hidden whitespace-nowrap transition-colors max-w-0 ";
                       if (copied) {
-                        cellClass += "bg-emerald-500/20 text-emerald-300";
+                        cellClass += "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300";
                       } else if (hasPending) {
                         cellClass += "bg-amber-500/25 text-amber-900 dark:text-amber-100 font-semibold";
                       } else if (isInvalid) {
-                        cellClass += "bg-destructive/20 text-destructive-foreground";
+                        cellClass += "bg-destructive/20 text-destructive";
                       } else if (isDiffCell) {
                         cellClass += "bg-amber-400/15 text-amber-900 dark:text-amber-200";
                       } else if (isMissing) {
@@ -335,7 +400,7 @@ export function CompareTable({
                                     setEditingCell(null);
                                   }}
                                   title="Discard edit"
-                                  className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-destructive-foreground transition-colors cursor-pointer"
+                                  className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
                                 >
                                   <X className="h-3 w-3" />
                                 </button>
@@ -435,7 +500,8 @@ export function CompareTable({
               </tr>
             )}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
     </div>
   );

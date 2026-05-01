@@ -48,9 +48,8 @@ export default async function DroneSlugPage({
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-10">
-      {/* Breadcrumb */}
       <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-6">
-        <Link href="/catalog" className="hover:text-foreground transition-colors cursor-pointer">Catalog</Link>
+        <Link href="/" className="hover:text-foreground transition-colors cursor-pointer">Catalog</Link>
         <ChevronRight className="h-3 w-3" />
         <span className="text-foreground">{droneType.name}</span>
       </nav>

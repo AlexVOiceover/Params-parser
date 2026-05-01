@@ -65,7 +65,7 @@ export default function LoginPage() {
         </div>
 
         {error && (
-          <p className="text-xs text-destructive-foreground bg-destructive/30 border border-destructive/50 rounded-md px-3 py-2">
+          <p className="text-xs text-destructive bg-destructive/15 border border-destructive/40 rounded-md px-3 py-2">
             {error}
           </p>
         )}

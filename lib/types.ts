@@ -70,3 +70,17 @@ export interface ParamVersion {
   created_at: string;
   is_latest: boolean;
 }
+
+// ── Compare view types ────────────────────────────────────────────────────
+
+export interface CompareVersion {
+  id: string;
+  label: string;
+  paramSetName: string;
+  droneName: string;
+}
+
+export interface CompareRow {
+  name: string;
+  values: Record<string, string>;
+}

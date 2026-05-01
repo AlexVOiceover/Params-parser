@@ -132,7 +132,7 @@ export function PwaBootstrap() {
       {installEvent && !installDismissed && (
         <div className="pointer-events-auto flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2 text-xs text-foreground shadow-lg">
           <Download className="h-3.5 w-3.5 text-primary shrink-0" />
-          <span>Install AIR6 Param Filter as an app</span>
+          <span>Install AIR6 Params as an app</span>
           <button
             onClick={install}
             className="rounded bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer whitespace-nowrap"

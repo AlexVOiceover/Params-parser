@@ -133,7 +133,7 @@ export function DetailPanel() {
       )}
 
       {meta.RebootRequired === "True" && (
-        <div className="rounded bg-destructive/20 px-3 py-2 text-xs font-medium text-destructive-foreground">
+        <div className="rounded bg-destructive/20 px-3 py-2 text-xs font-medium text-destructive">
           Reboot required after change
         </div>
       )}

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { createClient, createAdminClient, createSessionClient } from "@/lib/supabase/server";
@@ -5,8 +6,13 @@ import { parseParamFile } from "@/lib/param-engine";
 import { VersionTree } from "@/components/compare/version-tree";
 import { CompareTableWrapper } from "@/components/compare/compare-table-wrapper";
 import { DRONE_VERSION_ID } from "@/lib/drone-params-shared";
+import type { CompareVersion, CompareRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Compare — AIR6",
+};
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -27,18 +33,6 @@ interface DroneNode {
   name: string;
   slug: string;
   paramSets: ParamSetNode[];
-}
-
-export interface CompareVersion {
-  id: string;
-  label: string;
-  paramSetName: string;
-  droneName: string;
-}
-
-export interface CompareRow {
-  name: string;
-  values: Record<string, string>;
 }
 
 // ── Selection branch: full hierarchy for version tree ─────────────────────────
@@ -218,12 +212,12 @@ export default async function ComparePage({
     return (
       <div className="h-full flex flex-col">
         <div className="flex items-center gap-1.5 px-6 py-3 border-b border-border text-xs text-muted-foreground shrink-0">
-          <Link href="/catalog" className="hover:text-foreground transition-colors cursor-pointer">
+          <Link href="/" className="hover:text-foreground transition-colors cursor-pointer">
             Catalog
           </Link>
           <ChevronRight className="h-3 w-3" />
           <Link
-            href="/catalog/compare"
+            href="/compare"
             className="hover:text-foreground transition-colors cursor-pointer"
           >
             Compare
@@ -247,7 +241,14 @@ export default async function ComparePage({
   const tree = await fetchTree();
   return (
     <div className="h-full flex flex-col">
-      <VersionTree tree={tree} />
+      <div className="flex items-center gap-1.5 px-6 py-3 border-b border-border text-xs text-muted-foreground shrink-0">
+        <Link href="/" className="hover:text-foreground transition-colors cursor-pointer">Catalog</Link>
+        <ChevronRight className="h-3 w-3" />
+        <span className="text-foreground">Compare</span>
+      </div>
+      <div className="flex-1 overflow-hidden">
+        <VersionTree tree={tree} />
+      </div>
     </div>
   );
 }

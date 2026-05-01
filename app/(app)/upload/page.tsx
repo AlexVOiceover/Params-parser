@@ -1,8 +1,13 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createSessionClient, createAdminClient } from "@/lib/supabase/server";
 import { UploadForm } from "@/components/upload-form";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Upload — AIR6",
+};
 
 export default async function UploadPage() {
   const supabase = await createSessionClient();

@@ -1,0 +1,148 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
+import {
+  Library,
+  Settings,
+  Usb,
+  User as UserIcon,
+  LogOut,
+  LogIn,
+  ChevronDown,
+} from "lucide-react";
+import { useDroneParams } from "@/lib/drone-params-context";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { useAuth } from "@/components/auth-provider";
+import { useSerialMode } from "@/lib/use-serial-mode";
+import { WhatsNewDialog } from "@/components/whats-new-dialog";
+import { CURRENT_VERSION } from "@/lib/changelog";
+
+const navLinkClass =
+  "flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap";
+
+export function AppHeader() {
+  const { droneParams, openImportDialog } = useDroneParams();
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
+  const serialMode = useSerialMode();
+  const hasWebSerial = serialMode !== "unsupported";
+  const { user, role, signOut } = useAuth();
+
+  const isAdmin = role === "admin";
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setUserMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [userMenuOpen]);
+
+  const hasParams = droneParams !== null && droneParams.length > 0;
+
+  return (
+    <>
+    <header className="flex items-center gap-3 border-b border-border bg-toolbar px-4 py-2.5 shrink-0">
+      <Link
+        href="/"
+        className="flex items-center gap-2 text-sm font-semibold text-foreground hover:text-primary transition-colors cursor-pointer"
+      >
+        <Library className="h-4 w-4 text-primary" />
+        AIR6 Params
+      </Link>
+      <button
+        onClick={() => setWhatsNewOpen(true)}
+        title="What's new"
+        className="rounded-md border border-border bg-secondary px-1.5 py-0.5 text-[10px] font-mono font-medium text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors cursor-pointer"
+      >
+        v{CURRENT_VERSION}
+      </button>
+      <div className="flex-1" />
+
+      {hasWebSerial && (
+        <button
+          onClick={openImportDialog}
+          className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+            hasParams
+              ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/25"
+              : "border-border text-foreground hover:bg-secondary"
+          }`}
+        >
+          <Usb className="h-3.5 w-3.5" />
+          {hasParams ? `Drone (${droneParams.length} params)` : "Import from drone"}
+        </button>
+      )}
+
+      <div className="w-px h-4 bg-border shrink-0 ml-1" />
+      <ThemeToggle />
+
+      <div ref={userMenuRef} className="relative">
+        {user ? (
+          <button
+            onClick={() => setUserMenuOpen((v) => !v)}
+            className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
+            title={user.email ?? ""}
+          >
+            <UserIcon className="h-3.5 w-3.5" />
+            <span className="max-w-32 truncate">{user.email}</span>
+            <ChevronDown
+              className={`h-3 w-3 transition-transform ${userMenuOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+        ) : (
+          <Link href="/login" className={navLinkClass}>
+            <LogIn className="h-3.5 w-3.5" />
+            Sign in
+          </Link>
+        )}
+
+        {user && userMenuOpen && (
+          <div className="absolute right-0 top-full mt-1 w-56 rounded-md border border-border bg-popover text-popover-foreground shadow-lg z-50 overflow-hidden">
+            <div className="px-3 py-2 border-b border-border">
+              <div className="text-xs font-medium truncate">{user.email}</div>
+              {role && (
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground mt-0.5">
+                  {role}
+                </div>
+              )}
+            </div>
+            {isAdmin && (
+              <Link
+                href="/admin"
+                onClick={() => setUserMenuOpen(false)}
+                className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <Settings className="h-3.5 w-3.5" />
+                Admin
+              </Link>
+            )}
+            <button
+              onClick={() => {
+                setUserMenuOpen(false);
+                signOut();
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap border-t border-border"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Sign out
+            </button>
+          </div>
+        )}
+      </div>
+    </header>
+    {whatsNewOpen && <WhatsNewDialog onClose={() => setWhatsNewOpen(false)} />}
+    </>
+  );
+}
