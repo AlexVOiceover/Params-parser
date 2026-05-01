@@ -2,27 +2,27 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { createClient, createSessionClient } from "@/lib/supabase/server";
-import { ParamSetList } from "@/components/param-set-list";
-import type { DroneType, ParamSet } from "@/lib/types";
+import { VariantList } from "@/components/variant-list";
+import type { Family, Variant } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-async function getDroneType(slug: string): Promise<DroneType | null> {
+async function getFamily(slug: string): Promise<Family | null> {
   const { data } = await createClient()
-    .from("drone_types")
+    .from("families")
     .select("id, slug, name, description")
     .eq("slug", slug)
     .single();
   return data ?? null;
 }
 
-async function getParamSets(droneTypeId: string): Promise<ParamSet[]> {
+async function getVariants(familyId: string): Promise<Variant[]> {
   const { data } = await createClient()
-    .from("param_sets")
-    .select("id, name, description, created_at, updated_at, created_by, drone_type_id, param_versions(version_label, created_at)")
-    .eq("drone_type_id", droneTypeId)
+    .from("variants")
+    .select("id, name, description, created_at, updated_at, created_by, family_id, param_versions(version_label, created_at)")
+    .eq("family_id", familyId)
     .order("updated_at", { ascending: false });
-  return (data as unknown as ParamSet[]) ?? [];
+  return (data as unknown as Variant[]) ?? [];
 }
 
 async function getIsAdmin(): Promise<boolean> {
@@ -35,42 +35,42 @@ async function getIsAdmin(): Promise<boolean> {
   } catch { return false; }
 }
 
-export default async function DroneSlugPage({
+export default async function FamilySlugPage({
   params,
 }: {
-  params: Promise<{ droneSlug: string }>;
+  params: Promise<{ familySlug: string }>;
 }) {
-  const { droneSlug } = await params;
-  const [droneType, isAdmin] = await Promise.all([getDroneType(droneSlug), getIsAdmin()]);
-  if (!droneType) notFound();
+  const { familySlug } = await params;
+  const [family, isAdmin] = await Promise.all([getFamily(familySlug), getIsAdmin()]);
+  if (!family) notFound();
 
-  const paramSets = await getParamSets(droneType.id);
+  const variants = await getVariants(family.id);
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-10">
       <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-6">
         <Link href="/" className="hover:text-foreground transition-colors cursor-pointer">Catalog</Link>
         <ChevronRight className="h-3 w-3" />
-        <span className="text-foreground">{droneType.name}</span>
+        <span className="text-foreground">{family.name}</span>
       </nav>
 
-      <h1 className="text-xl font-semibold text-foreground mb-1">{droneType.name}</h1>
-      {droneType.description && (
-        <p className="text-sm text-muted-foreground mb-2">{droneType.description}</p>
+      <h1 className="text-xl font-semibold text-foreground mb-1">{family.name}</h1>
+      {family.description && (
+        <p className="text-sm text-muted-foreground mb-2">{family.description}</p>
       )}
 
       <div className="flex items-center justify-between mb-3 mt-8">
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-          Param sets{paramSets.length > 0 ? ` (${paramSets.length})` : ""}
+          Variants{variants.length > 0 ? ` (${variants.length})` : ""}
         </h2>
       </div>
 
-      {paramSets.length === 0 && !isAdmin ? (
+      {variants.length === 0 && !isAdmin ? (
         <div className="rounded-lg border border-border bg-card px-6 py-10 text-center">
-          <p className="text-sm text-muted-foreground">No param sets for this drone type yet.</p>
+          <p className="text-sm text-muted-foreground">No variants for this family yet.</p>
         </div>
       ) : (
-        <ParamSetList droneSlug={droneSlug} droneTypeId={droneType.id} paramSets={paramSets} isAdmin={isAdmin} />
+        <VariantList familySlug={familySlug} familyId={family.id} variants={variants} isAdmin={isAdmin} />
       )}
     </div>
   );

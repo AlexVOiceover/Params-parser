@@ -3,34 +3,34 @@ import { notFound } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { createClient, createSessionClient } from "@/lib/supabase/server";
 import { ParamVersionList } from "@/components/param-version-list";
-import type { DroneType, ParamSet, ParamVersion } from "@/lib/types";
+import type { Family, Variant, ParamVersion } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-async function getData(droneSlug: string, paramSetId: string) {
+async function getData(familySlug: string, variantId: string) {
   const supabase = createClient();
 
-  const [{ data: droneType }, { data: paramSet }, { data: versions }] = await Promise.all([
+  const [{ data: family }, { data: variant }, { data: versions }] = await Promise.all([
     supabase
-      .from("drone_types")
+      .from("families")
       .select("id, slug, name, description")
-      .eq("slug", droneSlug)
+      .eq("slug", familySlug)
       .single(),
     supabase
-      .from("param_sets")
-      .select("id, name, description, created_at, updated_at, created_by, drone_type_id")
-      .eq("id", paramSetId)
+      .from("variants")
+      .select("id, name, description, created_at, updated_at, created_by, family_id")
+      .eq("id", variantId)
       .maybeSingle(),
     supabase
       .from("param_versions")
       .select("id, param_set_id, version_label, storage_path, changelog, created_by, created_at, is_latest")
-      .eq("param_set_id", paramSetId)
+      .eq("param_set_id", variantId)
       .order("created_at", { ascending: false }),
   ]);
 
   return {
-    droneType: droneType as DroneType | null,
-    paramSet: paramSet as ParamSet | null,
+    family: family as Family | null,
+    variant: variant as Variant | null,
     versions: (versions as ParamVersion[]) ?? [],
   };
 }
@@ -45,32 +45,32 @@ async function getIsAdmin(): Promise<boolean> {
   } catch { return false; }
 }
 
-export default async function ParamSetPage({
+export default async function VariantPage({
   params,
 }: {
-  params: Promise<{ droneSlug: string; paramSetId: string }>;
+  params: Promise<{ familySlug: string; variantId: string }>;
 }) {
-  const { droneSlug, paramSetId } = await params;
+  const { familySlug, variantId } = await params;
   const isAdmin = await getIsAdmin();
-  const { droneType, paramSet, versions } = await getData(droneSlug, paramSetId);
+  const { family, variant, versions } = await getData(familySlug, variantId);
 
-  if (!droneType || !paramSet) notFound();
+  if (!family || !variant) notFound();
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-10">
       <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-6 flex-wrap">
         <Link href="/" className="hover:text-foreground transition-colors cursor-pointer">Catalog</Link>
         <ChevronRight className="h-3 w-3" />
-        <Link href={`/${droneSlug}`} className="hover:text-foreground transition-colors cursor-pointer">{droneType.name}</Link>
+        <Link href={`/${familySlug}`} className="hover:text-foreground transition-colors cursor-pointer">{family.name}</Link>
         <ChevronRight className="h-3 w-3" />
-        <span className="text-foreground">{paramSet.name}</span>
+        <span className="text-foreground">{variant.name}</span>
       </nav>
 
       <div className="flex items-start justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-xl font-semibold text-foreground mb-1">{paramSet.name}</h1>
-          {paramSet.description && (
-            <p className="text-sm text-muted-foreground">{paramSet.description}</p>
+          <h1 className="text-xl font-semibold text-foreground mb-1">{variant.name}</h1>
+          {variant.description && (
+            <p className="text-sm text-muted-foreground">{variant.description}</p>
           )}
         </div>
       </div>
@@ -83,12 +83,12 @@ export default async function ParamSetPage({
 
       <ParamVersionList
         versions={versions}
-        droneSlug={droneSlug}
-        droneTypeId={(droneType as DroneType & { id: string }).id}
-        paramSetId={paramSetId}
+        familySlug={familySlug}
+        familyId={family.id}
+        variantId={variantId}
         isAdmin={isAdmin}
-        droneName={droneType.name}
-        paramSetName={paramSet.name}
+        familyName={family.name}
+        variantName={variant.name}
       />
     </div>
   );

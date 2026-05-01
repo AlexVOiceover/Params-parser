@@ -38,25 +38,25 @@ export async function POST(request: NextRequest) {
         controller.enqueue(msg("Reading file…"));
         const formData = await request.formData();
         const mode = (formData.get("mode") as string | null) ?? "existing";
-        const droneTypeId = formData.get("droneTypeId") as string;
-        let paramSetId = formData.get("paramSetId") as string;
-        const newParamSetName = formData.get("name") as string | null;
+        const familyId = formData.get("familyId") as string;
+        let variantId = formData.get("variantId") as string;
+        const newVariantName = formData.get("name") as string | null;
         const versionLabel = formData.get("versionLabel") as string;
         const changelog = (formData.get("changelog") as string | null) || null;
         const file = formData.get("file") as File | null;
 
-        if (!file || !versionLabel || !droneTypeId) {
+        if (!file || !versionLabel || !familyId) {
           controller.enqueue(msg("Missing required fields", true));
           controller.close();
           return;
         }
-        if (mode === "new" && !newParamSetName) {
-          controller.enqueue(msg("Param set name is required", true));
+        if (mode === "new" && !newVariantName) {
+          controller.enqueue(msg("Variant name is required", true));
           controller.close();
           return;
         }
-        if (mode !== "new" && !paramSetId) {
-          controller.enqueue(msg("Param set id is required", true));
+        if (mode !== "new" && !variantId) {
+          controller.enqueue(msg("Variant id is required", true));
           controller.close();
           return;
         }
@@ -71,24 +71,24 @@ export async function POST(request: NextRequest) {
 
         const admin = createAdminClient();
 
-        // 3b. Create new param set if needed
+        // 3b. Create new variant if needed
         if (mode === "new") {
-          controller.enqueue(msg(`Creating param set "${newParamSetName}"…`));
-          const { data: newSet, error: setError } = await admin.from("param_sets").insert({
-            name: newParamSetName,
-            drone_type_id: droneTypeId,
+          controller.enqueue(msg(`Creating variant "${newVariantName}"…`));
+          const { data: newVariant, error: variantError } = await admin.from("variants").insert({
+            name: newVariantName,
+            family_id: familyId,
             created_by: user.id,
           }).select("id").single();
-          if (setError || !newSet) {
-            controller.enqueue(msg(`Failed to create param set: ${setError?.message ?? "unknown error"}`, true));
+          if (variantError || !newVariant) {
+            controller.enqueue(msg(`Failed to create variant: ${variantError?.message ?? "unknown error"}`, true));
             controller.close();
             return;
           }
-          paramSetId = newSet.id;
+          variantId = newVariant.id;
         }
 
         // 4. Upload file to storage
-        const storagePath = `${paramSetId}/${versionLabel}.param`;
+        const storagePath = `${variantId}/${versionLabel}.param`;
         controller.enqueue(msg(`Uploading to storage (${storagePath})…`));
         const { error: uploadError } = await admin.storage
           .from("param-files")
@@ -103,12 +103,12 @@ export async function POST(request: NextRequest) {
 
         // 5. Mark previous versions as not latest
         controller.enqueue(msg("Updating version history…"));
-        await admin.from("param_versions").update({ is_latest: false }).eq("param_set_id", paramSetId);
+        await admin.from("param_versions").update({ is_latest: false }).eq("param_set_id", variantId);
 
         // 6. Insert new version record
         controller.enqueue(msg(`Creating version record (v${versionLabel})…`));
         const { data: pv, error: pvError } = await admin.from("param_versions").insert({
-          param_set_id: paramSetId,
+          param_set_id: variantId,
           version_label: versionLabel,
           storage_path: storagePath,
           changelog,
@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
         }
 
         controller.enqueue(msg(`Done — v${versionLabel} uploaded with ${paramValues.length} params`));
-        controller.enqueue(encoder.encode(JSON.stringify({ done: true, paramSetId }) + "\n"));
+        controller.enqueue(encoder.encode(JSON.stringify({ done: true, variantId }) + "\n"));
       } catch (e) {
         const msg2 = (e instanceof Error ? e.message : "Unexpected error");
         controller.enqueue(encoder.encode(JSON.stringify({ text: msg2, error: true }) + "\n"));

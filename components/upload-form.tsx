@@ -5,12 +5,12 @@ import { useRouter } from "next/navigation";
 import { Upload, CheckCircle, ChevronRight } from "lucide-react";
 import Link from "next/link";
 
-type DroneType = { id: string; name: string };
-type ParamSetOption = { id: string; name: string; drone_type_id: string | null };
+type Family = { id: string; name: string };
+type VariantOption = { id: string; name: string; family_id: string | null };
 
 interface Props {
-  droneTypes: DroneType[];
-  paramSets: ParamSetOption[];
+  families: Family[];
+  variants: VariantOption[];
 }
 
 const inputClass =
@@ -19,18 +19,18 @@ const selectClass = inputClass + " cursor-pointer";
 const labelClass = "flex flex-col gap-1.5";
 const labelTextClass = "text-xs font-medium text-muted-foreground";
 
-export function UploadForm({ droneTypes, paramSets }: Props) {
+export function UploadForm({ families, variants }: Props) {
   const router = useRouter();
-  const [droneTypeId, setDroneTypeId] = useState("");
-  const [paramSetId, setParamSetId] = useState("");
+  const [familyId, setFamilyId] = useState("");
+  const [variantId, setVariantId] = useState("");
   const [versionLabel, setVersionLabel] = useState("");
   const [changelog, setChangelog] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ paramSetId: string } | null>(null);
+  const [done, setDone] = useState<{ variantId: string } | null>(null);
 
-  const filteredParamSets = paramSets.filter((ps) => ps.drone_type_id === droneTypeId);
+  const filteredVariants = variants.filter((v) => v.family_id === familyId);
 
   function reset() {
     setVersionLabel("");
@@ -51,8 +51,8 @@ export function UploadForm({ droneTypes, paramSets }: Props) {
     setError(null);
 
     const fd = new FormData();
-    fd.set("droneTypeId", droneTypeId);
-    fd.set("paramSetId", paramSetId);
+    fd.set("familyId", familyId);
+    fd.set("variantId", variantId);
     fd.set("versionLabel", versionLabel);
     if (changelog) fd.set("changelog", changelog);
     fd.set("file", file);
@@ -66,7 +66,7 @@ export function UploadForm({ droneTypes, paramSets }: Props) {
       return;
     }
 
-    setDone({ paramSetId: json.paramSetId as string });
+    setDone({ variantId: json.variantId as string });
     setSubmitting(false);
     router.refresh();
   }
@@ -77,7 +77,7 @@ export function UploadForm({ droneTypes, paramSets }: Props) {
         <CheckCircle className="h-10 w-10 text-emerald-400 mx-auto mb-4" />
         <h2 className="text-lg font-semibold text-foreground mb-2">Upload complete</h2>
         <p className="text-sm text-muted-foreground mb-6">
-          The param set has been saved to the catalog.
+          The variant has been saved to the catalog.
         </p>
         <div className="flex gap-3 justify-center">
           <button
@@ -107,39 +107,39 @@ export function UploadForm({ droneTypes, paramSets }: Props) {
       <h1 className="text-xl font-semibold text-foreground mb-6">Upload param file</h1>
 
       <div className="flex flex-col gap-4">
-        {/* Drone type */}
+        {/* Family */}
         <label className={labelClass}>
           <span className={labelTextClass}>
-            Drone type <span className="text-destructive">*</span>
+            Family <span className="text-destructive">*</span>
           </span>
           <select
             required
-            value={droneTypeId}
-            onChange={(e) => { setDroneTypeId(e.target.value); setParamSetId(""); }}
+            value={familyId}
+            onChange={(e) => { setFamilyId(e.target.value); setVariantId(""); }}
             className={selectClass}
           >
-            <option value="">Select drone type…</option>
-            {droneTypes.map((dt) => (
-              <option key={dt.id} value={dt.id}>{dt.name}</option>
+            <option value="">Select family…</option>
+            {families.map((f) => (
+              <option key={f.id} value={f.id}>{f.name}</option>
             ))}
           </select>
         </label>
 
-        {/* Param set */}
-        {droneTypeId && (
+        {/* Variant */}
+        {familyId && (
           <label className={labelClass}>
             <span className={labelTextClass}>
-              Param set <span className="text-destructive">*</span>
+              Variant <span className="text-destructive">*</span>
             </span>
             <select
               required
-              value={paramSetId}
-              onChange={(e) => setParamSetId(e.target.value)}
+              value={variantId}
+              onChange={(e) => setVariantId(e.target.value)}
               className={selectClass}
             >
-              <option value="">Select param set…</option>
-              {filteredParamSets.map((ps) => (
-                <option key={ps.id} value={ps.id}>{ps.name}</option>
+              <option value="">Select variant…</option>
+              {filteredVariants.map((v) => (
+                <option key={v.id} value={v.id}>{v.name}</option>
               ))}
             </select>
           </label>

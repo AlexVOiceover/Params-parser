@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Trash2, Pencil, Plus, X, AlertTriangle, Check } from "lucide-react";
 
-interface ParamSetRow {
+interface VariantRow {
   id: string;
   name: string;
   description: string | null;
@@ -14,9 +14,9 @@ interface ParamSetRow {
 }
 
 interface Props {
-  droneSlug: string;
-  droneTypeId: string;
-  paramSets: ParamSetRow[];
+  familySlug: string;
+  familyId: string;
+  variants: VariantRow[];
   isAdmin: boolean;
 }
 
@@ -24,7 +24,7 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-export function ParamSetList({ droneSlug, droneTypeId, paramSets, isAdmin }: Props) {
+export function VariantList({ familySlug, familyId, variants, isAdmin }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
 
@@ -47,8 +47,8 @@ export function ParamSetList({ droneSlug, droneTypeId, paramSets, isAdmin }: Pro
   const [submitting, setSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
-  const confirmTarget = paramSets.find((ps) => ps.id === confirmId);
-  const editTarget = paramSets.find((ps) => ps.id === editId);
+  const confirmTarget = variants.find((ps) => ps.id === confirmId);
+  const editTarget = variants.find((ps) => ps.id === editId);
 
   function resetAdd() {
     setShowAdd(false);
@@ -62,10 +62,10 @@ export function ParamSetList({ droneSlug, droneTypeId, paramSets, isAdmin }: Pro
     if (!newName.trim()) return;
     setSubmitting(true);
     setCreateError(null);
-    const res = await fetch("/api/admin/param-sets", {
+    const res = await fetch("/api/admin/variants", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ droneTypeId, name: newName.trim(), description: newDescription.trim() || null }),
+      body: JSON.stringify({ familyId, name: newName.trim(), description: newDescription.trim() || null }),
     });
     setSubmitting(false);
     if (res.ok) {
@@ -77,7 +77,7 @@ export function ParamSetList({ droneSlug, droneTypeId, paramSets, isAdmin }: Pro
     }
   }
 
-  function openEdit(ps: ParamSetRow) {
+  function openEdit(ps: VariantRow) {
     setEditError(null);
     setEditName(ps.name);
     setEditDescription(ps.description ?? "");
@@ -88,7 +88,7 @@ export function ParamSetList({ droneSlug, droneTypeId, paramSets, isAdmin }: Pro
     if (!confirmId) return;
     setDeleting(true);
     setDeleteError(null);
-    const res = await fetch(`/api/admin/param-sets/${confirmId}`, { method: "DELETE" });
+    const res = await fetch(`/api/admin/variants/${confirmId}`, { method: "DELETE" });
     if (res.ok) {
       setConfirmId(null);
       setDeleting(false);
@@ -104,7 +104,7 @@ export function ParamSetList({ droneSlug, droneTypeId, paramSets, isAdmin }: Pro
     if (!editId) return;
     setSaving(true);
     setEditError(null);
-    const res = await fetch(`/api/admin/param-sets/${editId}`, {
+    const res = await fetch(`/api/admin/variants/${editId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: editName, description: editDescription }),
@@ -123,10 +123,10 @@ export function ParamSetList({ droneSlug, droneTypeId, paramSets, isAdmin }: Pro
   return (
     <>
       <div className="flex flex-col gap-3">
-        {paramSets.map((ps) => (
+        {variants.map((ps) => (
           <div key={ps.id} className="relative group/row">
             <Link
-              href={`/${droneSlug}/${ps.id}`}
+              href={`/${familySlug}/${ps.id}`}
               className={`group flex items-start justify-between gap-4 rounded-lg border border-border bg-card px-5 py-4 hover:border-primary/50 transition-colors cursor-pointer${isAdmin ? " pr-20" : ""}`}
             >
               <div className="flex flex-col gap-1 min-w-0">
@@ -158,7 +158,7 @@ export function ParamSetList({ droneSlug, droneTypeId, paramSets, isAdmin }: Pro
                 </button>
                 <button
                   onClick={() => { setDeleteError(null); setConfirmId(ps.id); }}
-                  title={`Delete param set: ${ps.name}`}
+                  title={`Delete variant: ${ps.name}`}
                   className="absolute top-1/2 -translate-y-1/2 right-3 rounded p-1.5 opacity-0 group-hover/row:opacity-100 bg-card border border-border text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-all cursor-pointer"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -170,11 +170,11 @@ export function ParamSetList({ droneSlug, droneTypeId, paramSets, isAdmin }: Pro
 
         {isAdmin && !showAdd && (
           <button
-            onClick={() => { setShowAdd(true); if (paramSets.length === 0) setNewName("Base"); }}
+            onClick={() => { setShowAdd(true); if (variants.length === 0) setNewName("Base"); }}
             className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-card/30 px-5 py-4 text-sm text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors cursor-pointer"
           >
             <Plus className="h-4 w-4" />
-            Add param set
+            Add variant
           </button>
         )}
 
@@ -184,7 +184,7 @@ export function ParamSetList({ droneSlug, droneTypeId, paramSets, isAdmin }: Pro
             className="flex flex-col gap-3 rounded-lg border border-primary/40 bg-card px-5 py-4"
           >
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-foreground">New param set</span>
+              <span className="text-sm font-medium text-foreground">New variant</span>
               <button
                 type="button"
                 onClick={resetAdd}
@@ -235,7 +235,7 @@ export function ParamSetList({ droneSlug, droneTypeId, paramSets, isAdmin }: Pro
             <div className="flex items-center justify-between border-b border-border bg-toolbar px-5 py-3.5">
               <div className="flex items-center gap-2">
                 <Pencil className="h-4 w-4 text-primary" />
-                <h2 className="text-sm font-bold text-foreground">Edit param set</h2>
+                <h2 className="text-sm font-bold text-foreground">Edit variant</h2>
               </div>
               <button
                 onClick={() => setEditId(null)}
@@ -302,7 +302,7 @@ export function ParamSetList({ droneSlug, droneTypeId, paramSets, isAdmin }: Pro
             <div className="flex items-center justify-between border-b border-border bg-toolbar px-5 py-3.5">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-destructive" />
-                <h2 className="text-sm font-bold text-foreground">Delete param set</h2>
+                <h2 className="text-sm font-bold text-foreground">Delete variant</h2>
               </div>
               <button
                 onClick={() => setConfirmId(null)}
@@ -318,7 +318,7 @@ export function ParamSetList({ droneSlug, droneTypeId, paramSets, isAdmin }: Pro
                 Delete <span className="font-semibold">{confirmTarget.name}</span>?
               </p>
               <p className="text-xs text-muted-foreground">
-                All versions and uploaded files in this param set will be permanently removed. This cannot be undone.
+                All versions and uploaded files in this variant will be permanently removed. This cannot be undone.
               </p>
               {deleteError && (
                 <p className="text-xs text-destructive bg-destructive/15 border border-destructive/40 rounded-md px-3 py-2">

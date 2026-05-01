@@ -43,18 +43,18 @@ export type ParamNotes = Record<string, string>;
 
 // ── Catalog types (Supabase) ──────────────────────────────────────────────
 
-export interface DroneType {
+export interface Family {
   id: string;
   slug: string;
   name: string;
   description: string | null;
 }
 
-export interface ParamSet {
+export interface Variant {
   id: string;
   name: string;
   description: string | null;
-  drone_type_id: string | null;
+  family_id: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -76,8 +76,8 @@ export interface ParamVersion {
 export interface CompareVersion {
   id: string;
   label: string;
-  paramSetName: string;
-  droneName: string;
+  variantName: string;
+  familyName: string;
 }
 
 export interface CompareRow {

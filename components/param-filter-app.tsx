@@ -62,7 +62,7 @@ function FlyingRowsOverlay({ rows }: { rows: FlyingRow[] }) {
   );
 }
 
-export function ParamFilterApp({ loadUrl, catalogSource }: { loadUrl?: string; catalogSource?: { drone: string; set: string; version: string } }) {
+export function ParamFilterApp({ loadUrl, catalogSource }: { loadUrl?: string; catalogSource?: { family: string; variant: string; version: string } }) {
   const {
     fileName,
     protectedParams,
@@ -102,7 +102,7 @@ export function ParamFilterApp({ loadUrl, catalogSource }: { loadUrl?: string; c
   }, [user?.id, role]);
 
   const [appMode, setAppMode] = useState<"idle" | "edit" | "create">("idle");
-  const [activeCatalogSource, setActiveCatalogSource] = useState<{ drone: string; set: string; version: string } | undefined>(undefined);
+  const [activeCatalogSource, setActiveCatalogSource] = useState<{ family: string; variant: string; version: string } | undefined>(undefined);
 
   useEffect(() => {
     if (!loadUrl) return;
@@ -404,9 +404,9 @@ const handleSave = useCallback(() => {
             <div className="flex items-center gap-1.5 rounded-md bg-primary/15 border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary whitespace-nowrap">
               <Library className="h-3.5 w-3.5" />
               <span className="truncate max-w-52">
-                {activeCatalogSource.drone}
+                {activeCatalogSource.family}
                 <span className="opacity-60"> / </span>
-                {activeCatalogSource.set}
+                {activeCatalogSource.variant}
                 <span className="opacity-60"> / </span>
                 <span className="font-mono">{activeCatalogSource.version}</span>
               </span>
@@ -452,12 +452,14 @@ const handleSave = useCallback(() => {
               : `Load ${droneParamsCount} drone params into the filter`
           }
           className={cn(
-            "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all cursor-pointer whitespace-nowrap",
+            "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all cursor-pointer whitespace-nowrap border",
             fileSource === "drone"
-              ? "bg-emerald-600 hover:bg-emerald-500 text-white"
-              : "bg-secondary border border-border text-foreground hover:border-primary/50 hover:text-primary",
+              ? "bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600"
+              : droneParamsCount > 0
+              ? "bg-emerald-500/15 border-emerald-500/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/25"
+              : "bg-secondary border-border text-foreground",
             fileSource && fileSource !== "drone" && "opacity-40 hover:opacity-90",
-            droneParamsCount === 0 && "opacity-40 cursor-not-allowed hover:opacity-40 hover:text-foreground hover:border-border"
+            droneParamsCount === 0 && "opacity-40 cursor-not-allowed hover:bg-secondary"
           )}
         >
           <Usb className="h-3.5 w-3.5" />
@@ -470,6 +472,21 @@ const handleSave = useCallback(() => {
         <div className="flex-1" />
 
         <ProtectionListSelect onEditLists={() => setEditorOpen(true)} />
+        <div className="w-px h-4 bg-border shrink-0" />
+        <button
+          onClick={handleSave}
+          disabled={remainingParams.length === 0}
+          title={remainingParams.length === 0 ? "Nothing to export" : `Export ${remainingParams.length} params`}
+          className={cn(
+            "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors whitespace-nowrap",
+            "bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
+          )}
+        >
+          <Download className="h-3.5 w-3.5" />
+          Export {remainingParams.length > 0 && (
+            <span className="font-mono">({remainingParams.length})</span>
+          )}
+        </button>
       </header>
 
       {/* Main content */}
@@ -594,22 +611,9 @@ const handleSave = useCallback(() => {
           <ConsolePanel />
         </div>
         <div className="flex items-center justify-between border-t border-border bg-toolbar px-4 py-1.5">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleSave}
-              disabled={remainingParams.length === 0}
-              className={cn(
-                "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors",
-                "bg-primary hover:bg-primary/90 disabled:opacity-30 disabled:cursor-not-allowed"
-              )}
-            >
-              <Download className="h-3.5 w-3.5" />
-              {appMode === "create" ? "Export .param" : "Export .param"}
-            </button>
-            <span className="text-xs text-muted-foreground">
-              {statusMessage}
-            </span>
-          </div>
+          <span className="text-xs text-muted-foreground">
+            {statusMessage}
+          </span>
           <span className="text-[10px] text-muted-foreground">
             Cache: {defsLoading ? "loading..." : cacheAge}
           </span>

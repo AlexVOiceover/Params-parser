@@ -25,8 +25,8 @@ export function CompareTableWrapper({ versions, rows, hasDroneVersion }: Props) 
     const droneVersion: CompareVersion = {
       id: DRONE_VERSION_ID,
       label: "live",
-      paramSetName: "Connected drone",
-      droneName: "USB",
+      variantName: "Connected drone",
+      familyName: "USB",
     };
 
     const allVersions = [droneVersion, ...versions];
