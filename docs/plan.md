@@ -41,8 +41,8 @@
 8. [ ] **Final pass**
    - [x] 8.1 Run `node_modules/.bin/tsc --noEmit` and fix any type errors
    - [x] 8.2 Grep for residual `drone_types`, `drone_type`, `paramSets`, `ParamSet`, `DroneType` outside `lib/mavlink-serial.ts` (MAVLink protocol use is intentional); fix or note false positives
-   - [ ] 8.3 Manually smoke-test locally: catalog home → family detail → variant detail → versions → upload flow → compare → filter Open-in-Filter deep link → admin dashboard
-   - [ ] 8.4 Commit per logical chunk on the feature branch (migration, types, api, routes, components, copy/cleanup); push, open PR, watch Vercel preview build
+   - [ ] 8.3 Smoke-test preview deploy: catalog home → family detail → variant detail → versions → upload flow → compare → filter Open-in-Filter deep link → admin dashboard
+   - [x] 8.4 Commit per logical chunk on the feature branch (migration, types, api, routes, components, copy/cleanup); push, open PR, watch Vercel preview build
 
 ## Notes
 
