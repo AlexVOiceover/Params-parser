@@ -6,6 +6,13 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.2.0",
+    date: "2026-05-01",
+    items: [
+      "Renamed \"Drone types\" to \"Families\" and \"Param sets\" to \"Variants\" throughout the catalog",
+    ],
+  },
+  {
     version: "0.1.0",
     date: "2026-05-01",
     items: [
