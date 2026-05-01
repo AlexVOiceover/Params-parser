@@ -60,9 +60,19 @@ export interface Variant {
   updated_at: string;
 }
 
+export interface ClientSet {
+  id: string;
+  variant_id: string;
+  name: string;
+  description: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ParamVersion {
   id: string;
-  param_set_id: string;
+  client_set_id: string;
   version_label: string;
   storage_path: string;
   changelog: string | null;
@@ -76,6 +86,7 @@ export interface ParamVersion {
 export interface CompareVersion {
   id: string;
   label: string;
+  clientName: string;
   variantName: string;
   familyName: string;
 }

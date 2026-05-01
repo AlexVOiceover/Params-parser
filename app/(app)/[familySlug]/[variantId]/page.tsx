@@ -2,15 +2,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { createClient, createSessionClient } from "@/lib/supabase/server";
-import { ParamVersionList } from "@/components/param-version-list";
-import type { Family, Variant, ParamVersion } from "@/lib/types";
+import { ClientSetList } from "@/components/client-set-list";
+import type { Family, Variant, ClientSet } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 async function getData(familySlug: string, variantId: string) {
   const supabase = createClient();
 
-  const [{ data: family }, { data: variant }, { data: versions }] = await Promise.all([
+  const [{ data: family }, { data: variant }, { data: clientSets }] = await Promise.all([
     supabase
       .from("families")
       .select("id, slug, name, description")
@@ -22,27 +22,27 @@ async function getData(familySlug: string, variantId: string) {
       .eq("id", variantId)
       .maybeSingle(),
     supabase
-      .from("param_versions")
-      .select("id, param_set_id, version_label, storage_path, changelog, created_by, created_at, is_latest")
-      .eq("param_set_id", variantId)
-      .order("created_at", { ascending: false }),
+      .from("client_sets")
+      .select("id, name, description, created_at, updated_at, created_by, variant_id, param_versions(version_label, created_at)")
+      .eq("variant_id", variantId)
+      .order("updated_at", { ascending: false }),
   ]);
 
   return {
     family: family as Family | null,
     variant: variant as Variant | null,
-    versions: (versions as ParamVersion[]) ?? [],
+    clientSets: (clientSets as unknown as (ClientSet & { param_versions: { version_label: string; created_at: string }[] })[]) ?? [],
   };
 }
 
-async function getIsAdmin(): Promise<boolean> {
+async function getRole(): Promise<string | null> {
   try {
     const supabase = await createSessionClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return false;
+    if (!user) return null;
     const { data } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-    return data?.role === "admin";
-  } catch { return false; }
+    return data?.role ?? null;
+  } catch { return null; }
 }
 
 export default async function VariantPage({
@@ -51,8 +51,10 @@ export default async function VariantPage({
   params: Promise<{ familySlug: string; variantId: string }>;
 }) {
   const { familySlug, variantId } = await params;
-  const isAdmin = await getIsAdmin();
-  const { family, variant, versions } = await getData(familySlug, variantId);
+  const [role, data] = await Promise.all([getRole(), getData(familySlug, variantId)]);
+  const isAdmin = role === "admin";
+  const canCreate = role === "admin" || role === "contributor";
+  const { family, variant, clientSets } = data;
 
   if (!family || !variant) notFound();
 
@@ -77,19 +79,23 @@ export default async function VariantPage({
 
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-          Versions{versions.length > 0 ? ` (${versions.length})` : ""}
+          Client sets{clientSets.length > 0 ? ` (${clientSets.length})` : ""}
         </h2>
       </div>
 
-      <ParamVersionList
-        versions={versions}
-        familySlug={familySlug}
-        familyId={family.id}
-        variantId={variantId}
-        isAdmin={isAdmin}
-        familyName={family.name}
-        variantName={variant.name}
-      />
+      {clientSets.length === 0 && !canCreate ? (
+        <div className="rounded-lg border border-border bg-card px-6 py-10 text-center">
+          <p className="text-sm text-muted-foreground">No client sets for this variant yet.</p>
+        </div>
+      ) : (
+        <ClientSetList
+          familySlug={familySlug}
+          variantId={variantId}
+          clientSets={clientSets}
+          isAdmin={isAdmin}
+          canCreate={canCreate}
+        />
+      )}
     </div>
   );
 }

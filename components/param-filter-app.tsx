@@ -62,7 +62,7 @@ function FlyingRowsOverlay({ rows }: { rows: FlyingRow[] }) {
   );
 }
 
-export function ParamFilterApp({ loadUrl, catalogSource }: { loadUrl?: string; catalogSource?: { family: string; variant: string; version: string } }) {
+export function ParamFilterApp({ loadUrl, catalogSource }: { loadUrl?: string; catalogSource?: { family: string; variant: string; client: string; version: string } }) {
   const {
     fileName,
     protectedParams,
@@ -102,7 +102,7 @@ export function ParamFilterApp({ loadUrl, catalogSource }: { loadUrl?: string; c
   }, [user?.id, role]);
 
   const [appMode, setAppMode] = useState<"idle" | "edit" | "create">("idle");
-  const [activeCatalogSource, setActiveCatalogSource] = useState<{ family: string; variant: string; version: string } | undefined>(undefined);
+  const [activeCatalogSource, setActiveCatalogSource] = useState<{ family: string; variant: string; client: string; version: string } | undefined>(undefined);
 
   useEffect(() => {
     if (!loadUrl) return;
@@ -403,10 +403,12 @@ const handleSave = useCallback(() => {
             <div className="w-px h-4 bg-border shrink-0" />
             <div className="flex items-center gap-1.5 rounded-md bg-primary/15 border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary whitespace-nowrap">
               <Library className="h-3.5 w-3.5" />
-              <span className="truncate max-w-52">
+              <span className="truncate max-w-72">
                 {activeCatalogSource.family}
                 <span className="opacity-60"> / </span>
                 {activeCatalogSource.variant}
+                <span className="opacity-60"> / </span>
+                {activeCatalogSource.client}
                 <span className="opacity-60"> / </span>
                 <span className="font-mono">{activeCatalogSource.version}</span>
               </span>

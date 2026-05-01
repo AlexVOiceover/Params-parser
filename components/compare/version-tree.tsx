@@ -19,10 +19,16 @@ interface VersionNode {
   isLatest: boolean;
 }
 
-interface VariantNode {
+interface ClientSetNode {
   id: string;
   name: string;
   versions: VersionNode[];
+}
+
+interface VariantNode {
+  id: string;
+  name: string;
+  clientSets: ClientSetNode[];
 }
 
 interface FamilyNode {
@@ -43,6 +49,7 @@ export function VersionTree({ tree }: Props) {
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [collapsedFamilies, setCollapsedFamilies] = useState<Set<string>>(new Set());
   const [collapsedVariants, setCollapsedVariants] = useState<Set<string>>(new Set());
+  const [collapsedClientSets, setCollapsedClientSets] = useState<Set<string>>(new Set());
 
   function toggleCheck(id: string) {
     setChecked((prev) => {
@@ -64,6 +71,15 @@ export function VersionTree({ tree }: Props) {
 
   function toggleVariant(id: string) {
     setCollapsedVariants((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleClientSet(id: string) {
+    setCollapsedClientSets((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -161,34 +177,60 @@ export function VersionTree({ tree }: Props) {
                             <FolderOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                           )}
                           <span>{variant.name}</span>
-                          <span className="text-muted-foreground text-xs">
-                            ({variant.versions.length})
-                          </span>
                         </button>
 
                         {!isVariantCollapsed &&
-                          variant.versions.map((v) => (
-                            <div
-                              key={v.id}
-                              onClick={() => toggleCheck(v.id)}
-                              className="flex items-center gap-2 pl-18 pr-4 py-1.5 hover:bg-secondary/50 cursor-pointer"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked.has(v.id)}
-                                onChange={() => toggleCheck(v.id)}
-                                onClick={(e) => e.stopPropagation()}
-                                className="h-3.5 w-3.5 rounded border-border cursor-pointer accent-primary shrink-0"
-                              />
-                              <GitCommitHorizontal className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                              <span className="text-sm font-mono text-foreground">v{v.label}</span>
-                              {v.isLatest && (
-                                <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary leading-none">
-                                  latest
-                                </span>
-                              )}
-                            </div>
-                          ))}
+                          variant.clientSets.map((clientSet) => {
+                            const isClientSetCollapsed = collapsedClientSets.has(clientSet.id);
+                            return (
+                              <div key={clientSet.id}>
+                                {/* Client set row */}
+                                <button
+                                  onClick={() => toggleClientSet(clientSet.id)}
+                                  className="flex items-center gap-2 w-full pl-14 pr-4 py-1.5 text-sm text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
+                                >
+                                  {isClientSetCollapsed ? (
+                                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                  ) : (
+                                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                  )}
+                                  {isClientSetCollapsed ? (
+                                    <Folder className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
+                                  ) : (
+                                    <FolderOpen className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
+                                  )}
+                                  <span>{clientSet.name}</span>
+                                  <span className="text-muted-foreground text-xs">
+                                    ({clientSet.versions.length})
+                                  </span>
+                                </button>
+
+                                {!isClientSetCollapsed &&
+                                  clientSet.versions.map((v) => (
+                                    <div
+                                      key={v.id}
+                                      onClick={() => toggleCheck(v.id)}
+                                      className="flex items-center gap-2 pl-22 pr-4 py-1.5 hover:bg-secondary/50 cursor-pointer"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={checked.has(v.id)}
+                                        onChange={() => toggleCheck(v.id)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="h-3.5 w-3.5 rounded border-border cursor-pointer accent-primary shrink-0"
+                                      />
+                                      <GitCommitHorizontal className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                      <span className="text-sm font-mono text-foreground">v{v.label}</span>
+                                      {v.isLatest && (
+                                        <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary leading-none">
+                                          latest
+                                        </span>
+                                      )}
+                                    </div>
+                                  ))}
+                              </div>
+                            );
+                          })}
                       </div>
                     );
                   })}

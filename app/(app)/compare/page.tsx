@@ -22,10 +22,16 @@ interface VersionNode {
   isLatest: boolean;
 }
 
-interface VariantNode {
+interface ClientSetNode {
   id: string;
   name: string;
   versions: VersionNode[];
+}
+
+interface VariantNode {
+  id: string;
+  name: string;
+  clientSets: ClientSetNode[];
 }
 
 interface FamilyNode {
@@ -38,7 +44,8 @@ interface FamilyNode {
 // ── Selection branch: full hierarchy for version tree ─────────────────────────
 
 type VariantRow = { id: string; name: string; family_id: string | null };
-type VersionRow = { id: string; version_label: string; is_latest: boolean; param_set_id: string };
+type ClientSetRow = { id: string; name: string; variant_id: string };
+type VersionRow = { id: string; version_label: string; is_latest: boolean; client_set_id: string };
 
 async function fetchTree(): Promise<FamilyNode[]> {
   const supabase = await createSessionClient().catch(() => createClient());
@@ -61,12 +68,23 @@ async function fetchTree(): Promise<FamilyNode[]> {
   const variants: VariantRow[] = variantsRaw ?? [];
   const variantIds = variants.map((v) => v.id);
 
-  let versions: VersionRow[] = [];
+  let clientSets: ClientSetRow[] = [];
   if (variantIds.length) {
     const { data } = await supabase
+      .from("client_sets")
+      .select("id, name, variant_id")
+      .in("variant_id", variantIds)
+      .order("name");
+    clientSets = data ?? [];
+  }
+
+  const clientSetIds = clientSets.map((c) => c.id);
+  let versions: VersionRow[] = [];
+  if (clientSetIds.length) {
+    const { data } = await supabase
       .from("param_versions")
-      .select("id, version_label, is_latest, param_set_id")
-      .in("param_set_id", variantIds)
+      .select("id, version_label, is_latest, client_set_id")
+      .in("client_set_id", clientSetIds)
       .order("version_label");
     versions = data ?? [];
   }
@@ -79,11 +97,18 @@ async function fetchTree(): Promise<FamilyNode[]> {
     variantsByFamily.set(v.family_id, arr);
   }
 
-  const versionsByVariant = new Map<string, VersionRow[]>();
+  const clientSetsByVariant = new Map<string, ClientSetRow[]>();
+  for (const c of clientSets) {
+    const arr = clientSetsByVariant.get(c.variant_id) ?? [];
+    arr.push(c);
+    clientSetsByVariant.set(c.variant_id, arr);
+  }
+
+  const versionsByClientSet = new Map<string, VersionRow[]>();
   for (const v of versions) {
-    const arr = versionsByVariant.get(v.param_set_id) ?? [];
+    const arr = versionsByClientSet.get(v.client_set_id) ?? [];
     arr.push(v);
-    versionsByVariant.set(v.param_set_id, arr);
+    versionsByClientSet.set(v.client_set_id, arr);
   }
 
   return families
@@ -95,13 +120,19 @@ async function fetchTree(): Promise<FamilyNode[]> {
         .map((v) => ({
           id: v.id,
           name: v.name,
-          versions: (versionsByVariant.get(v.id) ?? []).map((ver) => ({
-            id: ver.id,
-            label: ver.version_label,
-            isLatest: ver.is_latest,
-          })),
+          clientSets: (clientSetsByVariant.get(v.id) ?? [])
+            .map((c) => ({
+              id: c.id,
+              name: c.name,
+              versions: (versionsByClientSet.get(c.id) ?? []).map((ver) => ({
+                id: ver.id,
+                label: ver.version_label,
+                isLatest: ver.is_latest,
+              })),
+            }))
+            .filter((c) => c.versions.length > 0),
         }))
-        .filter((v) => v.versions.length > 0),
+        .filter((v) => v.clientSets.length > 0),
     }))
     .filter((f) => f.variants.length > 0);
 }
@@ -117,7 +148,7 @@ async function fetchCompareData(
   const [{ data: versionsData }, { data: paramValuesData }] = await Promise.all([
     supabase
       .from("param_versions")
-      .select("id, version_label, param_set_id, storage_path")
+      .select("id, version_label, client_set_id, storage_path")
       .in("id", versionIds),
     supabase
       .from("param_values")
@@ -126,11 +157,15 @@ async function fetchCompareData(
       .order("name"),
   ]);
 
-  const variantIds = [...new Set((versionsData ?? []).map((v) => v.param_set_id))];
-  const { data: variantsData } = await supabase
-    .from("variants")
-    .select("id, name, family_id")
-    .in("id", variantIds);
+  const clientSetIds = [...new Set((versionsData ?? []).map((v) => v.client_set_id))];
+  const { data: clientSetsData } = clientSetIds.length
+    ? await supabase.from("client_sets").select("id, name, variant_id").in("id", clientSetIds)
+    : { data: [] };
+
+  const variantIds = [...new Set((clientSetsData ?? []).map((c) => c.variant_id))];
+  const { data: variantsData } = variantIds.length
+    ? await supabase.from("variants").select("id, name, family_id").in("id", variantIds)
+    : { data: [] };
 
   const familyIds = [
     ...new Set(
@@ -141,17 +176,20 @@ async function fetchCompareData(
     ? await supabase.from("families").select("id, name").in("id", familyIds)
     : { data: [] };
 
+  const clientSetMap = new Map((clientSetsData ?? []).map((c) => [c.id, c]));
   const variantMap = new Map((variantsData ?? []).map((v) => [v.id, v]));
   const familyMap = new Map((familiesData ?? []).map((f) => [f.id, f]));
   const versionLookup = new Map((versionsData ?? []).map((v) => [v.id, v]));
 
   const versions: CompareVersion[] = versionIds.map((id) => {
     const v = versionLookup.get(id);
-    const variant = v ? variantMap.get(v.param_set_id) : undefined;
+    const clientSet = v ? clientSetMap.get(v.client_set_id) : undefined;
+    const variant = clientSet ? variantMap.get(clientSet.variant_id) : undefined;
     const family = variant?.family_id ? familyMap.get(variant.family_id) : undefined;
     return {
       id,
       label: v?.version_label ?? "?",
+      clientName: clientSet?.name ?? "?",
       variantName: variant?.name ?? "?",
       familyName: family?.name ?? "?",
     };

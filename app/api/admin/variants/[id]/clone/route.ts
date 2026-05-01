@@ -28,11 +28,11 @@ export async function POST(
     .single();
   if (origError || !original) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // Fetch all versions of the original
-  const { data: versions } = await admin
-    .from("param_versions")
-    .select("id, version_label, storage_path, changelog")
-    .eq("param_set_id", id)
+  // Fetch all client sets of the original variant
+  const { data: clientSets } = await admin
+    .from("client_sets")
+    .select("id, name, description")
+    .eq("variant_id", id)
     .order("created_at", { ascending: true });
 
   // Create new variant
@@ -48,36 +48,57 @@ export async function POST(
     .single();
   if (variantError || !newVariant) return NextResponse.json({ error: variantError?.message ?? "Insert failed" }, { status: 500 });
 
-  // Copy each version's file and rows
-  for (const v of versions ?? []) {
-    const { data: fileData } = await admin.storage.from("param-files").download(v.storage_path);
-    if (!fileData) continue;
-
-    const newPath = `${newVariant.id}/${v.version_label}.param`;
-    await admin.storage.from("param-files").upload(newPath, fileData);
-
-    const { data: newVersion } = await admin
-      .from("param_versions")
+  // Copy each client set + its versions
+  for (const cs of clientSets ?? []) {
+    const { data: newCs, error: csError } = await admin
+      .from("client_sets")
       .insert({
-        param_set_id: newVariant.id,
-        version_label: v.version_label,
-        storage_path: newPath,
-        changelog: v.changelog,
+        name: cs.name,
+        description: cs.description,
+        variant_id: newVariant.id,
         created_by: user.id,
       })
       .select("id")
       .single();
-    if (!newVersion) continue;
+    if (csError || !newCs) continue;
 
-    const { data: paramValues } = await admin
-      .from("param_values")
-      .select("name, value")
-      .eq("param_version_id", v.id);
+    const { data: versions } = await admin
+      .from("param_versions")
+      .select("id, version_label, storage_path, changelog, is_latest")
+      .eq("client_set_id", cs.id)
+      .order("created_at", { ascending: true });
 
-    if (paramValues?.length) {
-      await admin.from("param_values").insert(
-        paramValues.map((pv) => ({ param_version_id: newVersion.id, name: pv.name, value: pv.value }))
-      );
+    for (const v of versions ?? []) {
+      const { data: fileData } = await admin.storage.from("param-files").download(v.storage_path);
+      if (!fileData) continue;
+
+      const newPath = `${newCs.id}/${v.version_label}.param`;
+      await admin.storage.from("param-files").upload(newPath, fileData);
+
+      const { data: newVersion } = await admin
+        .from("param_versions")
+        .insert({
+          client_set_id: newCs.id,
+          version_label: v.version_label,
+          storage_path: newPath,
+          changelog: v.changelog,
+          created_by: user.id,
+          is_latest: v.is_latest,
+        })
+        .select("id")
+        .single();
+      if (!newVersion) continue;
+
+      const { data: paramValues } = await admin
+        .from("param_values")
+        .select("name, value")
+        .eq("param_version_id", v.id);
+
+      if (paramValues?.length) {
+        await admin.from("param_values").insert(
+          paramValues.map((pv) => ({ param_version_id: newVersion.id, name: pv.name, value: pv.value }))
+        );
+      }
     }
   }
 

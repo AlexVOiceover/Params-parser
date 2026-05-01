@@ -7,11 +7,15 @@ import Link from "next/link";
 
 type Family = { id: string; name: string };
 type VariantOption = { id: string; name: string; family_id: string | null };
+type ClientSetOption = { id: string; name: string; variant_id: string };
 
 interface Props {
   families: Family[];
   variants: VariantOption[];
+  clientSets: ClientSetOption[];
 }
+
+const NEW_CLIENT_SET = "__new__";
 
 const inputClass =
   "rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring";
@@ -19,25 +23,29 @@ const selectClass = inputClass + " cursor-pointer";
 const labelClass = "flex flex-col gap-1.5";
 const labelTextClass = "text-xs font-medium text-muted-foreground";
 
-export function UploadForm({ families, variants }: Props) {
+export function UploadForm({ families, variants, clientSets }: Props) {
   const router = useRouter();
   const [familyId, setFamilyId] = useState("");
   const [variantId, setVariantId] = useState("");
+  const [clientSetId, setClientSetId] = useState("");
+  const [newClientSetName, setNewClientSetName] = useState("");
   const [versionLabel, setVersionLabel] = useState("");
   const [changelog, setChangelog] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ variantId: string } | null>(null);
+  const [done, setDone] = useState(false);
 
   const filteredVariants = variants.filter((v) => v.family_id === familyId);
+  const filteredClientSets = clientSets.filter((c) => c.variant_id === variantId);
+  const isNewClientSet = clientSetId === NEW_CLIENT_SET;
 
   function reset() {
     setVersionLabel("");
     setChangelog("");
     setFile(null);
     setError(null);
-    setDone(null);
+    setDone(false);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -47,26 +55,64 @@ export function UploadForm({ families, variants }: Props) {
       setError("Version must be in format number.number (e.g. 1.0)");
       return;
     }
+    if (isNewClientSet && !newClientSetName.trim()) {
+      setError("Client set name is required");
+      return;
+    }
     setSubmitting(true);
     setError(null);
 
     const fd = new FormData();
-    fd.set("familyId", familyId);
-    fd.set("variantId", variantId);
+    if (isNewClientSet) {
+      fd.set("mode", "new-client-set");
+      fd.set("variantId", variantId);
+      fd.set("name", newClientSetName.trim());
+    } else {
+      fd.set("mode", "existing");
+      fd.set("clientSetId", clientSetId);
+    }
     fd.set("versionLabel", versionLabel);
     if (changelog) fd.set("changelog", changelog);
     fd.set("file", file);
 
     const res = await fetch("/api/upload", { method: "POST", body: fd });
-    const json = await res.json();
-
-    if (!res.ok) {
-      setError(json.error ?? "Upload failed");
+    const reader = res.body?.getReader();
+    if (!reader) {
+      setError("No response from server");
       setSubmitting(false);
       return;
     }
 
-    setDone({ variantId: json.variantId as string });
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let finished = false;
+
+    while (!finished) {
+      const { done: streamDone, value } = await reader.read();
+      if (streamDone) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const parsed = JSON.parse(line);
+          if (parsed.error) {
+            setError(parsed.text ?? "Upload failed");
+            setSubmitting(false);
+            return;
+          }
+          if (parsed.done) {
+            finished = true;
+            break;
+          }
+        } catch {
+          // ignore malformed line
+        }
+      }
+    }
+
+    setDone(true);
     setSubmitting(false);
     router.refresh();
   }
@@ -77,7 +123,7 @@ export function UploadForm({ families, variants }: Props) {
         <CheckCircle className="h-10 w-10 text-emerald-400 mx-auto mb-4" />
         <h2 className="text-lg font-semibold text-foreground mb-2">Upload complete</h2>
         <p className="text-sm text-muted-foreground mb-6">
-          The variant has been saved to the catalog.
+          The version has been saved to the catalog.
         </p>
         <div className="flex gap-3 justify-center">
           <button
@@ -115,7 +161,7 @@ export function UploadForm({ families, variants }: Props) {
           <select
             required
             value={familyId}
-            onChange={(e) => { setFamilyId(e.target.value); setVariantId(""); }}
+            onChange={(e) => { setFamilyId(e.target.value); setVariantId(""); setClientSetId(""); }}
             className={selectClass}
           >
             <option value="">Select family…</option>
@@ -134,7 +180,7 @@ export function UploadForm({ families, variants }: Props) {
             <select
               required
               value={variantId}
-              onChange={(e) => setVariantId(e.target.value)}
+              onChange={(e) => { setVariantId(e.target.value); setClientSetId(""); }}
               className={selectClass}
             >
               <option value="">Select variant…</option>
@@ -142,6 +188,43 @@ export function UploadForm({ families, variants }: Props) {
                 <option key={v.id} value={v.id}>{v.name}</option>
               ))}
             </select>
+          </label>
+        )}
+
+        {/* Client set */}
+        {variantId && (
+          <label className={labelClass}>
+            <span className={labelTextClass}>
+              Client set <span className="text-destructive">*</span>
+            </span>
+            <select
+              required
+              value={clientSetId}
+              onChange={(e) => setClientSetId(e.target.value)}
+              className={selectClass}
+            >
+              <option value="">Select client set…</option>
+              {filteredClientSets.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+              <option value={NEW_CLIENT_SET}>＋ Create new client set…</option>
+            </select>
+          </label>
+        )}
+
+        {/* New client-set name (when "Create new" is selected) */}
+        {isNewClientSet && (
+          <label className={labelClass}>
+            <span className={labelTextClass}>
+              New client set name <span className="text-destructive">*</span>
+            </span>
+            <input
+              required
+              value={newClientSetName}
+              onChange={(e) => setNewClientSetName(e.target.value)}
+              placeholder="e.g. Acme Corp"
+              className={inputClass}
+            />
           </label>
         )}
 

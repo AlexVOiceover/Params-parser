@@ -141,6 +141,7 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
                 placeholder="e.g. Baseline survey config"
                 className={inputClass}
               />
+              <span className="text-[10px] text-muted-foreground">A &ldquo;Default&rdquo; client set will be created automatically.</span>
             </label>
 
             <label className={labelClass}>
