@@ -49,12 +49,40 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
     fd.set("file", file);
 
     const res = await fetch("/api/upload", { method: "POST", body: fd });
-    const json = await res.json();
-
-    if (!res.ok) {
-      setError(json.error ?? "Upload failed");
+    const reader = res.body?.getReader();
+    if (!reader) {
+      setError("No response from server");
       setSubmitting(false);
       return;
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let finished = false;
+
+    while (!finished) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const parsed = JSON.parse(line);
+          if (parsed.error) {
+            setError(parsed.text ?? "Upload failed");
+            setSubmitting(false);
+            return;
+          }
+          if (parsed.done) {
+            finished = true;
+            break;
+          }
+        } catch {
+          // ignore malformed line
+        }
+      }
     }
 
     setDone(true);

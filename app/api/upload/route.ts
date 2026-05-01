@@ -37,14 +37,26 @@ export async function POST(request: NextRequest) {
         // 3. Parse form data
         controller.enqueue(msg("Reading file…"));
         const formData = await request.formData();
+        const mode = (formData.get("mode") as string | null) ?? "existing";
         const droneTypeId = formData.get("droneTypeId") as string;
-        const paramSetId = formData.get("paramSetId") as string;
+        let paramSetId = formData.get("paramSetId") as string;
+        const newParamSetName = formData.get("name") as string | null;
         const versionLabel = formData.get("versionLabel") as string;
         const changelog = (formData.get("changelog") as string | null) || null;
         const file = formData.get("file") as File | null;
 
-        if (!file || !versionLabel || !droneTypeId || !paramSetId) {
+        if (!file || !versionLabel || !droneTypeId) {
           controller.enqueue(msg("Missing required fields", true));
+          controller.close();
+          return;
+        }
+        if (mode === "new" && !newParamSetName) {
+          controller.enqueue(msg("Param set name is required", true));
+          controller.close();
+          return;
+        }
+        if (mode !== "new" && !paramSetId) {
+          controller.enqueue(msg("Param set id is required", true));
           controller.close();
           return;
         }
@@ -58,6 +70,22 @@ export async function POST(request: NextRequest) {
         controller.enqueue(msg(`File read — ${(fileBuffer.byteLength / 1024).toFixed(1)} KB`));
 
         const admin = createAdminClient();
+
+        // 3b. Create new param set if needed
+        if (mode === "new") {
+          controller.enqueue(msg(`Creating param set "${newParamSetName}"…`));
+          const { data: newSet, error: setError } = await admin.from("param_sets").insert({
+            name: newParamSetName,
+            drone_type_id: droneTypeId,
+            created_by: user.id,
+          }).select("id").single();
+          if (setError || !newSet) {
+            controller.enqueue(msg(`Failed to create param set: ${setError?.message ?? "unknown error"}`, true));
+            controller.close();
+            return;
+          }
+          paramSetId = newSet.id;
+        }
 
         // 4. Upload file to storage
         const storagePath = `${paramSetId}/${versionLabel}.param`;
