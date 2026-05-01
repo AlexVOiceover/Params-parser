@@ -16,18 +16,25 @@ export async function PATCH(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const body = await request.json() as { name?: string; description?: string };
+  const body = await request.json() as { clientName?: string; serial?: string; description?: string };
 
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  if (body.name !== undefined) {
-    if (!body.name.trim()) return NextResponse.json({ error: "Name cannot be empty" }, { status: 400 });
-    update.name = body.name.trim();
+  if (body.clientName !== undefined) {
+    if (!body.clientName.trim()) return NextResponse.json({ error: "Client name cannot be empty" }, { status: 400 });
+    update.client_name = body.clientName.trim();
+  }
+  if (body.serial !== undefined) {
+    if (!body.serial.trim()) return NextResponse.json({ error: "Serial cannot be empty" }, { status: 400 });
+    update.serial = body.serial.trim();
   }
   if (body.description !== undefined) update.description = body.description.trim() || null;
 
   const admin = createAdminClient();
   const { error } = await admin.from("client_sets").update(update).eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    const msg = error.code === "23505" ? "This client + serial already exists for this variant" : error.message;
+    return NextResponse.json({ error: msg }, { status: 409 });
+  }
 
   return NextResponse.json({ ok: true });
 }

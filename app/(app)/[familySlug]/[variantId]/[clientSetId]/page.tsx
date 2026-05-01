@@ -23,7 +23,7 @@ async function getData(familySlug: string, variantId: string, clientSetId: strin
       .maybeSingle(),
     supabase
       .from("client_sets")
-      .select("id, name, description, created_at, updated_at, created_by, variant_id")
+      .select("id, client_name, serial, description, created_at, updated_at, created_by, variant_id")
       .eq("id", clientSetId)
       .maybeSingle(),
     supabase
@@ -71,12 +71,18 @@ export default async function ClientSetPage({
         <ChevronRight className="h-3 w-3" />
         <Link href={`/${familySlug}/${variantId}`} className="hover:text-foreground transition-colors cursor-pointer">{variant.name}</Link>
         <ChevronRight className="h-3 w-3" />
-        <span className="text-foreground">{clientSet.name}</span>
+        <span className="text-foreground">{clientSet.client_name}</span>
+        {clientSet.serial && (
+          <span className="font-mono text-muted-foreground">· {clientSet.serial}</span>
+        )}
       </nav>
 
       <div className="flex items-start justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground mb-1">{clientSet.name}</h1>
+        <div className="flex flex-col gap-1">
+          <h1 className="text-xl font-semibold text-foreground">{clientSet.client_name}</h1>
+          {clientSet.serial && (
+            <span className="text-xs font-mono text-muted-foreground">SN {clientSet.serial}</span>
+          )}
           {clientSet.description && (
             <p className="text-sm text-muted-foreground">{clientSet.description}</p>
           )}
@@ -98,7 +104,7 @@ export default async function ClientSetPage({
         isAdmin={isAdmin}
         familyName={family.name}
         variantName={variant.name}
-        clientSetName={clientSet.name}
+        clientSetName={clientSet.serial ? `${clientSet.client_name} · ${clientSet.serial}` : clientSet.client_name}
       />
     </div>
   );

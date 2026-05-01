@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Upload, CheckCircle, ChevronRight } from "lucide-react";
 import Link from "next/link";
 
 type Family = { id: string; name: string };
 type VariantOption = { id: string; name: string; family_id: string | null };
-type ClientSetOption = { id: string; name: string; variant_id: string };
+type ClientSetOption = { id: string; client_name: string; serial: string; variant_id: string };
 
 interface Props {
   families: Family[];
@@ -15,20 +15,19 @@ interface Props {
   clientSets: ClientSetOption[];
 }
 
-const NEW_CLIENT_SET = "__new__";
-
 const inputClass =
   "rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring";
 const selectClass = inputClass + " cursor-pointer";
 const labelClass = "flex flex-col gap-1.5";
 const labelTextClass = "text-xs font-medium text-muted-foreground";
+const CLIENT_DATALIST_ID = "upload-form-clients";
 
 export function UploadForm({ families, variants, clientSets }: Props) {
   const router = useRouter();
   const [familyId, setFamilyId] = useState("");
   const [variantId, setVariantId] = useState("");
-  const [clientSetId, setClientSetId] = useState("");
-  const [newClientSetName, setNewClientSetName] = useState("");
+  const [clientName, setClientName] = useState("");
+  const [serial, setSerial] = useState("");
   const [versionLabel, setVersionLabel] = useState("");
   const [changelog, setChangelog] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -37,8 +36,12 @@ export function UploadForm({ families, variants, clientSets }: Props) {
   const [done, setDone] = useState(false);
 
   const filteredVariants = variants.filter((v) => v.family_id === familyId);
-  const filteredClientSets = clientSets.filter((c) => c.variant_id === variantId);
-  const isNewClientSet = clientSetId === NEW_CLIENT_SET;
+
+  const clientNameSuggestions = useMemo(() => {
+    if (!variantId) return [];
+    const set = new Set(clientSets.filter((c) => c.variant_id === variantId).map((c) => c.client_name));
+    return [...set].sort();
+  }, [clientSets, variantId]);
 
   function reset() {
     setVersionLabel("");
@@ -55,21 +58,23 @@ export function UploadForm({ families, variants, clientSets }: Props) {
       setError("Version must be in format number.number (e.g. 1.0)");
       return;
     }
-    if (isNewClientSet && !newClientSetName.trim()) {
-      setError("Client set name is required");
-      return;
-    }
     setSubmitting(true);
     setError(null);
 
+    // Reuse an existing (client_name, serial) under this variant if present.
+    const existing = clientSets.find(
+      (c) => c.variant_id === variantId && c.client_name === clientName.trim() && c.serial === serial.trim()
+    );
+
     const fd = new FormData();
-    if (isNewClientSet) {
+    if (existing) {
+      fd.set("mode", "existing");
+      fd.set("clientSetId", existing.id);
+    } else {
       fd.set("mode", "new-client-set");
       fd.set("variantId", variantId);
-      fd.set("name", newClientSetName.trim());
-    } else {
-      fd.set("mode", "existing");
-      fd.set("clientSetId", clientSetId);
+      fd.set("clientName", clientName.trim());
+      fd.set("serial", serial.trim());
     }
     fd.set("versionLabel", versionLabel);
     if (changelog) fd.set("changelog", changelog);
@@ -152,6 +157,12 @@ export function UploadForm({ families, variants, clientSets }: Props) {
       </nav>
       <h1 className="text-xl font-semibold text-foreground mb-6">Upload param file</h1>
 
+      <datalist id={CLIENT_DATALIST_ID}>
+        {clientNameSuggestions.map((n) => (
+          <option key={n} value={n} />
+        ))}
+      </datalist>
+
       <div className="flex flex-col gap-4">
         {/* Family */}
         <label className={labelClass}>
@@ -161,7 +172,7 @@ export function UploadForm({ families, variants, clientSets }: Props) {
           <select
             required
             value={familyId}
-            onChange={(e) => { setFamilyId(e.target.value); setVariantId(""); setClientSetId(""); }}
+            onChange={(e) => { setFamilyId(e.target.value); setVariantId(""); }}
             className={selectClass}
           >
             <option value="">Select family…</option>
@@ -180,7 +191,7 @@ export function UploadForm({ families, variants, clientSets }: Props) {
             <select
               required
               value={variantId}
-              onChange={(e) => { setVariantId(e.target.value); setClientSetId(""); }}
+              onChange={(e) => setVariantId(e.target.value)}
               className={selectClass}
             >
               <option value="">Select variant…</option>
@@ -191,39 +202,35 @@ export function UploadForm({ families, variants, clientSets }: Props) {
           </label>
         )}
 
-        {/* Client set */}
+        {/* Client */}
         {variantId && (
           <label className={labelClass}>
             <span className={labelTextClass}>
-              Client set <span className="text-destructive">*</span>
-            </span>
-            <select
-              required
-              value={clientSetId}
-              onChange={(e) => setClientSetId(e.target.value)}
-              className={selectClass}
-            >
-              <option value="">Select client set…</option>
-              {filteredClientSets.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-              <option value={NEW_CLIENT_SET}>＋ Create new client set…</option>
-            </select>
-          </label>
-        )}
-
-        {/* New client-set name (when "Create new" is selected) */}
-        {isNewClientSet && (
-          <label className={labelClass}>
-            <span className={labelTextClass}>
-              New client set name <span className="text-destructive">*</span>
+              Client <span className="text-destructive">*</span>
             </span>
             <input
               required
-              value={newClientSetName}
-              onChange={(e) => setNewClientSetName(e.target.value)}
+              list={CLIENT_DATALIST_ID}
+              value={clientName}
+              onChange={(e) => setClientName(e.target.value)}
               placeholder="e.g. Acme Corp"
               className={inputClass}
+            />
+          </label>
+        )}
+
+        {/* Serial */}
+        {variantId && (
+          <label className={labelClass}>
+            <span className={labelTextClass}>
+              Serial <span className="text-destructive">*</span>
+            </span>
+            <input
+              required
+              value={serial}
+              onChange={(e) => setSerial(e.target.value)}
+              placeholder="e.g. SN-12345"
+              className={inputClass + " font-mono"}
             />
           </label>
         )}
@@ -284,7 +291,7 @@ export function UploadForm({ families, variants, clientSets }: Props) {
 
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || !variantId || !clientName.trim() || !serial.trim()}
           className="flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed"
         >
           <Upload className="h-4 w-4" />

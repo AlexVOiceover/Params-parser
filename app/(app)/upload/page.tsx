@@ -28,7 +28,7 @@ export default async function UploadPage() {
   const [{ data: families }, { data: variants }, { data: clientSets }] = await Promise.all([
     admin.from("families").select("id, name").order("name"),
     admin.from("variants").select("id, name, family_id").order("name"),
-    admin.from("client_sets").select("id, name, variant_id").order("name"),
+    admin.from("client_sets").select("id, client_name, serial, variant_id").order("client_name"),
   ]);
 
   return (

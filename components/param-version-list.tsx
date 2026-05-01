@@ -26,7 +26,8 @@ interface VariantOption {
 
 interface ClientSetOption {
   id: string;
-  name: string;
+  client_name: string;
+  serial: string;
 }
 
 interface Props {
@@ -100,7 +101,8 @@ export function ParamVersionList({
   const [cloneClientSetId, setCloneClientSetId] = useState(clientSetId);
   const [cloneVersionLabel, setCloneVersionLabel] = useState("");
   const [cloneChangelog, setCloneChangelog] = useState("");
-  const [newClientSetName, setNewClientSetName] = useState("");
+  const [newClientName, setNewClientName] = useState("");
+  const [newSerial, setNewSerial] = useState("");
   const [newClientSetDescription, setNewClientSetDescription] = useState("");
   const [cloning, setCloning] = useState(false);
   const [cloneError, setCloneError] = useState<string | null>(null);
@@ -221,7 +223,8 @@ export function ParamVersionList({
     setCloneClientSetId(clientSetId);
     setCloneVersionLabel(v.version_label);
     setCloneChangelog(v.changelog ?? "");
-    setNewClientSetName("");
+    setNewClientName("");
+    setNewSerial("");
     setNewClientSetDescription("");
     setCloneId(v.id);
   }
@@ -252,7 +255,7 @@ export function ParamVersionList({
       body: JSON.stringify({
         variantId: cloneVariantId,
         clientSetId: isNewClientSet ? null : cloneClientSetId,
-        newClientSet: isNewClientSet ? { name: newClientSetName, description: newClientSetDescription } : undefined,
+        newClientSet: isNewClientSet ? { clientName: newClientName, serial: newSerial, description: newClientSetDescription } : undefined,
         versionLabel: cloneVersionLabel,
         changelog: cloneChangelog,
       }),
@@ -274,7 +277,7 @@ export function ParamVersionList({
     !cloneVersionLabel.trim() ||
     !versionLabelValid ||
     !cloneVariantId ||
-    (isNewClientSet && !newClientSetName.trim());
+    (isNewClientSet && (!newClientName.trim() || !newSerial.trim()));
 
   const uploadDisabled = uploading || !uploadVersionType || !uploadFile;
   const uploadHasError = uploadLog.some((l) => l.error);
@@ -546,7 +549,7 @@ export function ParamVersionList({
 
               {/* Client set */}
               <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-muted-foreground">Client set</span>
+                <span className="text-xs font-medium text-muted-foreground">Client + drone</span>
                 <select
                   value={cloneClientSetId}
                   onChange={(e) => setCloneClientSetId(e.target.value)}
@@ -554,22 +557,34 @@ export function ParamVersionList({
                   className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer disabled:opacity-40"
                 >
                   {clientSets.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                    <option key={c.id} value={c.id}>
+                      {c.client_name}{c.serial ? ` · ${c.serial}` : ""}
+                    </option>
                   ))}
-                  <option value={NEW_CLIENT_SET}>＋ Create new client set…</option>
+                  <option value={NEW_CLIENT_SET}>＋ Create new client + drone…</option>
                 </select>
               </label>
 
               {isNewClientSet && (
                 <div className="flex flex-col gap-2.5 rounded-lg border border-border bg-secondary/50 px-3.5 py-3">
                   <label className="flex flex-col gap-1.5">
-                    <span className="text-xs font-medium text-muted-foreground">Client set name <span className="text-destructive">*</span></span>
+                    <span className="text-xs font-medium text-muted-foreground">Client <span className="text-destructive">*</span></span>
                     <input
-                      value={newClientSetName}
-                      onChange={(e) => setNewClientSetName(e.target.value)}
+                      value={newClientName}
+                      onChange={(e) => setNewClientName(e.target.value)}
                       disabled={cloning}
                       placeholder="e.g. Acme Corp"
                       className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">Serial <span className="text-destructive">*</span></span>
+                    <input
+                      value={newSerial}
+                      onChange={(e) => setNewSerial(e.target.value)}
+                      disabled={cloning}
+                      placeholder="e.g. SN-12345"
+                      className="rounded-md border border-border bg-card px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
                     />
                   </label>
                   <label className="flex flex-col gap-1.5">

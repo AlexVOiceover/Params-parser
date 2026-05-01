@@ -4,7 +4,7 @@ import { createSessionClient, createAdminClient } from "@/lib/supabase/server";
 interface CloneBody {
   variantId: string;
   clientSetId: string | null;
-  newClientSet?: { name: string; description?: string };
+  newClientSet?: { clientName: string; serial: string; description?: string };
   versionLabel: string;
   changelog?: string;
 }
@@ -27,7 +27,9 @@ export async function POST(
   if (!variantId) return NextResponse.json({ error: "variantId required" }, { status: 400 });
   if (!versionLabel?.trim()) return NextResponse.json({ error: "versionLabel required" }, { status: 400 });
   if (!/^\d+\.\d+$/.test(versionLabel.trim())) return NextResponse.json({ error: "Version label must be in format number.number (e.g. 1.0)" }, { status: 400 });
-  if (!clientSetId && !newClientSet?.name?.trim()) return NextResponse.json({ error: "clientSetId or newClientSet.name required" }, { status: 400 });
+  if (!clientSetId && (!newClientSet?.clientName?.trim() || !newClientSet?.serial?.trim())) {
+    return NextResponse.json({ error: "clientSetId or newClientSet.clientName + serial required" }, { status: 400 });
+  }
 
   const admin = createAdminClient();
 
@@ -45,7 +47,8 @@ export async function POST(
     const { data: created, error: createError } = await admin
       .from("client_sets")
       .insert({
-        name: newClientSet!.name.trim(),
+        client_name: newClientSet!.clientName.trim(),
+        serial: newClientSet!.serial.trim(),
         description: newClientSet!.description?.trim() || null,
         variant_id: variantId,
         created_by: user.id,
@@ -54,7 +57,7 @@ export async function POST(
       .single();
     if (createError || !created) {
       const msg = createError?.code === "23505"
-        ? "A client set with that name already exists for this variant"
+        ? "This client + serial already exists for this variant"
         : (createError?.message ?? "Client set creation failed");
       return NextResponse.json({ error: msg }, { status: 409 });
     }

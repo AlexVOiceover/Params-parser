@@ -17,9 +17,10 @@ export async function GET(request: NextRequest) {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("client_sets")
-    .select("id, name")
+    .select("id, client_name, serial")
     .eq("variant_id", variantId)
-    .order("name");
+    .order("client_name")
+    .order("serial");
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ clientSets: data ?? [] });
@@ -35,15 +36,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const { variantId, name, description } = await request.json() as { variantId: string; name: string; description?: string };
+  const { variantId, clientName, serial, description } = await request.json() as { variantId: string; clientName: string; serial: string; description?: string };
   if (!variantId) return NextResponse.json({ error: "variantId required" }, { status: 400 });
-  if (!name?.trim()) return NextResponse.json({ error: "name required" }, { status: 400 });
+  if (!clientName?.trim()) return NextResponse.json({ error: "Client name required" }, { status: 400 });
+  if (!serial?.trim()) return NextResponse.json({ error: "Serial required" }, { status: 400 });
 
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("client_sets")
     .insert({
-      name: name.trim(),
+      client_name: clientName.trim(),
+      serial: serial.trim(),
       description: description?.trim() || null,
       variant_id: variantId,
       created_by: user.id,
@@ -52,7 +55,7 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) {
-    const msg = error.code === "23505" ? "A client set with that name already exists for this variant" : error.message;
+    const msg = error.code === "23505" ? "This client + serial already exists for this variant" : error.message;
     return NextResponse.json({ error: msg }, { status: 409 });
   }
   return NextResponse.json({ ok: true, id: data.id });

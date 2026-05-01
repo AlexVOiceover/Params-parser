@@ -44,7 +44,7 @@ interface FamilyNode {
 // ── Selection branch: full hierarchy for version tree ─────────────────────────
 
 type VariantRow = { id: string; name: string; family_id: string | null };
-type ClientSetRow = { id: string; name: string; variant_id: string };
+type ClientSetRow = { id: string; client_name: string; serial: string; variant_id: string };
 type VersionRow = { id: string; version_label: string; is_latest: boolean; client_set_id: string };
 
 async function fetchTree(): Promise<FamilyNode[]> {
@@ -72,9 +72,10 @@ async function fetchTree(): Promise<FamilyNode[]> {
   if (variantIds.length) {
     const { data } = await supabase
       .from("client_sets")
-      .select("id, name, variant_id")
+      .select("id, client_name, serial, variant_id")
       .in("variant_id", variantIds)
-      .order("name");
+      .order("client_name")
+      .order("serial");
     clientSets = data ?? [];
   }
 
@@ -123,7 +124,7 @@ async function fetchTree(): Promise<FamilyNode[]> {
           clientSets: (clientSetsByVariant.get(v.id) ?? [])
             .map((c) => ({
               id: c.id,
-              name: c.name,
+              name: c.serial ? `${c.client_name} · ${c.serial}` : c.client_name,
               versions: (versionsByClientSet.get(c.id) ?? []).map((ver) => ({
                 id: ver.id,
                 label: ver.version_label,
@@ -159,7 +160,7 @@ async function fetchCompareData(
 
   const clientSetIds = [...new Set((versionsData ?? []).map((v) => v.client_set_id))];
   const { data: clientSetsData } = clientSetIds.length
-    ? await supabase.from("client_sets").select("id, name, variant_id").in("id", clientSetIds)
+    ? await supabase.from("client_sets").select("id, client_name, serial, variant_id").in("id", clientSetIds)
     : { data: [] };
 
   const variantIds = [...new Set((clientSetsData ?? []).map((c) => c.variant_id))];
@@ -189,7 +190,9 @@ async function fetchCompareData(
     return {
       id,
       label: v?.version_label ?? "?",
-      clientName: clientSet?.name ?? "?",
+      clientName: clientSet
+        ? (clientSet.serial ? `${clientSet.client_name} · ${clientSet.serial}` : clientSet.client_name)
+        : "?",
       variantName: variant?.name ?? "?",
       familyName: family?.name ?? "?",
     };

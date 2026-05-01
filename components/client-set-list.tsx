@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Trash2, Pencil, Plus, X, AlertTriangle, Check } from "lucide-react";
 
 interface ClientSetRow {
   id: string;
-  name: string;
+  client_name: string;
+  serial: string;
   description: string | null;
   updated_at: string;
   param_versions?: { version_label: string; created_at: string }[];
@@ -25,9 +26,17 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+const CLIENT_DATALIST_ID = "client-set-list-clients";
+
 export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canCreate }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
+
+  // Client-name suggestions for autocomplete
+  const clientNames = useMemo(() => {
+    const set = new Set(clientSets.map((c) => c.client_name).filter(Boolean));
+    return [...set].sort();
+  }, [clientSets]);
 
   // ── Delete state ──────────────────────────────────────────
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -36,14 +45,16 @@ export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canC
 
   // ── Edit state ────────────────────────────────────────────
   const [editId, setEditId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
+  const [editClientName, setEditClientName] = useState("");
+  const [editSerial, setEditSerial] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
   // ── Create state ──────────────────────────────────────────
   const [showAdd, setShowAdd] = useState(false);
-  const [newName, setNewName] = useState("");
+  const [newClientName, setNewClientName] = useState("");
+  const [newSerial, setNewSerial] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -53,20 +64,26 @@ export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canC
 
   function resetAdd() {
     setShowAdd(false);
-    setNewName("");
+    setNewClientName("");
+    setNewSerial("");
     setNewDescription("");
     setCreateError(null);
   }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!newName.trim()) return;
+    if (!newClientName.trim() || !newSerial.trim()) return;
     setSubmitting(true);
     setCreateError(null);
     const res = await fetch("/api/admin/client-sets", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ variantId, name: newName.trim(), description: newDescription.trim() || null }),
+      body: JSON.stringify({
+        variantId,
+        clientName: newClientName.trim(),
+        serial: newSerial.trim(),
+        description: newDescription.trim() || null,
+      }),
     });
     setSubmitting(false);
     if (res.ok) {
@@ -80,7 +97,8 @@ export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canC
 
   function openEdit(c: ClientSetRow) {
     setEditError(null);
-    setEditName(c.name);
+    setEditClientName(c.client_name);
+    setEditSerial(c.serial);
     setEditDescription(c.description ?? "");
     setEditId(c.id);
   }
@@ -108,7 +126,11 @@ export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canC
     const res = await fetch(`/api/admin/client-sets/${editId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: editName, description: editDescription }),
+      body: JSON.stringify({
+        clientName: editClientName,
+        serial: editSerial,
+        description: editDescription,
+      }),
     });
     if (res.ok) {
       setEditId(null);
@@ -123,6 +145,12 @@ export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canC
 
   return (
     <>
+      <datalist id={CLIENT_DATALIST_ID}>
+        {clientNames.map((n) => (
+          <option key={n} value={n} />
+        ))}
+      </datalist>
+
       <div className="flex flex-col gap-3">
         {clientSets.map((c) => (
           <div key={c.id} className="relative group/row">
@@ -131,9 +159,14 @@ export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canC
               className={`group flex items-start justify-between gap-4 rounded-lg border border-border bg-card px-5 py-4 hover:border-primary/50 transition-colors cursor-pointer${isAdmin ? " pr-20" : ""}`}
             >
               <div className="flex flex-col gap-1 min-w-0">
-                <span className="font-medium text-foreground group-hover:text-primary transition-colors truncate">
-                  {c.name}
-                </span>
+                <div className="flex items-baseline gap-2 min-w-0">
+                  <span className="font-medium text-foreground group-hover:text-primary transition-colors truncate">
+                    {c.client_name}
+                  </span>
+                  {c.serial && (
+                    <span className="font-mono text-xs text-muted-foreground truncate">· {c.serial}</span>
+                  )}
+                </div>
                 {c.description && (
                   <p className="text-xs text-muted-foreground line-clamp-1">{c.description}</p>
                 )}
@@ -152,14 +185,14 @@ export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canC
               <>
                 <button
                   onClick={() => openEdit(c)}
-                  title={`Edit ${c.name}`}
+                  title={`Edit ${c.client_name}${c.serial ? ` · ${c.serial}` : ""}`}
                   className="absolute top-1/2 -translate-y-1/2 right-10 rounded p-1.5 opacity-0 group-hover/row:opacity-100 bg-card border border-border text-muted-foreground hover:text-primary hover:border-primary/50 transition-all cursor-pointer"
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
                 <button
                   onClick={() => { setDeleteError(null); setConfirmId(c.id); }}
-                  title={`Delete client set: ${c.name}`}
+                  title={`Delete client set: ${c.client_name}${c.serial ? ` · ${c.serial}` : ""}`}
                   className="absolute top-1/2 -translate-y-1/2 right-3 rounded p-1.5 opacity-0 group-hover/row:opacity-100 bg-card border border-border text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-all cursor-pointer"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -171,11 +204,11 @@ export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canC
 
         {canCreate && !showAdd && (
           <button
-            onClick={() => { setShowAdd(true); if (clientSets.length === 0) setNewName("Default"); }}
+            onClick={() => setShowAdd(true)}
             className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-card/30 px-5 py-4 text-sm text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors cursor-pointer"
           >
             <Plus className="h-4 w-4" />
-            Add client set
+            Add client + drone
           </button>
         )}
 
@@ -185,7 +218,7 @@ export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canC
             className="flex flex-col gap-3 rounded-lg border border-primary/40 bg-card px-5 py-4"
           >
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-foreground">New client set</span>
+              <span className="text-sm font-medium text-foreground">New client + drone</span>
               <button
                 type="button"
                 onClick={resetAdd}
@@ -196,15 +229,30 @@ export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canC
               </button>
             </div>
 
-            <input
-              required
-              autoFocus
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              disabled={submitting}
-              placeholder="Name (e.g. Acme Corp)"
-              className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
-            />
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-muted-foreground">Client <span className="text-destructive">*</span></span>
+              <input
+                required
+                autoFocus
+                list={CLIENT_DATALIST_ID}
+                value={newClientName}
+                onChange={(e) => setNewClientName(e.target.value)}
+                disabled={submitting}
+                placeholder="e.g. Acme Corp"
+                className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-muted-foreground">Serial <span className="text-destructive">*</span></span>
+              <input
+                required
+                value={newSerial}
+                onChange={(e) => setNewSerial(e.target.value)}
+                disabled={submitting}
+                placeholder="e.g. SN-12345"
+                className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
+              />
+            </label>
             <input
               value={newDescription}
               onChange={(e) => setNewDescription(e.target.value)}
@@ -219,7 +267,7 @@ export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canC
             )}
             <button
               type="submit"
-              disabled={submitting || !newName.trim()}
+              disabled={submitting || !newClientName.trim() || !newSerial.trim()}
               className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed"
             >
               {submitting ? "Creating…" : "Create"}
@@ -236,7 +284,7 @@ export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canC
             <div className="flex items-center justify-between border-b border-border bg-toolbar px-5 py-3.5">
               <div className="flex items-center gap-2">
                 <Pencil className="h-4 w-4 text-primary" />
-                <h2 className="text-sm font-bold text-foreground">Edit client set</h2>
+                <h2 className="text-sm font-bold text-foreground">Edit client + drone</h2>
               </div>
               <button
                 onClick={() => setEditId(null)}
@@ -249,12 +297,22 @@ export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canC
 
             <div className="px-5 py-4 flex flex-col gap-3">
               <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-muted-foreground">Name <span className="text-destructive">*</span></span>
+                <span className="text-xs font-medium text-muted-foreground">Client <span className="text-destructive">*</span></span>
                 <input
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
+                  list={CLIENT_DATALIST_ID}
+                  value={editClientName}
+                  onChange={(e) => setEditClientName(e.target.value)}
                   disabled={saving}
                   className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-muted-foreground">Serial <span className="text-destructive">*</span></span>
+                <input
+                  value={editSerial}
+                  onChange={(e) => setEditSerial(e.target.value)}
+                  disabled={saving}
+                  className="rounded-md border border-border bg-secondary px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
                 />
               </label>
               <label className="flex flex-col gap-1.5">
@@ -284,7 +342,7 @@ export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canC
               </button>
               <button
                 onClick={handleSave}
-                disabled={saving || !editName.trim()}
+                disabled={saving || !editClientName.trim() || !editSerial.trim()}
                 className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed"
               >
                 <Check className="h-3.5 w-3.5" />
@@ -303,7 +361,7 @@ export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canC
             <div className="flex items-center justify-between border-b border-border bg-toolbar px-5 py-3.5">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-destructive" />
-                <h2 className="text-sm font-bold text-foreground">Delete client set</h2>
+                <h2 className="text-sm font-bold text-foreground">Delete client + drone</h2>
               </div>
               <button
                 onClick={() => setConfirmId(null)}
@@ -316,10 +374,10 @@ export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canC
 
             <div className="px-5 py-4 flex flex-col gap-3">
               <p className="text-sm text-foreground">
-                Delete <span className="font-semibold">{confirmTarget.name}</span>?
+                Delete <span className="font-semibold">{confirmTarget.client_name}{confirmTarget.serial ? ` · ${confirmTarget.serial}` : ""}</span>?
               </p>
               <p className="text-xs text-muted-foreground">
-                All versions and uploaded files in this client set will be permanently removed. This cannot be undone.
+                All versions and uploaded files for this drone will be permanently removed. This cannot be undone.
               </p>
               {deleteError && (
                 <p className="text-xs text-destructive bg-destructive/15 border border-destructive/40 rounded-md px-3 py-2">

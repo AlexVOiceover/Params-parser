@@ -63,7 +63,8 @@ export interface Variant {
 export interface ClientSet {
   id: string;
   variant_id: string;
-  name: string;
+  client_name: string;
+  serial: string;
   description: string | null;
   created_by: string | null;
   created_at: string;

@@ -14,16 +14,17 @@ export async function POST(
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
   if (profile?.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { variantId, name, description } = await request.json() as { variantId: string; name: string; description?: string };
+  const { variantId, clientName, serial, description } = await request.json() as { variantId: string; clientName: string; serial: string; description?: string };
   if (!variantId) return NextResponse.json({ error: "variantId required" }, { status: 400 });
-  if (!name?.trim()) return NextResponse.json({ error: "name required" }, { status: 400 });
+  if (!clientName?.trim()) return NextResponse.json({ error: "clientName required" }, { status: 400 });
+  if (!serial?.trim()) return NextResponse.json({ error: "serial required" }, { status: 400 });
 
   const admin = createAdminClient();
 
   // Fetch the original client set
   const { data: original, error: origError } = await admin
     .from("client_sets")
-    .select("id, name, description, variant_id")
+    .select("id, client_name, serial, description, variant_id")
     .eq("id", id)
     .single();
   if (origError || !original) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -39,7 +40,8 @@ export async function POST(
   const { data: newClientSet, error: csError } = await admin
     .from("client_sets")
     .insert({
-      name: name.trim(),
+      client_name: clientName.trim(),
+      serial: serial.trim(),
       description: description?.trim() || null,
       variant_id: variantId,
       created_by: user.id,
@@ -47,7 +49,7 @@ export async function POST(
     .select("id")
     .single();
   if (csError || !newClientSet) {
-    const msg = csError?.code === "23505" ? "A client set with that name already exists for this variant" : (csError?.message ?? "Insert failed");
+    const msg = csError?.code === "23505" ? "This client + serial already exists for this variant" : (csError?.message ?? "Insert failed");
     return NextResponse.json({ error: msg }, { status: 409 });
   }
 

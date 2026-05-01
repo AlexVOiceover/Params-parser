@@ -31,7 +31,7 @@ export async function POST(
   // Fetch all client sets of the original variant
   const { data: clientSets } = await admin
     .from("client_sets")
-    .select("id, name, description")
+    .select("id, client_name, serial, description")
     .eq("variant_id", id)
     .order("created_at", { ascending: true });
 
@@ -53,7 +53,8 @@ export async function POST(
     const { data: newCs, error: csError } = await admin
       .from("client_sets")
       .insert({
-        name: cs.name,
+        client_name: cs.client_name,
+        serial: cs.serial,
         description: cs.description,
         variant_id: newVariant.id,
         created_by: user.id,

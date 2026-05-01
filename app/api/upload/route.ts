@@ -37,15 +37,14 @@ export async function POST(request: NextRequest) {
         // 3. Parse form data
         // Modes:
         //   "existing"        — clientSetId provided
-        //   "new-client-set"  — variantId + name (the new client-set name) provided
-        //   "new"             — familyId + name (the new variant name) provided; creates variant + Default client set
+        //   "new-client-set"  — variantId + clientName + serial provided
         controller.enqueue(msg("Reading file…"));
         const formData = await request.formData();
         const mode = (formData.get("mode") as string | null) ?? "existing";
-        const familyId = formData.get("familyId") as string | null;
         const variantId = formData.get("variantId") as string | null;
         let clientSetId = formData.get("clientSetId") as string | null;
-        const newName = formData.get("name") as string | null;
+        const clientName = formData.get("clientName") as string | null;
+        const serial = formData.get("serial") as string | null;
         const versionLabel = formData.get("versionLabel") as string;
         const changelog = (formData.get("changelog") as string | null) || null;
         const file = formData.get("file") as File | null;
@@ -60,13 +59,8 @@ export async function POST(request: NextRequest) {
           controller.close();
           return;
         }
-        if (mode === "new-client-set" && (!variantId || !newName?.trim())) {
-          controller.enqueue(msg("Variant id and client-set name are required", true));
-          controller.close();
-          return;
-        }
-        if (mode === "new" && (!familyId || !newName?.trim())) {
-          controller.enqueue(msg("Family id and variant name are required", true));
+        if (mode === "new-client-set" && (!variantId || !clientName?.trim() || !serial?.trim())) {
+          controller.enqueue(msg("Variant id, client name and serial are required", true));
           controller.close();
           return;
         }
@@ -81,44 +75,18 @@ export async function POST(request: NextRequest) {
 
         const admin = createAdminClient();
 
-        // 3b. Create new variant + default client set if needed
-        if (mode === "new") {
-          controller.enqueue(msg(`Creating variant "${newName}"…`));
-          const { data: newVariant, error: variantError } = await admin.from("variants").insert({
-            name: newName!.trim(),
-            family_id: familyId!,
-            created_by: user.id,
-          }).select("id").single();
-          if (variantError || !newVariant) {
-            controller.enqueue(msg(`Failed to create variant: ${variantError?.message ?? "unknown error"}`, true));
-            controller.close();
-            return;
-          }
-
-          const { data: newCs, error: csError } = await admin.from("client_sets").insert({
-            name: "Default",
-            variant_id: newVariant.id,
-            created_by: user.id,
-          }).select("id").single();
-          if (csError || !newCs) {
-            controller.enqueue(msg(`Failed to create client set: ${csError?.message ?? "unknown error"}`, true));
-            controller.close();
-            return;
-          }
-          clientSetId = newCs.id;
-        }
-
-        // 3c. Create new client set under existing variant
+        // 3b. Create new client set under existing variant if needed
         if (mode === "new-client-set") {
-          controller.enqueue(msg(`Creating client set "${newName}"…`));
+          controller.enqueue(msg(`Creating client set "${clientName} · ${serial}"…`));
           const { data: newCs, error: csError } = await admin.from("client_sets").insert({
-            name: newName!.trim(),
+            client_name: clientName!.trim(),
+            serial: serial!.trim(),
             variant_id: variantId!,
             created_by: user.id,
           }).select("id").single();
           if (csError || !newCs) {
             const errMsg = csError?.code === "23505"
-              ? "A client set with that name already exists for this variant"
+              ? "This client + serial already exists for this variant"
               : (csError?.message ?? "unknown error");
             controller.enqueue(msg(`Failed to create client set: ${errMsg}`, true));
             controller.close();
