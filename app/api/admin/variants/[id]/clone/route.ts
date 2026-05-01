@@ -14,16 +14,16 @@ export async function POST(
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
   if (profile?.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { droneTypeId, name, description } = await request.json() as { droneTypeId: string; name: string; description?: string };
-  if (!droneTypeId) return NextResponse.json({ error: "droneTypeId required" }, { status: 400 });
+  const { familyId, name, description } = await request.json() as { familyId: string; name: string; description?: string };
+  if (!familyId) return NextResponse.json({ error: "familyId required" }, { status: 400 });
   if (!name?.trim()) return NextResponse.json({ error: "name required" }, { status: 400 });
 
   const admin = createAdminClient();
 
-  // Fetch original param set
+  // Fetch original variant
   const { data: original, error: origError } = await admin
-    .from("param_sets")
-    .select("id, name, description, drone_type_id")
+    .from("variants")
+    .select("id, name, description, family_id")
     .eq("id", id)
     .single();
   if (origError || !original) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -35,31 +35,31 @@ export async function POST(
     .eq("param_set_id", id)
     .order("created_at", { ascending: true });
 
-  // Create new param set
-  const { data: newSet, error: setError } = await admin
-    .from("param_sets")
+  // Create new variant
+  const { data: newVariant, error: variantError } = await admin
+    .from("variants")
     .insert({
       name: name.trim(),
       description: description?.trim() || null,
-      drone_type_id: droneTypeId,
+      family_id: familyId,
       created_by: user.id,
     })
     .select("id")
     .single();
-  if (setError || !newSet) return NextResponse.json({ error: setError?.message ?? "Insert failed" }, { status: 500 });
+  if (variantError || !newVariant) return NextResponse.json({ error: variantError?.message ?? "Insert failed" }, { status: 500 });
 
   // Copy each version's file and rows
   for (const v of versions ?? []) {
     const { data: fileData } = await admin.storage.from("param-files").download(v.storage_path);
     if (!fileData) continue;
 
-    const newPath = `${newSet.id}/${v.version_label}.param`;
+    const newPath = `${newVariant.id}/${v.version_label}.param`;
     await admin.storage.from("param-files").upload(newPath, fileData);
 
     const { data: newVersion } = await admin
       .from("param_versions")
       .insert({
-        param_set_id: newSet.id,
+        param_set_id: newVariant.id,
         version_label: v.version_label,
         storage_path: newPath,
         changelog: v.changelog,
@@ -81,5 +81,5 @@ export async function POST(
     }
   }
 
-  return NextResponse.json({ ok: true, paramSetId: newSet.id });
+  return NextResponse.json({ ok: true, variantId: newVariant.id });
 }

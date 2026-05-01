@@ -3,11 +3,11 @@ import { createClient, createSessionClient, createAdminClient } from "@/lib/supa
 
 export async function GET() {
   const { data, error } = await createClient()
-    .from("drone_types")
+    .from("families")
     .select("id, name")
     .order("name");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ droneTypes: data ?? [] });
+  return NextResponse.json({ families: data ?? [] });
 }
 
 function toSlug(name: string): string {
@@ -30,13 +30,13 @@ export async function POST(request: NextRequest) {
 
   const admin = createAdminClient();
   const { data, error } = await admin
-    .from("drone_types")
+    .from("families")
     .insert({ slug, name: name.trim(), description: description ?? null })
     .select("id, slug, name, description")
     .single();
 
   if (error) {
-    const msg = error.code === "23505" ? "A drone type with that name already exists" : error.message;
+    const msg = error.code === "23505" ? "A family with that name already exists" : error.message;
     return NextResponse.json({ error: msg }, { status: 409 });
   }
 

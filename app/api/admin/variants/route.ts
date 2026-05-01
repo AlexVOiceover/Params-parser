@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSessionClient, createAdminClient } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
-  const droneTypeId = request.nextUrl.searchParams.get("droneTypeId");
-  if (!droneTypeId) return NextResponse.json({ error: "droneTypeId required" }, { status: 400 });
+  const familyId = request.nextUrl.searchParams.get("familyId");
+  if (!familyId) return NextResponse.json({ error: "familyId required" }, { status: 400 });
 
   const supabase = await createSessionClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -14,13 +14,13 @@ export async function GET(request: NextRequest) {
 
   const admin = createAdminClient();
   const { data, error } = await admin
-    .from("param_sets")
+    .from("variants")
     .select("id, name")
-    .eq("drone_type_id", droneTypeId)
+    .eq("family_id", familyId)
     .order("name");
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ paramSets: data ?? [] });
+  return NextResponse.json({ variants: data ?? [] });
 }
 
 export async function POST(request: NextRequest) {
@@ -31,17 +31,17 @@ export async function POST(request: NextRequest) {
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
   if (profile?.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { droneTypeId, name, description } = await request.json() as { droneTypeId: string; name: string; description?: string };
-  if (!droneTypeId) return NextResponse.json({ error: "droneTypeId required" }, { status: 400 });
+  const { familyId, name, description } = await request.json() as { familyId: string; name: string; description?: string };
+  if (!familyId) return NextResponse.json({ error: "familyId required" }, { status: 400 });
   if (!name?.trim()) return NextResponse.json({ error: "name required" }, { status: 400 });
 
   const admin = createAdminClient();
   const { data, error } = await admin
-    .from("param_sets")
+    .from("variants")
     .insert({
       name: name.trim(),
       description: description?.trim() || null,
-      drone_type_id: droneTypeId,
+      family_id: familyId,
       created_by: user.id,
     })
     .select("id")

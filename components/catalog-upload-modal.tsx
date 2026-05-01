@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { X, Upload, CheckCircle, ExternalLink } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
-interface DroneType { id: string; name: string }
+interface Family { id: string; name: string }
 
 interface Props {
   content: string;
@@ -19,8 +19,8 @@ const labelClass = "flex flex-col gap-1.5";
 const labelTextClass = "text-xs font-medium text-muted-foreground";
 
 export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
-  const [droneTypes, setDroneTypes] = useState<DroneType[]>([]);
-  const [droneTypeId, setDroneTypeId] = useState("");
+  const [families, setFamilies] = useState<Family[]>([]);
+  const [familyId, setFamilyId] = useState("");
   const [name, setName] = useState("");
   const [versionLabel, setVersionLabel] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -28,8 +28,8 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    createClient()?.from("drone_types").select("id, name").order("name").then(({ data }) => {
-      setDroneTypes(data ?? []);
+    createClient()?.from("families").select("id, name").order("name").then(({ data }) => {
+      setFamilies(data ?? []);
     });
   }, []);
 
@@ -43,7 +43,7 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
 
     const fd = new FormData();
     fd.set("mode", "new");
-    fd.set("droneTypeId", droneTypeId);
+    fd.set("familyId", familyId);
     fd.set("name", name);
     fd.set("versionLabel", versionLabel);
     fd.set("file", file);
@@ -112,7 +112,7 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
           <div className="px-5 py-8 text-center flex flex-col items-center gap-3">
             <CheckCircle className="h-8 w-8 text-emerald-400" />
             <p className="text-sm text-foreground font-medium">Published to catalog</p>
-            <p className="text-xs text-muted-foreground">The param set is now visible in the catalog.</p>
+            <p className="text-xs text-muted-foreground">The variant is now visible in the catalog.</p>
             <a
               href="/"
               className="flex items-center gap-1.5 mt-2 text-xs text-primary hover:underline cursor-pointer"
@@ -123,17 +123,17 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
         ) : (
           <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-5 py-4">
             <label className={labelClass}>
-              <span className={labelTextClass}>Drone type <span className="text-destructive">*</span></span>
-              <select required value={droneTypeId} onChange={(e) => setDroneTypeId(e.target.value)} className={selectClass}>
-                <option value="">Select drone type…</option>
-                {droneTypes.map((dt) => (
+              <span className={labelTextClass}>Family <span className="text-destructive">*</span></span>
+              <select required value={familyId} onChange={(e) => setFamilyId(e.target.value)} className={selectClass}>
+                <option value="">Select family…</option>
+                {families.map((dt) => (
                   <option key={dt.id} value={dt.id}>{dt.name}</option>
                 ))}
               </select>
             </label>
 
             <label className={labelClass}>
-              <span className={labelTextClass}>Param set name <span className="text-destructive">*</span></span>
+              <span className={labelTextClass}>Variant name <span className="text-destructive">*</span></span>
               <input
                 required
                 value={name}

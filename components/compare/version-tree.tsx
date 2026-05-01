@@ -19,21 +19,21 @@ interface VersionNode {
   isLatest: boolean;
 }
 
-interface ParamSetNode {
+interface VariantNode {
   id: string;
   name: string;
   versions: VersionNode[];
 }
 
-interface DroneNode {
+interface FamilyNode {
   id: string;
   name: string;
   slug: string;
-  paramSets: ParamSetNode[];
+  variants: VariantNode[];
 }
 
 interface Props {
-  tree: DroneNode[];
+  tree: FamilyNode[];
 }
 
 export function VersionTree({ tree }: Props) {
@@ -41,8 +41,8 @@ export function VersionTree({ tree }: Props) {
   const { droneParams } = useDroneParams();
   const hasDroneParams = droneParams !== null && droneParams.length > 0;
   const [checked, setChecked] = useState<Set<string>>(new Set());
-  const [collapsedDrones, setCollapsedDrones] = useState<Set<string>>(new Set());
-  const [collapsedSets, setCollapsedSets] = useState<Set<string>>(new Set());
+  const [collapsedFamilies, setCollapsedFamilies] = useState<Set<string>>(new Set());
+  const [collapsedVariants, setCollapsedVariants] = useState<Set<string>>(new Set());
 
   function toggleCheck(id: string) {
     setChecked((prev) => {
@@ -53,8 +53,8 @@ export function VersionTree({ tree }: Props) {
     });
   }
 
-  function toggleDrone(id: string) {
-    setCollapsedDrones((prev) => {
+  function toggleFamily(id: string) {
+    setCollapsedFamilies((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -62,8 +62,8 @@ export function VersionTree({ tree }: Props) {
     });
   }
 
-  function toggleSet(id: string) {
-    setCollapsedSets((prev) => {
+  function toggleVariant(id: string) {
+    setCollapsedVariants((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -118,56 +118,56 @@ export function VersionTree({ tree }: Props) {
             No versions available in the catalog yet.
           </p>
         ) : (
-          tree.map((drone) => {
-            const isDroneCollapsed = collapsedDrones.has(drone.id);
+          tree.map((family) => {
+            const isFamilyCollapsed = collapsedFamilies.has(family.id);
             return (
-              <div key={drone.id}>
-                {/* Drone row */}
+              <div key={family.id}>
+                {/* Family row */}
                 <button
-                  onClick={() => toggleDrone(drone.id)}
+                  onClick={() => toggleFamily(family.id)}
                   className="flex items-center gap-2 w-full px-4 py-1.5 text-sm font-medium text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
                 >
-                  {isDroneCollapsed ? (
+                  {isFamilyCollapsed ? (
                     <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                   ) : (
                     <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                   )}
-                  {isDroneCollapsed ? (
+                  {isFamilyCollapsed ? (
                     <Folder className="h-3.5 w-3.5 text-primary shrink-0" />
                   ) : (
                     <FolderOpen className="h-3.5 w-3.5 text-primary shrink-0" />
                   )}
-                  {drone.name}
+                  {family.name}
                 </button>
 
-                {!isDroneCollapsed &&
-                  drone.paramSets.map((ps) => {
-                    const isSetCollapsed = collapsedSets.has(ps.id);
+                {!isFamilyCollapsed &&
+                  family.variants.map((variant) => {
+                    const isVariantCollapsed = collapsedVariants.has(variant.id);
                     return (
-                      <div key={ps.id}>
-                        {/* Param set row */}
+                      <div key={variant.id}>
+                        {/* Variant row */}
                         <button
-                          onClick={() => toggleSet(ps.id)}
+                          onClick={() => toggleVariant(variant.id)}
                           className="flex items-center gap-2 w-full pl-9 pr-4 py-1.5 text-sm text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
                         >
-                          {isSetCollapsed ? (
+                          {isVariantCollapsed ? (
                             <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                           ) : (
                             <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                           )}
-                          {isSetCollapsed ? (
+                          {isVariantCollapsed ? (
                             <Folder className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                           ) : (
                             <FolderOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                           )}
-                          <span>{ps.name}</span>
+                          <span>{variant.name}</span>
                           <span className="text-muted-foreground text-xs">
-                            ({ps.versions.length})
+                            ({variant.versions.length})
                           </span>
                         </button>
 
-                        {!isSetCollapsed &&
-                          ps.versions.map((v) => (
+                        {!isVariantCollapsed &&
+                          variant.versions.map((v) => (
                             <div
                               key={v.id}
                               onClick={() => toggleCheck(v.id)}

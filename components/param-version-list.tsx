@@ -14,27 +14,27 @@ interface ParamVersionRow {
   is_latest: boolean;
 }
 
-interface DroneType {
+interface Family {
   id: string;
   name: string;
 }
 
-interface ParamSetOption {
+interface VariantOption {
   id: string;
   name: string;
 }
 
 interface Props {
   versions: ParamVersionRow[];
-  droneSlug: string;
-  droneTypeId: string;
-  paramSetId: string;
+  familySlug: string;
+  familyId: string;
+  variantId: string;
   isAdmin: boolean;
-  droneName: string;
-  paramSetName: string;
+  familyName: string;
+  variantName: string;
 }
 
-const NEW_PARAM_SET = "__new__";
+const NEW_VARIANT = "__new__";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -59,7 +59,7 @@ function nextVersions(versions: ParamVersionRow[]): { major: string; minor: stri
   };
 }
 
-export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId, isAdmin, droneName, paramSetName }: Props) {
+export function ParamVersionList({ versions, familySlug, familyId, variantId, isAdmin, familyName, variantName }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
 
@@ -78,46 +78,46 @@ export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId,
 
   // ── Clone state ───────────────────────────────────────────
   const [cloneId, setCloneId] = useState<string | null>(null);
-  const [cloneDroneTypeId, setCloneDroneTypeId] = useState(droneTypeId);
-  const [cloneParamSetId, setCloneParamSetId] = useState(paramSetId);
+  const [cloneFamilyId, setCloneFamilyId] = useState(familyId);
+  const [cloneVariantId, setCloneVariantId] = useState(variantId);
   const [cloneVersionLabel, setCloneVersionLabel] = useState("");
   const [cloneChangelog, setCloneChangelog] = useState("");
-  const [newParamSetName, setNewParamSetName] = useState("");
-  const [newParamSetDescription, setNewParamSetDescription] = useState("");
+  const [newVariantName, setNewVariantName] = useState("");
+  const [newVariantDescription, setNewVariantDescription] = useState("");
   const [cloning, setCloning] = useState(false);
   const [cloneError, setCloneError] = useState<string | null>(null);
 
   // ── Dropdown data ─────────────────────────────────────────
-  const [droneTypes, setDroneTypes] = useState<DroneType[]>([]);
-  const [paramSets, setParamSets] = useState<ParamSetOption[]>([]);
+  const [families, setFamilies] = useState<Family[]>([]);
+  const [variants, setVariants] = useState<VariantOption[]>([]);
 
   const deleteTarget = versions.find((v) => v.id === deleteId);
   const cloneTarget = versions.find((v) => v.id === cloneId);
-  const isNewParamSet = cloneParamSetId === NEW_PARAM_SET;
+  const isNewVariant = cloneVariantId === NEW_VARIANT;
 
   useEffect(() => {
     if (!isAdmin) return;
-    fetch("/api/admin/drone-types").then((r) => r.json()).then(({ droneTypes: dt }) => {
-      setDroneTypes(dt ?? []);
+    fetch("/api/admin/families").then((r) => r.json()).then(({ families: dt }) => {
+      setFamilies(dt ?? []);
     });
   }, [isAdmin]);
 
-  // Reload param sets whenever the selected drone type changes
+  // Reload variants whenever the selected family changes
   useEffect(() => {
     if (!cloneId) return;
-    setParamSets([]);
-    fetch(`/api/admin/param-sets?droneTypeId=${cloneDroneTypeId}`)
+    setVariants([]);
+    fetch(`/api/admin/variants?familyId=${cloneFamilyId}`)
       .then((r) => r.json())
-      .then(({ paramSets: ps }) => {
-        setParamSets(ps ?? []);
-        setCloneParamSetId((prev) => {
-          if (prev === NEW_PARAM_SET) return NEW_PARAM_SET;
-          const stillExists = (ps ?? []).some((p: ParamSetOption) => p.id === prev);
+      .then(({ variants: ps }) => {
+        setVariants(ps ?? []);
+        setCloneVariantId((prev) => {
+          if (prev === NEW_VARIANT) return NEW_VARIANT;
+          const stillExists = (ps ?? []).some((p: VariantOption) => p.id === prev);
           if (stillExists) return prev;
-          return ps?.[0]?.id ?? NEW_PARAM_SET;
+          return ps?.[0]?.id ?? NEW_VARIANT;
         });
       });
-  }, [cloneDroneTypeId, cloneId]);
+  }, [cloneFamilyId, cloneId]);
 
   const { major: nextMajor, minor: nextMinor } = nextVersions(versions);
   const uploadVersionLabel = uploadVersionType === "major" ? nextMajor : uploadVersionType === "minor" ? nextMinor! : "";
@@ -136,8 +136,8 @@ export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId,
     setUploadLog([]);
 
     const fd = new FormData();
-    fd.set("droneTypeId", droneTypeId);
-    fd.set("paramSetId", paramSetId);
+    fd.set("familyId", familyId);
+    fd.set("variantId", variantId);
     fd.set("versionLabel", uploadVersionLabel);
     if (uploadChangelog) fd.set("changelog", uploadChangelog);
     fd.set("file", uploadFile);
@@ -181,12 +181,12 @@ export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId,
 
   function openClone(v: ParamVersionRow) {
     setCloneError(null);
-    setCloneDroneTypeId(droneTypeId);
-    setCloneParamSetId(paramSetId);
+    setCloneFamilyId(familyId);
+    setCloneVariantId(variantId);
     setCloneVersionLabel(v.version_label);
     setCloneChangelog(v.changelog ?? "");
-    setNewParamSetName("");
-    setNewParamSetDescription("");
+    setNewVariantName("");
+    setNewVariantDescription("");
     setCloneId(v.id);
   }
 
@@ -214,9 +214,9 @@ export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId,
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        droneTypeId: cloneDroneTypeId,
-        paramSetId: isNewParamSet ? null : cloneParamSetId,
-        newParamSet: isNewParamSet ? { name: newParamSetName, description: newParamSetDescription } : undefined,
+        familyId: cloneFamilyId,
+        variantId: isNewVariant ? null : cloneVariantId,
+        newVariant: isNewVariant ? { name: newVariantName, description: newVariantDescription } : undefined,
         versionLabel: cloneVersionLabel,
         changelog: cloneChangelog,
       }),
@@ -237,7 +237,7 @@ export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId,
     cloning ||
     !cloneVersionLabel.trim() ||
     !versionLabelValid ||
-    (isNewParamSet && !newParamSetName.trim());
+    (isNewVariant && !newVariantName.trim());
 
   const uploadDisabled = uploading || !uploadVersionType || !uploadFile;
   const uploadHasError = uploadLog.some((l) => l.error);
@@ -383,7 +383,7 @@ export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId,
                     View
                   </Link>
                   <Link
-                    href={`/filter?load=${encodeURIComponent(storageUrl(v.storage_path))}&drone=${encodeURIComponent(droneName)}&set=${encodeURIComponent(paramSetName)}&version=${encodeURIComponent(v.version_label)}`}
+                    href={`/filter?load=${encodeURIComponent(storageUrl(v.storage_path))}&family=${encodeURIComponent(familyName)}&variant=${encodeURIComponent(variantName)}&version=${encodeURIComponent(v.version_label)}`}
                     className="flex items-center gap-1.5 rounded-md bg-secondary border border-border hover:bg-secondary/80 px-3 py-1.5 text-xs font-medium text-foreground transition-colors cursor-pointer whitespace-nowrap"
                   >
                     <Filter className="h-3.5 w-3.5" />
@@ -479,45 +479,45 @@ export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId,
             </div>
 
             <div className="px-5 py-4 flex flex-col gap-3">
-              {/* Drone type */}
+              {/* Family */}
               <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-muted-foreground">Drone type</span>
+                <span className="text-xs font-medium text-muted-foreground">Family</span>
                 <select
-                  value={cloneDroneTypeId}
-                  onChange={(e) => setCloneDroneTypeId(e.target.value)}
+                  value={cloneFamilyId}
+                  onChange={(e) => setCloneFamilyId(e.target.value)}
                   disabled={cloning}
                   className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer disabled:opacity-40"
                 >
-                  {droneTypes.map((dt) => (
+                  {families.map((dt) => (
                     <option key={dt.id} value={dt.id}>{dt.name}</option>
                   ))}
                 </select>
               </label>
 
-              {/* Param set */}
+              {/* Variant */}
               <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-muted-foreground">Param set</span>
+                <span className="text-xs font-medium text-muted-foreground">Variant</span>
                 <select
-                  value={cloneParamSetId}
-                  onChange={(e) => setCloneParamSetId(e.target.value)}
+                  value={cloneVariantId}
+                  onChange={(e) => setCloneVariantId(e.target.value)}
                   disabled={cloning}
                   className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer disabled:opacity-40"
                 >
-                  {paramSets.map((ps) => (
+                  {variants.map((ps) => (
                     <option key={ps.id} value={ps.id}>{ps.name}</option>
                   ))}
-                  <option value={NEW_PARAM_SET}>＋ Create new param set…</option>
+                  <option value={NEW_VARIANT}>＋ Create new variant…</option>
                 </select>
               </label>
 
-              {/* New param set fields — shown inline when "Create new param set" is selected */}
-              {isNewParamSet && (
+              {/* New variant fields — shown inline when "Create new variant" is selected */}
+              {isNewVariant && (
                 <div className="flex flex-col gap-2.5 rounded-lg border border-border bg-secondary/50 px-3.5 py-3">
                   <label className="flex flex-col gap-1.5">
-                    <span className="text-xs font-medium text-muted-foreground">Param set name <span className="text-destructive">*</span></span>
+                    <span className="text-xs font-medium text-muted-foreground">Variant name <span className="text-destructive">*</span></span>
                     <input
-                      value={newParamSetName}
-                      onChange={(e) => setNewParamSetName(e.target.value)}
+                      value={newVariantName}
+                      onChange={(e) => setNewVariantName(e.target.value)}
                       disabled={cloning}
                       placeholder="e.g. Survey config"
                       className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
@@ -526,8 +526,8 @@ export function ParamVersionList({ versions, droneSlug, droneTypeId, paramSetId,
                   <label className="flex flex-col gap-1.5">
                     <span className="text-xs font-medium text-muted-foreground">Description</span>
                     <input
-                      value={newParamSetDescription}
-                      onChange={(e) => setNewParamSetDescription(e.target.value)}
+                      value={newVariantDescription}
+                      onChange={(e) => setNewVariantDescription(e.target.value)}
                       disabled={cloning}
                       placeholder="Optional"
                       className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"

@@ -281,9 +281,9 @@ export function CompareTable({
                   key={v.id}
                   className="relative px-4 py-2.5 text-left font-medium bg-secondary overflow-hidden"
                 >
-                  <div className="text-foreground font-semibold truncate text-sm">{v.paramSetName}</div>
+                  <div className="text-foreground font-semibold truncate text-sm">{v.variantName}</div>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="text-muted-foreground text-[10px] truncate">{v.droneName}</span>
+                    <span className="text-muted-foreground text-[10px] truncate">{v.familyName}</span>
                     <span className="rounded bg-primary/20 border border-primary/40 px-1.5 py-px font-mono text-[10px] font-bold text-primary shrink-0">v{v.label}</span>
                   </div>
                   <ResizeHandle colIndex={i + 1} />

@@ -22,7 +22,7 @@ export async function PATCH(
   if ("description" in body) update.description = body.description?.trim() || null;
 
   const admin = createAdminClient();
-  const { error } = await admin.from("drone_types").update(update).eq("id", id);
+  const { error } = await admin.from("families").update(update).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ ok: true });
@@ -43,20 +43,20 @@ export async function DELETE(
 
   const admin = createAdminClient();
 
-  // Block deletion if any param sets reference this drone type
+  // Block deletion if any variants reference this family
   const { count } = await admin
-    .from("param_sets")
+    .from("variants")
     .select("id", { count: "exact", head: true })
-    .eq("drone_type_id", id);
+    .eq("family_id", id);
 
   if (count && count > 0) {
     return NextResponse.json(
-      { error: `Cannot delete: ${count} param set${count === 1 ? "" : "s"} exist for this drone type` },
+      { error: `Cannot delete: ${count} variant${count === 1 ? "" : "s"} exist for this family` },
       { status: 409 }
     );
   }
 
-  const { error } = await admin.from("drone_types").delete().eq("id", id);
+  const { error } = await admin.from("families").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ ok: true });

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Columns2, Filter, Upload } from "lucide-react";
 import { createClient, createSessionClient } from "@/lib/supabase/server";
-import { DroneTypeGrid } from "@/components/drone-type-grid";
+import { FamilyGrid } from "@/components/family-grid";
 
 export const dynamic = "force-dynamic";
 
@@ -10,23 +10,23 @@ export const metadata: Metadata = {
   title: "Catalog — AIR6",
 };
 
-async function getDroneTypes() {
+async function getFamilies() {
   const supabase = createClient();
 
-  const { data: droneTypes } = await supabase
-    .from("drone_types")
+  const { data: families } = await supabase
+    .from("families")
     .select("id, slug, name, description")
     .order("name");
 
-  if (!droneTypes?.length) return [];
+  if (!families?.length) return [];
 
   const counts = await Promise.all(
-    droneTypes.map(async (dt) => {
+    families.map(async (f) => {
       const { count } = await supabase
-        .from("param_sets")
+        .from("variants")
         .select("id", { count: "exact", head: true })
-        .eq("drone_type_id", dt.id);
-      return { ...dt, param_set_count: count ?? 0 };
+        .eq("family_id", f.id);
+      return { ...f, variant_count: count ?? 0 };
     })
   );
 
@@ -50,7 +50,7 @@ async function getRole(): Promise<string | null> {
 }
 
 export default async function CatalogPage() {
-  const [droneTypes, role] = await Promise.all([getDroneTypes(), getRole()]);
+  const [families, role] = await Promise.all([getFamilies(), getRole()]);
   const isAdmin = role === "admin";
   const canUpload = role === "admin" || role === "contributor";
 
@@ -58,7 +58,7 @@ export default async function CatalogPage() {
     <div className="max-w-5xl mx-auto px-6 py-10">
       <div className="flex items-end justify-between gap-4 mb-6">
         <h1 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-          Drone types
+          Families
         </h1>
         <div className="flex items-center gap-2">
           <Link
@@ -86,10 +86,10 @@ export default async function CatalogPage() {
           )}
         </div>
       </div>
-      {droneTypes.length === 0 && !isAdmin ? (
-        <p className="text-sm text-muted-foreground">No drone types found.</p>
+      {families.length === 0 && !isAdmin ? (
+        <p className="text-sm text-muted-foreground">No families found.</p>
       ) : (
-        <DroneTypeGrid droneTypes={droneTypes} isAdmin={isAdmin} />
+        <FamilyGrid families={families} isAdmin={isAdmin} />
       )}
     </div>
   );

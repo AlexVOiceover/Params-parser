@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSessionClient, createAdminClient } from "@/lib/supabase/server";
 
 interface CloneBody {
-  droneTypeId: string;
-  paramSetId: string | null;
-  newParamSet?: { name: string; description?: string };
+  familyId: string;
+  variantId: string | null;
+  newVariant?: { name: string; description?: string };
   versionLabel: string;
   changelog?: string;
 }
@@ -22,12 +22,12 @@ export async function POST(
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
   if (profile?.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { droneTypeId, paramSetId, newParamSet, versionLabel, changelog } = await request.json() as CloneBody;
+  const { familyId, variantId, newVariant, versionLabel, changelog } = await request.json() as CloneBody;
 
-  if (!droneTypeId) return NextResponse.json({ error: "droneTypeId required" }, { status: 400 });
+  if (!familyId) return NextResponse.json({ error: "familyId required" }, { status: 400 });
   if (!versionLabel?.trim()) return NextResponse.json({ error: "versionLabel required" }, { status: 400 });
   if (!/^\d+\.\d+$/.test(versionLabel.trim())) return NextResponse.json({ error: "Version label must be in format number.number (e.g. 1.0)" }, { status: 400 });
-  if (!paramSetId && !newParamSet?.name?.trim()) return NextResponse.json({ error: "paramSetId or newParamSet.name required" }, { status: 400 });
+  if (!variantId && !newVariant?.name?.trim()) return NextResponse.json({ error: "variantId or newVariant.name required" }, { status: 400 });
 
   const admin = createAdminClient();
 
@@ -39,28 +39,28 @@ export async function POST(
     .single();
   if (origError || !original) return NextResponse.json({ error: "Version not found" }, { status: 404 });
 
-  // Resolve or create the target param set
-  let targetParamSetId = paramSetId;
-  if (!targetParamSetId) {
+  // Resolve or create the target variant
+  let targetVariantId = variantId;
+  if (!targetVariantId) {
     const { data: created, error: createError } = await admin
-      .from("param_sets")
+      .from("variants")
       .insert({
-        name: newParamSet!.name.trim(),
-        description: newParamSet!.description?.trim() || null,
-        drone_type_id: droneTypeId,
+        name: newVariant!.name.trim(),
+        description: newVariant!.description?.trim() || null,
+        family_id: familyId,
         created_by: user.id,
       })
       .select("id")
       .single();
-    if (createError || !created) return NextResponse.json({ error: createError?.message ?? "Param set creation failed" }, { status: 500 });
-    targetParamSetId = created.id;
+    if (createError || !created) return NextResponse.json({ error: createError?.message ?? "Variant creation failed" }, { status: 500 });
+    targetVariantId = created.id;
   }
 
   // Download + re-upload the file
   const { data: fileData } = await admin.storage.from("param-files").download(original.storage_path);
   if (!fileData) return NextResponse.json({ error: "Could not download source file" }, { status: 500 });
 
-  const newPath = `${targetParamSetId}/${versionLabel.trim()}.param`;
+  const newPath = `${targetVariantId}/${versionLabel.trim()}.param`;
   const { error: uploadError } = await admin.storage.from("param-files").upload(newPath, fileData);
   if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 });
 
@@ -68,7 +68,7 @@ export async function POST(
   const { data: newVersion, error: versionError } = await admin
     .from("param_versions")
     .insert({
-      param_set_id: targetParamSetId,
+      param_set_id: targetVariantId,
       version_label: versionLabel.trim(),
       storage_path: newPath,
       changelog: changelog?.trim() || null,
@@ -90,5 +90,5 @@ export async function POST(
     );
   }
 
-  return NextResponse.json({ ok: true, versionId: newVersion.id, paramSetId: targetParamSetId });
+  return NextResponse.json({ ok: true, versionId: newVersion.id, variantId: targetVariantId });
 }

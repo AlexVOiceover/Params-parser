@@ -6,16 +6,16 @@ import Link from "next/link";
 import { Trash2, Plus, X, Pencil } from "lucide-react";
 import { ConnectedDroneCard } from "@/components/connected-drone-card";
 
-interface DroneTypeRow {
+interface FamilyRow {
   id: string;
   slug: string;
   name: string;
   description: string | null;
-  param_set_count: number;
+  variant_count: number;
 }
 
 interface Props {
-  droneTypes: DroneTypeRow[];
+  families: FamilyRow[];
   isAdmin: boolean;
 }
 
@@ -23,7 +23,7 @@ function toSlug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/, "");
 }
 
-export function DroneTypeGrid({ droneTypes, isAdmin }: Props) {
+export function FamilyGrid({ families, isAdmin }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [showAdd, setShowAdd] = useState(false);
@@ -36,10 +36,10 @@ export function DroneTypeGrid({ droneTypes, isAdmin }: Props) {
   const [editDescription, setEditDescription] = useState("");
   const [editSaving, setEditSaving] = useState(false);
 
-  function startEdit(dt: DroneTypeRow) {
-    setEditingId(dt.id);
-    setEditName(dt.name);
-    setEditDescription(dt.description ?? "");
+  function startEdit(f: FamilyRow) {
+    setEditingId(f.id);
+    setEditName(f.name);
+    setEditDescription(f.description ?? "");
   }
 
   function cancelEdit() {
@@ -50,7 +50,7 @@ export function DroneTypeGrid({ droneTypes, isAdmin }: Props) {
     e.preventDefault();
     if (!editingId || !editName.trim()) return;
     setEditSaving(true);
-    const res = await fetch(`/api/admin/drone-types/${editingId}`, {
+    const res = await fetch(`/api/admin/families/${editingId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: editName.trim(), description: editDescription.trim() || null }),
@@ -72,7 +72,7 @@ export function DroneTypeGrid({ droneTypes, isAdmin }: Props) {
     e.preventDefault();
     if (!newName.trim()) return;
     setSubmitting(true);
-    const res = await fetch("/api/admin/drone-types", {
+    const res = await fetch("/api/admin/families", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: newName.trim(), description: newDescription.trim() || null }),
@@ -86,7 +86,7 @@ export function DroneTypeGrid({ droneTypes, isAdmin }: Props) {
 
   async function handleDelete(id: string) {
     setDeleteErrors((prev) => { const n = { ...prev }; delete n[id]; return n; });
-    const res = await fetch(`/api/admin/drone-types/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/admin/families/${id}`, { method: "DELETE" });
     if (res.ok) {
       startTransition(() => router.refresh());
     } else {
@@ -98,15 +98,15 @@ export function DroneTypeGrid({ droneTypes, isAdmin }: Props) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       <ConnectedDroneCard />
-      {droneTypes.map((dt) =>
-        editingId === dt.id ? (
+      {families.map((f) =>
+        editingId === f.id ? (
           <form
-            key={dt.id}
+            key={f.id}
             onSubmit={handleEdit}
             className="flex flex-col gap-3 rounded-lg border border-primary/40 bg-card p-5"
           >
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-foreground">Edit drone type</span>
+              <span className="text-sm font-medium text-foreground">Edit family</span>
               <button type="button" onClick={cancelEdit} className="text-muted-foreground hover:text-foreground cursor-pointer">
                 <X className="h-4 w-4" />
               </button>
@@ -134,24 +134,24 @@ export function DroneTypeGrid({ droneTypes, isAdmin }: Props) {
             </button>
           </form>
         ) : (
-          <div key={dt.id} className="relative group/card flex flex-col gap-1">
+          <div key={f.id} className="relative group/card flex flex-col gap-1">
             <Link
-              href={`/${dt.slug}`}
+              href={`/${f.slug}`}
               className={`flex flex-col gap-2 rounded-lg border border-border bg-card p-5 hover:border-primary/50 hover:bg-card/80 transition-colors cursor-pointer${isAdmin ? " pr-10" : ""}`}
             >
               <span className="font-semibold text-foreground group-hover/card:text-primary transition-colors">
-                {dt.name}
+                {f.name}
               </span>
-              {dt.description && (
+              {f.description && (
                 <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-                  {dt.description}
+                  {f.description}
                 </p>
               )}
               <div className="mt-auto pt-3 border-t border-border/50">
                 <span className="text-xs text-muted-foreground">
-                  {dt.param_set_count === 0
-                    ? "No param sets yet"
-                    : `${dt.param_set_count} param set${dt.param_set_count === 1 ? "" : "s"}`}
+                  {f.variant_count === 0
+                    ? "No variants yet"
+                    : `${f.variant_count} variant${f.variant_count === 1 ? "" : "s"}`}
                 </span>
               </div>
             </Link>
@@ -159,19 +159,19 @@ export function DroneTypeGrid({ droneTypes, isAdmin }: Props) {
             {isAdmin && (
               <div className="absolute top-2.5 right-2.5 flex gap-1 opacity-0 group-hover/card:opacity-100 transition-all">
                 <button
-                  onClick={() => startEdit(dt)}
-                  title={`Edit ${dt.name}`}
+                  onClick={() => startEdit(f)}
+                  title={`Edit ${f.name}`}
                   className="rounded p-1 bg-card border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors cursor-pointer"
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
                 <button
-                  onClick={() => handleDelete(dt.id)}
-                  disabled={dt.param_set_count > 0}
+                  onClick={() => handleDelete(f.id)}
+                  disabled={f.variant_count > 0}
                   title={
-                    dt.param_set_count > 0
-                      ? `Cannot delete — ${dt.param_set_count} param set${dt.param_set_count === 1 ? "" : "s"} exist`
-                      : `Delete ${dt.name}`
+                    f.variant_count > 0
+                      ? `Cannot delete — ${f.variant_count} variant${f.variant_count === 1 ? "" : "s"} exist`
+                      : `Delete ${f.name}`
                   }
                   className="rounded p-1 bg-card border border-border text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-colors cursor-pointer disabled:opacity-20 disabled:cursor-not-allowed"
                 >
@@ -180,9 +180,9 @@ export function DroneTypeGrid({ droneTypes, isAdmin }: Props) {
               </div>
             )}
 
-            {deleteErrors[dt.id] && (
+            {deleteErrors[f.id] && (
               <p className="text-xs text-destructive bg-destructive/15 border border-destructive/40 rounded-md px-2.5 py-1.5">
-                {deleteErrors[dt.id]}
+                {deleteErrors[f.id]}
               </p>
             )}
           </div>
@@ -195,7 +195,7 @@ export function DroneTypeGrid({ droneTypes, isAdmin }: Props) {
           className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-card/30 p-5 text-sm text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors cursor-pointer min-h-28"
         >
           <Plus className="h-4 w-4" />
-          Add drone type
+          Add family
         </button>
       )}
 
@@ -205,7 +205,7 @@ export function DroneTypeGrid({ droneTypes, isAdmin }: Props) {
           className="flex flex-col gap-3 rounded-lg border border-primary/40 bg-card p-5"
         >
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-foreground">New drone type</span>
+            <span className="text-sm font-medium text-foreground">New family</span>
             <button
               type="button"
               onClick={resetAdd}

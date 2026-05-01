@@ -22,88 +22,88 @@ interface VersionNode {
   isLatest: boolean;
 }
 
-interface ParamSetNode {
+interface VariantNode {
   id: string;
   name: string;
   versions: VersionNode[];
 }
 
-interface DroneNode {
+interface FamilyNode {
   id: string;
   name: string;
   slug: string;
-  paramSets: ParamSetNode[];
+  variants: VariantNode[];
 }
 
 // ── Selection branch: full hierarchy for version tree ─────────────────────────
 
-type SetRow = { id: string; name: string; drone_type_id: string | null };
+type VariantRow = { id: string; name: string; family_id: string | null };
 type VersionRow = { id: string; version_label: string; is_latest: boolean; param_set_id: string };
 
-async function fetchTree(): Promise<DroneNode[]> {
+async function fetchTree(): Promise<FamilyNode[]> {
   const supabase = await createSessionClient().catch(() => createClient());
 
-  const { data: drones } = await supabase
-    .from("drone_types")
+  const { data: families } = await supabase
+    .from("families")
     .select("id, name, slug")
     .order("name");
 
-  if (!drones?.length) return [];
+  if (!families?.length) return [];
 
-  const droneIds = drones.map((d) => d.id);
-  const { data: setsRaw } = await supabase
-    .from("param_sets")
-    .select("id, name, drone_type_id")
-    .in("drone_type_id", droneIds)
-    .not("drone_type_id", "is", null)
+  const familyIds = families.map((f) => f.id);
+  const { data: variantsRaw } = await supabase
+    .from("variants")
+    .select("id, name, family_id")
+    .in("family_id", familyIds)
+    .not("family_id", "is", null)
     .order("name");
 
-  const sets: SetRow[] = setsRaw ?? [];
-  const setIds = sets.map((s) => s.id);
+  const variants: VariantRow[] = variantsRaw ?? [];
+  const variantIds = variants.map((v) => v.id);
 
   let versions: VersionRow[] = [];
-  if (setIds.length) {
+  if (variantIds.length) {
     const { data } = await supabase
       .from("param_versions")
       .select("id, version_label, is_latest, param_set_id")
-      .in("param_set_id", setIds)
+      .in("param_set_id", variantIds)
       .order("version_label");
     versions = data ?? [];
   }
 
-  const setsByDrone = new Map<string, SetRow[]>();
-  for (const s of sets) {
-    if (!s.drone_type_id) continue;
-    const arr = setsByDrone.get(s.drone_type_id) ?? [];
-    arr.push(s);
-    setsByDrone.set(s.drone_type_id, arr);
-  }
-
-  const versionsBySet = new Map<string, VersionRow[]>();
-  for (const v of versions) {
-    const arr = versionsBySet.get(v.param_set_id) ?? [];
+  const variantsByFamily = new Map<string, VariantRow[]>();
+  for (const v of variants) {
+    if (!v.family_id) continue;
+    const arr = variantsByFamily.get(v.family_id) ?? [];
     arr.push(v);
-    versionsBySet.set(v.param_set_id, arr);
+    variantsByFamily.set(v.family_id, arr);
   }
 
-  return drones
-    .map((d) => ({
-      id: d.id,
-      name: d.name,
-      slug: d.slug,
-      paramSets: (setsByDrone.get(d.id) ?? [])
-        .map((s) => ({
-          id: s.id,
-          name: s.name,
-          versions: (versionsBySet.get(s.id) ?? []).map((v) => ({
-            id: v.id,
-            label: v.version_label,
-            isLatest: v.is_latest,
+  const versionsByVariant = new Map<string, VersionRow[]>();
+  for (const v of versions) {
+    const arr = versionsByVariant.get(v.param_set_id) ?? [];
+    arr.push(v);
+    versionsByVariant.set(v.param_set_id, arr);
+  }
+
+  return families
+    .map((f) => ({
+      id: f.id,
+      name: f.name,
+      slug: f.slug,
+      variants: (variantsByFamily.get(f.id) ?? [])
+        .map((v) => ({
+          id: v.id,
+          name: v.name,
+          versions: (versionsByVariant.get(v.id) ?? []).map((ver) => ({
+            id: ver.id,
+            label: ver.version_label,
+            isLatest: ver.is_latest,
           })),
         }))
-        .filter((s) => s.versions.length > 0),
+        .filter((v) => v.versions.length > 0),
     }))
-    .filter((d) => d.paramSets.length > 0);
+    .filter((f) => f.variants.length > 0);
 }
 
 // ── Compare branch: param values for selected versions ────────────────────────
@@ -126,34 +126,34 @@ async function fetchCompareData(
       .order("name"),
   ]);
 
-  const paramSetIds = [...new Set((versionsData ?? []).map((v) => v.param_set_id))];
-  const { data: setsData } = await supabase
-    .from("param_sets")
-    .select("id, name, drone_type_id")
-    .in("id", paramSetIds);
+  const variantIds = [...new Set((versionsData ?? []).map((v) => v.param_set_id))];
+  const { data: variantsData } = await supabase
+    .from("variants")
+    .select("id, name, family_id")
+    .in("id", variantIds);
 
-  const droneTypeIds = [
+  const familyIds = [
     ...new Set(
-      (setsData ?? []).map((s) => s.drone_type_id).filter((id): id is string => id !== null)
+      (variantsData ?? []).map((v) => v.family_id).filter((id): id is string => id !== null)
     ),
   ];
-  const { data: dronesData } = droneTypeIds.length
-    ? await supabase.from("drone_types").select("id, name").in("id", droneTypeIds)
+  const { data: familiesData } = familyIds.length
+    ? await supabase.from("families").select("id, name").in("id", familyIds)
     : { data: [] };
 
-  const setMap = new Map((setsData ?? []).map((s) => [s.id, s]));
-  const droneMap = new Map((dronesData ?? []).map((d) => [d.id, d]));
+  const variantMap = new Map((variantsData ?? []).map((v) => [v.id, v]));
+  const familyMap = new Map((familiesData ?? []).map((f) => [f.id, f]));
   const versionLookup = new Map((versionsData ?? []).map((v) => [v.id, v]));
 
   const versions: CompareVersion[] = versionIds.map((id) => {
     const v = versionLookup.get(id);
-    const set = v ? setMap.get(v.param_set_id) : undefined;
-    const drone = set?.drone_type_id ? droneMap.get(set.drone_type_id) : undefined;
+    const variant = v ? variantMap.get(v.param_set_id) : undefined;
+    const family = variant?.family_id ? familyMap.get(variant.family_id) : undefined;
     return {
       id,
       label: v?.version_label ?? "?",
-      paramSetName: set?.name ?? "?",
-      droneName: drone?.name ?? "?",
+      variantName: variant?.name ?? "?",
+      familyName: family?.name ?? "?",
     };
   });
 

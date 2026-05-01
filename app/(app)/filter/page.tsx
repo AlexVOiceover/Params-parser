@@ -9,10 +9,10 @@ export const metadata: Metadata = {
 export default async function FilterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ load?: string; drone?: string; set?: string; version?: string }>;
+  searchParams: Promise<{ load?: string; family?: string; variant?: string; version?: string }>;
 }) {
-  const { load, drone, set, version } = await searchParams;
-  const catalogSource = drone && set && version ? { drone, set, version } : undefined;
+  const { load, family, variant, version } = await searchParams;
+  const catalogSource = family && variant && version ? { family, variant, version } : undefined;
   return (
     <AppProvider>
       <ParamFilterApp loadUrl={load} catalogSource={catalogSource} />

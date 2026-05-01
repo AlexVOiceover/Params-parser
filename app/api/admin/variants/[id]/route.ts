@@ -22,7 +22,7 @@ export async function DELETE(
     .select("storage_path")
     .eq("param_set_id", id);
 
-  const { error } = await admin.from("param_sets").delete().eq("id", id);
+  const { error } = await admin.from("variants").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Best-effort storage cleanup (cascade already removed DB rows)
@@ -56,7 +56,7 @@ export async function PATCH(
   if (body.description !== undefined) update.description = body.description.trim() || null;
 
   const admin = createAdminClient();
-  const { error } = await admin.from("param_sets").update(update).eq("id", id);
+  const { error } = await admin.from("variants").update(update).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ ok: true });

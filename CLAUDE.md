@@ -59,3 +59,18 @@ When implementing search in a param list:
 - Dev: `npm run dev --turbopack`
 - Env vars needed locally: `KV_REST_API_URL`, `KV_REST_API_TOKEN` (pull via `vercel env pull`)
 - `.next/` and `.env*.local` are gitignored
+
+## TypeScript
+- Always use proper, specific types. Never use `any` or `unknown`.
+- If a Supabase query result type is too broad (e.g. `string` instead of a union), cast it explicitly with a proper type, not `as any`.
+- Use generated types from `src/lib/supabase/database.types.ts` and the interfaces in `src/app.d.ts`.
+
+## Supabase
+- Run migrations yourself using `npx supabase db push` or by executing SQL directly via the Supabase CLI. Do NOT ask the user to run migrations manually — apply them yourself when needed.
+- Current build data is test data and can be wiped if migrations require it.
+
+## Accessibility / Svelte Warnings
+- Every `<label>` MUST have a `for` attribute pointing to a matching `id` on its input/select. If the control is conditional (e.g. switches between input and select), use `<span>` instead of `<label>`.
+- Every icon-only `<button>` MUST have an `aria-label` attribute.
+- Do NOT use `autofocus` unless explicitly requested — it triggers a11y warnings. If intentional, suppress with `<!-- svelte-ignore a11y_autofocus -->` BEFORE the element (not inside it).
+- Fix all a11y warnings before marking a task as done. Do not leave them for later.
