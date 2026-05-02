@@ -60,11 +60,29 @@ export interface Variant {
   updated_at: string;
 }
 
+export interface Client {
+  id: string;
+  name: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Drone {
+  id: string;
+  client_id: string;
+  serial: string;
+  created_by: string | null;
+  created_at: string;
+}
+
 export interface ClientSet {
   id: string;
   variant_id: string;
   client_name: string;
   serial: string;
+  client_id: string | null;
+  drone_id: string | null;
   description: string | null;
   created_by: string | null;
   created_at: string;

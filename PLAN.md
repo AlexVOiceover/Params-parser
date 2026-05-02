@@ -1,272 +1,165 @@
-# Plan — Rename hierarchy and add Client Param Sets
+# Plan — Clients, drones, and per-client roles
 
-## Goal
+A small refactor in the header, then a new **Clients** entity, then a real **role-based access** model so client users can see their own params (and the variant Default they came from) but not other clients'.
 
-Restructure the catalog hierarchy:
-
-**Before**
-```
-Drone Types  →  Param Sets  →  Param Versions
-```
-
-**After**
-```
-Families  →  Variants  →  (Client Param Sets)  →  Param Versions
-```
-
-Two distinct phases:
-1. **Rename only** — `Drone Types → Families`, `Param Sets → Variants`. No new functionality, no schema reshape.
-2. **New level** — introduce **Client Param Sets** as a child of Variants, owning the param versions.
-
-Phase 1 must ship cleanly before Phase 2 starts. Each phase ends with a working app and a green deploy.
+The goal is to remove free-text in the upload flow (Client name + Serial) and replace it with proper dropdowns sourced from a new `clients` table and its child `drones` table. Same data; just structured.
 
 ---
 
-## Phase 1 — Rename
+## Stage 1 — Header dropdown rename
 
-### 1.1 Database
+User dropdown in the AppHeader currently has a "Settings" button. Rename to **Users** since we're going to add more administration links beside it. No new functionality.
 
-Single migration: `supabase/migrations/<ts>_rename_to_families_variants.sql`
-
-- `ALTER TABLE drone_types RENAME TO families;`
-- `ALTER TABLE param_sets RENAME TO variants;`
-- `ALTER TABLE variants RENAME COLUMN drone_type_id TO family_id;`
-- `ALTER TABLE firmwares RENAME COLUMN drone_type_id TO family_id;`
-- Rename indexes:
-  - `idx_param_sets_drone_type` → `idx_variants_family`
-  - `idx_param_sets_published` → `idx_variants_published`
-  - `idx_param_sets_created_by` → `idx_variants_created_by`
-  - `idx_firmwares_drone_type` → `idx_firmwares_family`
-- Update RLS policy names + bodies that reference the old table names (see migration `20260301000002_rls_policies.sql`). Drop and recreate each policy under the new table name with the same predicates.
-- Update `param_versions.param_set_id` references — for Phase 1 we keep the column name (it points at `variants` now). Phase 2 will rename it to `client_set_id` when the Client Param Sets layer is inserted.
-
-Storage: bucket name stays `param-files`. Object paths today are `<param_set_id>/<version_label>.param` — these stay valid (UUIDs don't change). We just stop using "param_set" terminology in code; the path layout itself is opaque.
-
-### 1.2 Code rename
-
-**Tables/columns reference change**
-
-Mechanical Supabase query updates in:
-- `app/api/upload/route.ts`
-- `app/api/admin/drone-types/route.ts` → move file/folder to `app/api/admin/families/...`
-- `app/api/admin/drone-types/[id]/route.ts` → `app/api/admin/families/[id]/...`
-- `app/api/admin/param-sets/route.ts` → `app/api/admin/variants/...`
-- `app/api/admin/param-sets/[id]/route.ts` → `app/api/admin/variants/[id]/...`
-- `app/api/admin/param-sets/[id]/clone/route.ts` → `app/api/admin/variants/[id]/clone/...`
-- `app/api/admin/param-versions/[id]/clone/route.ts` (only references `param_set_id` field — update if column renamed)
-
-Replace:
-- `.from("drone_types")` → `.from("families")`
-- `.from("param_sets")` → `.from("variants")`
-- `drone_type_id` → `family_id`
-
-**Types**
-
-`lib/types.ts`:
-- `DroneType` → `Family`
-- `ParamSet` → `Variant` (rename `drone_type_id` field to `family_id`)
-- Update everywhere `DroneType` / `ParamSet` is imported.
-
-**Routes**
-
-App Router segment rename:
-- `app/(app)/[droneSlug]/page.tsx` → `app/(app)/[familySlug]/page.tsx`
-- `app/(app)/[droneSlug]/[paramSetId]/page.tsx` → `app/(app)/[familySlug]/[variantId]/page.tsx`
-- Update `params: { droneSlug }` → `{ familySlug }`, `paramSetId` → `variantId`.
-- Update all hrefs and `router.push` calls: `/${droneSlug}` → `/${familySlug}`, `/${droneSlug}/${paramSetId}` → `/${familySlug}/${variantId}`.
-
-**Components**
-
-Rename files and exports:
-- `components/drone-type-grid.tsx` → `components/family-grid.tsx`
-- `components/param-set-list.tsx` → `components/variant-list.tsx`
-- (no rename needed for `param-version-list.tsx` — that level keeps its name)
-- Inside the renamed components: `droneTypes` → `families`, `paramSets` → `variants`, `droneSlug` → `familySlug`, etc.
-
-**UI copy**
-
-- "Drone types" / "Drone type" → "Families" / "Family"
-- "Param sets" / "Param set" → "Variants" / "Variant"
-- Breadcrumb on `/[familySlug]` reads `Catalog > {family.name}`.
-- Breadcrumb on `/[familySlug]/[variantId]` reads `Catalog > {family.name} > {variant.name}`.
-- Catalog page heading: `Drone types` → `Families`.
-- Variant detail page heading: keep "Versions" subsection (Phase 2 changes this).
-- Upload form labels: "Drone type" → "Family", "Param set name" → "Variant name".
-- "Publish to Catalog" modal labels match.
-- Filter app's Catalog-source indicator: `{drone} / {set} / {version}` becomes `{family} / {variant} / {version}` — update prop names in `param-filter-app.tsx`.
-
-**API contracts (request/response keys)**
-
-The `/api/admin/drone-types` and `/api/admin/param-sets` endpoints — rename the *paths* (above) and update any JSON keys:
-- request body `name` / `description` / `drone_type_id` → still `name` / `description` / `family_id`
-- response JSON: `droneTypes: [...]` → `families: [...]`, `paramSets: [...]` → `variants: [...]`
-- Update every fetch call site to read the new keys.
-
-Audit fetch calls:
-```
-grep -rn "fetch(\"/api/admin/(drone-types|param-sets)" components/ app/
-grep -rn "(droneTypes|paramSets):" components/ app/
-```
-
-**Other**
-
-- `CLAUDE.md` references "ArduPilot params" — unchanged. The data-model copy refers to "drone types" implicitly in `data/protection-lists.json` group naming — leave the param-domain terminology alone, only rename the catalog-domain.
-- `memory/MEMORY.md` (per CLAUDE.md note) — out of scope; not touching memory files.
-- `scratchpad.md`, `PLAN.md` — informational only.
-
-### 1.3 Test plan for Phase 1
-
-Local:
-- `npm run build` passes.
-- Catalog home `/` lists families with variant counts.
-- `/{familySlug}` lists variants for that family.
-- `/{familySlug}/{variantId}` lists versions (existing param_versions rows).
-- Upload flow: contributor uploads a `.param` file as a new variant — succeeds, version appears.
-- Compare page works (the version-tree query now reads from `families` / `variants`).
-- Filter tool's "Open in Filter" link from a version still loads.
-- Admin dashboard still works.
-
-Deploy: green build on Vercel, smoke-test the same flows on `air6params.vercel.app`.
-
-### 1.4 Phase 1 commit boundary
-
-Single feature branch. One commit per logical unit:
-1. Migration SQL
-2. Type renames + lib changes
-3. API route renames
-4. Component renames + UI copy
-5. Route segment renames + hrefs
-6. Final pass (build/typecheck clean, copy audit)
-
-Squash-merge as `refactor: rename Drone Types→Families, Param Sets→Variants`.
+- File: `components/app-header.tsx`. Change the icon label `Settings` → `Users` and update the `href` if it changes (currently `/admin`, which itself manages users). Keep the icon (Settings cog or switch to `Users` icon — TBD).
 
 ---
 
-## Phase 2 — Add Client Param Sets
+## Stage 2 — Add a `clients` admin section
 
-Inserts a new layer between Variant and Param Version. After Phase 2:
-
-```
-Family  →  Variant  →  ClientSet  →  ParamVersion
-```
-
-A **ClientSet** is a customer-specific configuration of a variant. Each ClientSet has its own version history (param_versions).
+A new entry in the same dropdown: **Clients**. Sits alongside Users. Clicking it opens `/admin/clients`.
 
 ### 2.1 Schema
 
-New migration: `supabase/migrations/<ts>_add_client_sets.sql`
-
 ```sql
-CREATE TABLE public.client_sets (
+CREATE TABLE public.clients (
   id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  variant_id  uuid        NOT NULL REFERENCES public.variants ON DELETE CASCADE,
-  name        text        NOT NULL,             -- client label, e.g. "Acme Corp"
-  description text,
+  name        text        UNIQUE NOT NULL,        -- e.g. "Acme Corp"
   created_by  uuid        REFERENCES public.profiles ON DELETE SET NULL,
   created_at  timestamptz NOT NULL DEFAULT now(),
-  updated_at  timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (variant_id, name)
+  updated_at  timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_client_sets_variant ON public.client_sets (variant_id);
+CREATE TABLE public.drones (
+  id         uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id  uuid        NOT NULL REFERENCES public.clients ON DELETE CASCADE,
+  serial     text        NOT NULL,
+  created_by uuid        REFERENCES public.profiles ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (client_id, serial)
+);
+
+CREATE INDEX idx_drones_client ON public.drones (client_id);
 ```
 
-Re-parent param_versions:
+RLS: admin/technician (see Stage 4) can read+write everything. Client users see only their own client and its drones (Stage 4 wires this up).
+
+### 2.2 Routes & UI
+
+- **`/admin/clients`** — list of clients with inline create. Click a client to open its detail page.
+- **`/admin/clients/[clientId]`** — client name (editable), list of drones (serials), inline create/delete.
+- API:
+  - `GET /api/admin/clients` (list), `POST` (create)
+  - `PATCH /api/admin/clients/[id]` (rename)
+  - `DELETE /api/admin/clients/[id]` (cascades drones — block deletion if any client_set references the client; until Stage 3 backfill, no link to enforce yet)
+  - `POST /api/admin/clients/[id]/drones` (add serial)
+  - `DELETE /api/admin/clients/[id]/drones/[droneId]`
+
+### 2.3 Backfill from existing `client_sets`
+
+`client_sets` already has free-text `client_name` + `serial`. Migration creates one `clients` row per distinct `client_name` and one `drones` row per (client_name, serial) pair. Then we add `client_sets.client_id` and `client_sets.drone_id` columns and link them up. Free-text columns stay for one stage so we can verify, then drop them in Stage 3.
+
+---
+
+## Stage 3 — Switch upload flow to dropdowns
+
+After Stage 2 backfill, `client_sets` has both the new FKs and the old text columns. This stage:
+
+- Updates the upload form (`upload-form.tsx`) and Publish-to-Catalog modal (`catalog-upload-modal.tsx`) to use:
+  - **Client** select (existing only, dropdown of `clients.name`)
+  - **Drone** select (filtered by chosen client, options are `drones.serial`)
+  - "+ New client" / "+ New drone" inline affordances → POST to the client/drone APIs, then refresh the dropdown.
+- API `/api/upload`: takes `clientId` + `droneId` (or `clientName` + `serial` for inline-creates), looks up or creates the matching `client_set`, attaches the version.
+- Variant page's `client-set-list.tsx`: source the autocomplete from `clients.name` instead of inferring from existing `client_sets`.
+- Compare page, version-tree, source-indicator: read display values from `clients.name` + `drones.serial` (still surfaced as `clientName` / `serial` strings in `CompareVersion`).
+- Drop `client_sets.client_name` and `client_sets.serial` columns once everything reads from the FKs. Migration verifies no row has null FKs first.
+
+---
+
+## Stage 4 — Roles & per-client visibility
+
+### 4.1 Schema
+
+`profiles` already has `role` (`admin` / `contributor` today). Extend:
 
 ```sql
-ALTER TABLE public.param_versions
-  ADD COLUMN client_set_id uuid REFERENCES public.client_sets ON DELETE CASCADE;
-
--- Backfill: create one default ClientSet per existing variant, point its versions at it
-WITH inserted AS (
-  INSERT INTO public.client_sets (variant_id, name, created_by, created_at)
-  SELECT id, 'Default', created_by, created_at
-  FROM public.variants
-  RETURNING id, variant_id
-)
-UPDATE public.param_versions pv
-SET client_set_id = inserted.id
-FROM inserted
-WHERE pv.param_set_id = inserted.variant_id;
-
-ALTER TABLE public.param_versions
-  ALTER COLUMN client_set_id SET NOT NULL,
-  DROP COLUMN param_set_id;
-
-CREATE INDEX idx_param_versions_client_set ON public.param_versions (client_set_id);
+ALTER TABLE public.profiles ADD COLUMN client_id uuid REFERENCES public.clients ON DELETE SET NULL;
 ```
 
-(The unique constraint `(param_set_id, version_label)` becomes `(client_set_id, version_label)` — drop and recreate.)
+Roles become:
+- **admin** — full access (existing).
+- **technician** — same access as today's contributor (read all, upload, manage variants/clients/drones). Replace existing `contributor` value with `technician` in a one-line migration.
+- **client** — bound to a `profiles.client_id`. Read-only access scoped to their own client.
 
-RLS on `client_sets`:
-- SELECT: any authenticated user (read access mirrors variants).
-- INSERT/UPDATE/DELETE: admin or contributor role.
+### 4.2 RLS rewrite
 
-### 2.2 Routes
+The interesting policies:
 
-New segment under variant detail:
-- `app/(app)/[familySlug]/[variantId]/page.tsx` — currently shows versions. Change it to show **client sets** for that variant (with a "Default" client set always present after migration).
-- `app/(app)/[familySlug]/[variantId]/[clientSetId]/page.tsx` — new. Shows the version history for that client set (the existing `param-version-list` UI moves here).
+- `client_sets` SELECT: visible if `is_admin_or_technician()` OR `client_set.client_id == auth.uid()→profiles.client_id` OR `client_set` is the **Default** for a variant whose any client this user owns reads from.
+- `param_versions` SELECT: piggybacks on `client_sets` visibility (already does, since it joins through `client_sets`).
+- `clients` SELECT: admin/technician see all; client users see only their own row.
+- `drones` SELECT: same.
+- `families` / `variants`: stay public-read (catalog metadata is shared).
 
-Route params: `{ familySlug, variantId, clientSetId }`.
+The "Default visible to anyone who owns a child" rule is the subtle one. Concretely: every Variant's Default `client_set` is exposed to any client user whose own client has at least one `client_set` under that Variant. In SQL the policy becomes:
 
-Breadcrumbs:
-- Variant page: `Catalog > {family} > {variant}` → lists ClientSets.
-- ClientSet page: `Catalog > {family} > {variant} > {clientSet}` → lists Versions.
+```sql
+CREATE POLICY "client_sets_select" ON public.client_sets FOR SELECT
+USING (
+  public.is_admin_or_technician()
+  OR client_id = (SELECT client_id FROM public.profiles WHERE id = auth.uid())
+  OR (
+    is_default                              -- needs the boolean column from the suggested follow-up
+    AND EXISTS (
+      SELECT 1 FROM public.client_sets cs
+      WHERE cs.variant_id = client_sets.variant_id
+        AND cs.client_id = (SELECT client_id FROM public.profiles WHERE id = auth.uid())
+    )
+  )
+);
+```
 
-### 2.3 API
+(Today we identify Default by `serial = ""`; before this stage we should add an explicit `is_default boolean` column to make the policy clean.)
 
-New routes:
-- `POST /api/admin/client-sets` — create (body: `variant_id`, `name`, `description?`).
-- `PATCH /api/admin/client-sets/[id]` — rename / edit description.
-- `DELETE /api/admin/client-sets/[id]` — also removes versions + storage objects.
-- `POST /api/admin/client-sets/[id]/clone` — duplicate a client set including all its versions (deep clone, copies storage objects to new paths).
+### 4.3 UI gating
 
-Update existing:
-- `/api/upload` — accept `client_set_id` in place of `param_set_id` (for existing-clientset uploads); accept `mode=new-client-set` to create one inline (mirrors the current `mode=new` for variants).
-- Storage path layout: `<client_set_id>/<version_label>.param` (same shape, new owning UUID).
-- `/api/catalog/compare` (if reintroduced) — adjust queries.
-- Admin clone of a version — its parent is now a client set, not a variant.
+- Catalog home: same content for everyone, but the family/variant counts a client user sees should reflect only their own client_sets + Defaults.
+- Variant page: client users see only the Default + their own client's `client_sets`. The "Add client + drone" affordance is hidden.
+- Upload, Admin, Clients pages: hidden from client users entirely.
+- AppHeader: drop the Users / Clients menu items for client users.
+- Login flow: post-login, show a different empty state ("No drones yet — your account isn't linked to a client") for unlinked client users. Admin invites them via `/admin` and sets `profiles.client_id`.
 
-### 2.4 UI
+### 4.4 Admin invites
 
-New component: `components/client-set-list.tsx` (mirror `variant-list.tsx`'s patterns: card list, inline create, inline rename, delete-with-confirm).
+Existing admin dashboard's "Invite user" form gains:
+- Role picker (`admin` / `technician` / `client`).
+- When `client` is picked, a Client dropdown appears (required).
+- When `admin` or `technician` is picked, the Client dropdown is hidden.
 
-Updated:
-- `variant-list.tsx` (already renamed in Phase 1) — clicking a variant card navigates to `/{familySlug}/{variantId}`, which now shows ClientSets, not Versions.
-- `param-version-list.tsx` — its `paramSetId` prop becomes `clientSetId`. The "Open in Filter" deep-link search params (`drone`, `set`, `version`) gain a `client` param: `?drone=...&set=...&client=...&version=...`. The filter tool's Catalog-source indicator becomes 4-segment: `{family} / {variant} / {client} / {version}`.
-- Upload form (`/upload`): adds a "Client" select between "Variant" and "Version", with an inline "+ New client" affordance.
-- Catalog upload modal (filter → publish): same — adds Client field.
-- Compare's version-tree: adds another nesting level. Tree layout becomes `Family → Variant → Client → Version` (currently 3-level: Drone → Set → Version).
+---
 
-### 2.5 Test plan for Phase 2
+## Stage 5 — Cleanup & smoke tests
 
-- Existing data: every old variant has exactly one "Default" client set; every existing version is reachable through it. No 404s on previously bookmarked URLs (after the route shape changes — old `/{slug}/{variantId}/{versionId-or-label}` deep links are not preserved; the version list now lives one level deeper. Acceptable since the shape is changing).
-- Create a new client set under a variant; upload a version to it; download succeeds.
-- Delete a client set with versions — confirmation, storage cleaned.
-- Compare across versions in different client sets of the same variant.
-- Open-in-Filter from a client-set version preserves all four labels in the source indicator.
-- RLS: anon can read client sets; only contributor/admin can mutate.
+- Drop unused columns from earlier migrations (the free-text ones on `client_sets` after Stage 3 verifies the FKs).
+- Manually walk through the whole flow as each role:
+  - **admin** does everything.
+  - **technician** can upload and manage but can't promote roles.
+  - **client** sees only their own data + Defaults; cannot mutate.
+- Update CHANGELOG.
 
-### 2.6 Phase 2 commit boundary
+---
 
-Same feature-branch discipline. One commit per:
-1. Migration (with backfill)
-2. New API routes + upload route changes
-3. Variant page → client-set list, new client-set route
-4. `param-version-list` re-parenting + version-list page move
-5. Upload form + publish modal changes
-6. Compare tree depth + filter source indicator
-7. Final build/test/copy pass
+## Out of scope (future stages)
 
-Squash-merge as `feat: add Client Param Sets layer`.
+- Client users adding their own drones / param sets directly. For now everything is admin/technician-driven; clients are pure consumers.
+- Client-side comments/notes on param versions.
+- Multi-tenant branding.
 
 ---
 
 ## Notes / Risks
 
-- **Search-and-replace pitfalls**: `param_set` shows up in MAVLink-related code (`lib/mavlink-serial.ts`) referring to *protocol-level* param IDs — not our `param_sets` table. **Do not touch** those references. Audit grep results manually before bulk replacing.
-- **Storage migration**: not needed in either phase. Phase 2 reuses existing UUID-keyed paths because each version row keeps its `storage_path` value through the schema change.
-- **Old URLs**: Phase 1 changes `/{droneSlug}/...` to `/{familySlug}/...`. Slugs themselves are unchanged (we renamed columns, not values), so existing bookmarks like `/x500/abc123` still resolve as long as the slug `x500` remains in the `families.slug` column. Phase 2 changes URL depth — old bookmarks to a version page break. Acceptable.
-- **Single-environment migrations**: apply each migration via the Supabase CLI / dashboard against the `bsbomnirdjjcyapjvovm` project. There's no separate staging DB.
-- **Coordinate with Vercel deploys**: schema migration must land *before* the matching code deploy, otherwise the live site queries non-existent columns. Recommended order: (a) push migration via Supabase, (b) push code that depends on it. A short inconsistency window (~30s) is acceptable for a hobby project.
+- **Role migration**: renaming `contributor` → `technician` will break any code that hard-codes the string. Audit before the migration: `grep -rn '"contributor"' app components lib`. Update in lockstep.
+- **`is_default` column**: today Default is identified by `serial = ""`. Stage 4's RLS policy needs a clean predicate, so add an explicit boolean column (`client_sets.is_default`) and backfill from `serial = ""` *before* the RLS rewrite. One per variant; enforce with a partial unique index.
+- **Backfill ordering**: Stage 2 backfill creates `clients` + `drones` from `client_sets.client_name + serial`. Empty-serial Defaults get a synthetic drone? Or skip drone creation for Defaults entirely? Decision needed before Stage 2 lands. (Probably: Defaults aren't tied to a client at all — they belong to the variant. May need `client_sets.client_id` to be nullable, with `is_default = true` implying `client_id IS NULL`.)
+- **Storage paths**: unchanged. `client_sets.id` is still the storage prefix.
+- **Coordinate with Vercel**: same playbook as Phases 1–2. Schema migration first, then matching code deploy.
