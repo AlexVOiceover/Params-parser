@@ -35,28 +35,32 @@ export async function POST(request: NextRequest) {
         }
 
         // 3. Parse form data
+        // Modes:
+        //   "existing"        — clientSetId provided
+        //   "new-client-set"  — variantId + clientName + serial provided
         controller.enqueue(msg("Reading file…"));
         const formData = await request.formData();
         const mode = (formData.get("mode") as string | null) ?? "existing";
-        const familyId = formData.get("familyId") as string;
-        let variantId = formData.get("variantId") as string;
-        const newVariantName = formData.get("name") as string | null;
+        const variantId = formData.get("variantId") as string | null;
+        let clientSetId = formData.get("clientSetId") as string | null;
+        const clientName = formData.get("clientName") as string | null;
+        const serial = formData.get("serial") as string | null;
         const versionLabel = formData.get("versionLabel") as string;
         const changelog = (formData.get("changelog") as string | null) || null;
         const file = formData.get("file") as File | null;
 
-        if (!file || !versionLabel || !familyId) {
+        if (!file || !versionLabel) {
           controller.enqueue(msg("Missing required fields", true));
           controller.close();
           return;
         }
-        if (mode === "new" && !newVariantName) {
-          controller.enqueue(msg("Variant name is required", true));
+        if (mode === "existing" && !clientSetId) {
+          controller.enqueue(msg("Client set id is required", true));
           controller.close();
           return;
         }
-        if (mode !== "new" && !variantId) {
-          controller.enqueue(msg("Variant id is required", true));
+        if (mode === "new-client-set" && (!variantId || !clientName?.trim() || !serial?.trim())) {
+          controller.enqueue(msg("Variant id, client name and serial are required", true));
           controller.close();
           return;
         }
@@ -71,24 +75,28 @@ export async function POST(request: NextRequest) {
 
         const admin = createAdminClient();
 
-        // 3b. Create new variant if needed
-        if (mode === "new") {
-          controller.enqueue(msg(`Creating variant "${newVariantName}"…`));
-          const { data: newVariant, error: variantError } = await admin.from("variants").insert({
-            name: newVariantName,
-            family_id: familyId,
+        // 3b. Create new client set under existing variant if needed
+        if (mode === "new-client-set") {
+          controller.enqueue(msg(`Creating client set "${clientName} · ${serial}"…`));
+          const { data: newCs, error: csError } = await admin.from("client_sets").insert({
+            client_name: clientName!.trim(),
+            serial: serial!.trim(),
+            variant_id: variantId!,
             created_by: user.id,
           }).select("id").single();
-          if (variantError || !newVariant) {
-            controller.enqueue(msg(`Failed to create variant: ${variantError?.message ?? "unknown error"}`, true));
+          if (csError || !newCs) {
+            const errMsg = csError?.code === "23505"
+              ? "This client + serial already exists for this variant"
+              : (csError?.message ?? "unknown error");
+            controller.enqueue(msg(`Failed to create client set: ${errMsg}`, true));
             controller.close();
             return;
           }
-          variantId = newVariant.id;
+          clientSetId = newCs.id;
         }
 
         // 4. Upload file to storage
-        const storagePath = `${variantId}/${versionLabel}.param`;
+        const storagePath = `${clientSetId}/${versionLabel}.param`;
         controller.enqueue(msg(`Uploading to storage (${storagePath})…`));
         const { error: uploadError } = await admin.storage
           .from("param-files")
@@ -101,14 +109,14 @@ export async function POST(request: NextRequest) {
         }
         controller.enqueue(msg("File stored successfully"));
 
-        // 5. Mark previous versions as not latest
+        // 5. Mark previous versions of this client set as not latest
         controller.enqueue(msg("Updating version history…"));
-        await admin.from("param_versions").update({ is_latest: false }).eq("param_set_id", variantId);
+        await admin.from("param_versions").update({ is_latest: false }).eq("client_set_id", clientSetId!);
 
         // 6. Insert new version record
         controller.enqueue(msg(`Creating version record (v${versionLabel})…`));
         const { data: pv, error: pvError } = await admin.from("param_versions").insert({
-          param_set_id: variantId,
+          client_set_id: clientSetId!,
           version_label: versionLabel,
           storage_path: storagePath,
           changelog,
@@ -136,7 +144,7 @@ export async function POST(request: NextRequest) {
         }
 
         controller.enqueue(msg(`Done — v${versionLabel} uploaded with ${paramValues.length} params`));
-        controller.enqueue(encoder.encode(JSON.stringify({ done: true, variantId }) + "\n"));
+        controller.enqueue(encoder.encode(JSON.stringify({ done: true, clientSetId }) + "\n"));
       } catch (e) {
         const msg2 = (e instanceof Error ? e.message : "Unexpected error");
         controller.enqueue(encoder.encode(JSON.stringify({ text: msg2, error: true }) + "\n"));

@@ -19,7 +19,7 @@ async function getFamily(slug: string): Promise<Family | null> {
 async function getVariants(familyId: string): Promise<Variant[]> {
   const { data } = await createClient()
     .from("variants")
-    .select("id, name, description, created_at, updated_at, created_by, family_id, param_versions(version_label, created_at)")
+    .select("id, name, description, created_at, updated_at, created_by, family_id")
     .eq("family_id", familyId)
     .order("updated_at", { ascending: false });
   return (data as unknown as Variant[]) ?? [];

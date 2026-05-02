@@ -1,16 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Upload, CheckCircle, ChevronRight } from "lucide-react";
 import Link from "next/link";
 
 type Family = { id: string; name: string };
 type VariantOption = { id: string; name: string; family_id: string | null };
+type ClientSetOption = { id: string; client_name: string; serial: string; variant_id: string };
 
 interface Props {
   families: Family[];
   variants: VariantOption[];
+  clientSets: ClientSetOption[];
 }
 
 const inputClass =
@@ -18,26 +20,35 @@ const inputClass =
 const selectClass = inputClass + " cursor-pointer";
 const labelClass = "flex flex-col gap-1.5";
 const labelTextClass = "text-xs font-medium text-muted-foreground";
+const CLIENT_DATALIST_ID = "upload-form-clients";
 
-export function UploadForm({ families, variants }: Props) {
+export function UploadForm({ families, variants, clientSets }: Props) {
   const router = useRouter();
   const [familyId, setFamilyId] = useState("");
   const [variantId, setVariantId] = useState("");
+  const [clientName, setClientName] = useState("");
+  const [serial, setSerial] = useState("");
   const [versionLabel, setVersionLabel] = useState("");
   const [changelog, setChangelog] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ variantId: string } | null>(null);
+  const [done, setDone] = useState(false);
 
   const filteredVariants = variants.filter((v) => v.family_id === familyId);
+
+  const clientNameSuggestions = useMemo(() => {
+    if (!variantId) return [];
+    const set = new Set(clientSets.filter((c) => c.variant_id === variantId).map((c) => c.client_name));
+    return [...set].sort();
+  }, [clientSets, variantId]);
 
   function reset() {
     setVersionLabel("");
     setChangelog("");
     setFile(null);
     setError(null);
-    setDone(null);
+    setDone(false);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -50,23 +61,63 @@ export function UploadForm({ families, variants }: Props) {
     setSubmitting(true);
     setError(null);
 
+    // Reuse an existing (client_name, serial) under this variant if present.
+    const existing = clientSets.find(
+      (c) => c.variant_id === variantId && c.client_name === clientName.trim() && c.serial === serial.trim()
+    );
+
     const fd = new FormData();
-    fd.set("familyId", familyId);
-    fd.set("variantId", variantId);
+    if (existing) {
+      fd.set("mode", "existing");
+      fd.set("clientSetId", existing.id);
+    } else {
+      fd.set("mode", "new-client-set");
+      fd.set("variantId", variantId);
+      fd.set("clientName", clientName.trim());
+      fd.set("serial", serial.trim());
+    }
     fd.set("versionLabel", versionLabel);
     if (changelog) fd.set("changelog", changelog);
     fd.set("file", file);
 
     const res = await fetch("/api/upload", { method: "POST", body: fd });
-    const json = await res.json();
-
-    if (!res.ok) {
-      setError(json.error ?? "Upload failed");
+    const reader = res.body?.getReader();
+    if (!reader) {
+      setError("No response from server");
       setSubmitting(false);
       return;
     }
 
-    setDone({ variantId: json.variantId as string });
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let finished = false;
+
+    while (!finished) {
+      const { done: streamDone, value } = await reader.read();
+      if (streamDone) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const parsed = JSON.parse(line);
+          if (parsed.error) {
+            setError(parsed.text ?? "Upload failed");
+            setSubmitting(false);
+            return;
+          }
+          if (parsed.done) {
+            finished = true;
+            break;
+          }
+        } catch {
+          // ignore malformed line
+        }
+      }
+    }
+
+    setDone(true);
     setSubmitting(false);
     router.refresh();
   }
@@ -77,7 +128,7 @@ export function UploadForm({ families, variants }: Props) {
         <CheckCircle className="h-10 w-10 text-emerald-400 mx-auto mb-4" />
         <h2 className="text-lg font-semibold text-foreground mb-2">Upload complete</h2>
         <p className="text-sm text-muted-foreground mb-6">
-          The variant has been saved to the catalog.
+          The version has been saved to the catalog.
         </p>
         <div className="flex gap-3 justify-center">
           <button
@@ -105,6 +156,12 @@ export function UploadForm({ families, variants }: Props) {
         <span className="text-foreground">Upload</span>
       </nav>
       <h1 className="text-xl font-semibold text-foreground mb-6">Upload param file</h1>
+
+      <datalist id={CLIENT_DATALIST_ID}>
+        {clientNameSuggestions.map((n) => (
+          <option key={n} value={n} />
+        ))}
+      </datalist>
 
       <div className="flex flex-col gap-4">
         {/* Family */}
@@ -142,6 +199,39 @@ export function UploadForm({ families, variants }: Props) {
                 <option key={v.id} value={v.id}>{v.name}</option>
               ))}
             </select>
+          </label>
+        )}
+
+        {/* Client */}
+        {variantId && (
+          <label className={labelClass}>
+            <span className={labelTextClass}>
+              Client <span className="text-destructive">*</span>
+            </span>
+            <input
+              required
+              list={CLIENT_DATALIST_ID}
+              value={clientName}
+              onChange={(e) => setClientName(e.target.value)}
+              placeholder="e.g. Acme Corp"
+              className={inputClass}
+            />
+          </label>
+        )}
+
+        {/* Serial */}
+        {variantId && (
+          <label className={labelClass}>
+            <span className={labelTextClass}>
+              Serial <span className="text-destructive">*</span>
+            </span>
+            <input
+              required
+              value={serial}
+              onChange={(e) => setSerial(e.target.value)}
+              placeholder="e.g. SN-12345"
+              className={inputClass + " font-mono"}
+            />
           </label>
         )}
 
@@ -201,7 +291,7 @@ export function UploadForm({ families, variants }: Props) {
 
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || !variantId || !clientName.trim() || !serial.trim()}
           className="flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed"
         >
           <Upload className="h-4 w-4" />

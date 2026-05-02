@@ -16,18 +16,29 @@ export async function DELETE(
 
   const admin = createAdminClient();
 
-  // Get storage paths before deleting so we can clean up the bucket
-  const { data: versions } = await admin
-    .from("param_versions")
-    .select("storage_path")
-    .eq("param_set_id", id);
+  // Get storage paths for every version under every client set of this variant,
+  // so we can clean up the bucket after the cascade delete.
+  const { data: clientSets } = await admin
+    .from("client_sets")
+    .select("id")
+    .eq("variant_id", id);
+
+  const clientSetIds = (clientSets ?? []).map((cs) => cs.id);
+  let storagePaths: string[] = [];
+  if (clientSetIds.length > 0) {
+    const { data: versions } = await admin
+      .from("param_versions")
+      .select("storage_path")
+      .in("client_set_id", clientSetIds);
+    storagePaths = (versions ?? []).map((v) => v.storage_path);
+  }
 
   const { error } = await admin.from("variants").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Best-effort storage cleanup (cascade already removed DB rows)
-  if (versions?.length) {
-    await admin.storage.from("param-files").remove(versions.map((v) => v.storage_path));
+  if (storagePaths.length) {
+    await admin.storage.from("param-files").remove(storagePaths);
   }
 
   return NextResponse.json({ ok: true });

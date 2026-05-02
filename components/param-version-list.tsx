@@ -14,7 +14,7 @@ interface ParamVersionRow {
   is_latest: boolean;
 }
 
-interface Family {
+interface FamilyOption {
   id: string;
   name: string;
 }
@@ -24,17 +24,25 @@ interface VariantOption {
   name: string;
 }
 
+interface ClientSetOption {
+  id: string;
+  client_name: string;
+  serial: string;
+}
+
 interface Props {
   versions: ParamVersionRow[];
   familySlug: string;
   familyId: string;
   variantId: string;
+  clientSetId: string;
   isAdmin: boolean;
   familyName: string;
   variantName: string;
+  clientSetName: string;
 }
 
-const NEW_VARIANT = "__new__";
+const NEW_CLIENT_SET = "__new__";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -59,7 +67,17 @@ function nextVersions(versions: ParamVersionRow[]): { major: string; minor: stri
   };
 }
 
-export function ParamVersionList({ versions, familySlug, familyId, variantId, isAdmin, familyName, variantName }: Props) {
+export function ParamVersionList({
+  versions,
+  familySlug,
+  familyId,
+  variantId,
+  clientSetId,
+  isAdmin,
+  familyName,
+  variantName,
+  clientSetName,
+}: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
 
@@ -80,25 +98,29 @@ export function ParamVersionList({ versions, familySlug, familyId, variantId, is
   const [cloneId, setCloneId] = useState<string | null>(null);
   const [cloneFamilyId, setCloneFamilyId] = useState(familyId);
   const [cloneVariantId, setCloneVariantId] = useState(variantId);
+  const [cloneClientSetId, setCloneClientSetId] = useState(clientSetId);
   const [cloneVersionLabel, setCloneVersionLabel] = useState("");
   const [cloneChangelog, setCloneChangelog] = useState("");
-  const [newVariantName, setNewVariantName] = useState("");
-  const [newVariantDescription, setNewVariantDescription] = useState("");
+  const [newClientName, setNewClientName] = useState("");
+  const [newSerial, setNewSerial] = useState("");
+  const [newClientSetDescription, setNewClientSetDescription] = useState("");
   const [cloning, setCloning] = useState(false);
   const [cloneError, setCloneError] = useState<string | null>(null);
 
   // ── Dropdown data ─────────────────────────────────────────
-  const [families, setFamilies] = useState<Family[]>([]);
+  const [families, setFamilies] = useState<FamilyOption[]>([]);
   const [variants, setVariants] = useState<VariantOption[]>([]);
+  const [clientSets, setClientSets] = useState<ClientSetOption[]>([]);
 
   const deleteTarget = versions.find((v) => v.id === deleteId);
   const cloneTarget = versions.find((v) => v.id === cloneId);
-  const isNewVariant = cloneVariantId === NEW_VARIANT;
+  const isNewClientSet = cloneClientSetId === NEW_CLIENT_SET;
 
+  // Load families on first admin render
   useEffect(() => {
     if (!isAdmin) return;
-    fetch("/api/admin/families").then((r) => r.json()).then(({ families: dt }) => {
-      setFamilies(dt ?? []);
+    fetch("/api/admin/families").then((r) => r.json()).then(({ families: fs }) => {
+      setFamilies(fs ?? []);
     });
   }, [isAdmin]);
 
@@ -108,16 +130,32 @@ export function ParamVersionList({ versions, familySlug, familyId, variantId, is
     setVariants([]);
     fetch(`/api/admin/variants?familyId=${cloneFamilyId}`)
       .then((r) => r.json())
-      .then(({ variants: ps }) => {
-        setVariants(ps ?? []);
+      .then(({ variants: vs }) => {
+        setVariants(vs ?? []);
         setCloneVariantId((prev) => {
-          if (prev === NEW_VARIANT) return NEW_VARIANT;
-          const stillExists = (ps ?? []).some((p: VariantOption) => p.id === prev);
+          const stillExists = (vs ?? []).some((v: VariantOption) => v.id === prev);
           if (stillExists) return prev;
-          return ps?.[0]?.id ?? NEW_VARIANT;
+          return vs?.[0]?.id ?? "";
         });
       });
   }, [cloneFamilyId, cloneId]);
+
+  // Reload client sets whenever the selected variant changes
+  useEffect(() => {
+    if (!cloneId || !cloneVariantId) return;
+    setClientSets([]);
+    fetch(`/api/admin/client-sets?variantId=${cloneVariantId}`)
+      .then((r) => r.json())
+      .then(({ clientSets: cs }) => {
+        setClientSets(cs ?? []);
+        setCloneClientSetId((prev) => {
+          if (prev === NEW_CLIENT_SET) return NEW_CLIENT_SET;
+          const stillExists = (cs ?? []).some((c: ClientSetOption) => c.id === prev);
+          if (stillExists) return prev;
+          return cs?.[0]?.id ?? NEW_CLIENT_SET;
+        });
+      });
+  }, [cloneVariantId, cloneId]);
 
   const { major: nextMajor, minor: nextMinor } = nextVersions(versions);
   const uploadVersionLabel = uploadVersionType === "major" ? nextMajor : uploadVersionType === "minor" ? nextMinor! : "";
@@ -136,8 +174,7 @@ export function ParamVersionList({ versions, familySlug, familyId, variantId, is
     setUploadLog([]);
 
     const fd = new FormData();
-    fd.set("familyId", familyId);
-    fd.set("variantId", variantId);
+    fd.set("clientSetId", clientSetId);
     fd.set("versionLabel", uploadVersionLabel);
     if (uploadChangelog) fd.set("changelog", uploadChangelog);
     fd.set("file", uploadFile);
@@ -183,10 +220,12 @@ export function ParamVersionList({ versions, familySlug, familyId, variantId, is
     setCloneError(null);
     setCloneFamilyId(familyId);
     setCloneVariantId(variantId);
+    setCloneClientSetId(clientSetId);
     setCloneVersionLabel(v.version_label);
     setCloneChangelog(v.changelog ?? "");
-    setNewVariantName("");
-    setNewVariantDescription("");
+    setNewClientName("");
+    setNewSerial("");
+    setNewClientSetDescription("");
     setCloneId(v.id);
   }
 
@@ -200,7 +239,7 @@ export function ParamVersionList({ versions, familySlug, familyId, variantId, is
       setDeleting(false);
       startTransition(() => router.refresh());
     } else {
-      const { error: msg } = await res.json();
+      const msg = await res.json().then((b) => b?.error).catch(() => null);
       setDeleteError(msg ?? "Delete failed");
       setDeleting(false);
     }
@@ -214,9 +253,9 @@ export function ParamVersionList({ versions, familySlug, familyId, variantId, is
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        familyId: cloneFamilyId,
-        variantId: isNewVariant ? null : cloneVariantId,
-        newVariant: isNewVariant ? { name: newVariantName, description: newVariantDescription } : undefined,
+        variantId: cloneVariantId,
+        clientSetId: isNewClientSet ? null : cloneClientSetId,
+        newClientSet: isNewClientSet ? { clientName: newClientName, serial: newSerial, description: newClientSetDescription } : undefined,
         versionLabel: cloneVersionLabel,
         changelog: cloneChangelog,
       }),
@@ -226,7 +265,7 @@ export function ParamVersionList({ versions, familySlug, familyId, variantId, is
       setCloning(false);
       startTransition(() => router.refresh());
     } else {
-      const { error: msg } = await res.json();
+      const msg = await res.json().then((b) => b?.error).catch(() => null);
       setCloneError(msg ?? "Clone failed");
       setCloning(false);
     }
@@ -237,7 +276,8 @@ export function ParamVersionList({ versions, familySlug, familyId, variantId, is
     cloning ||
     !cloneVersionLabel.trim() ||
     !versionLabelValid ||
-    (isNewVariant && !newVariantName.trim());
+    !cloneVariantId ||
+    (isNewClientSet && (!newClientName.trim() || !newSerial.trim()));
 
   const uploadDisabled = uploading || !uploadVersionType || !uploadFile;
   const uploadHasError = uploadLog.some((l) => l.error);
@@ -259,7 +299,6 @@ export function ParamVersionList({ versions, familySlug, familyId, variantId, is
               <div className="px-5 py-4 flex flex-col gap-3">
                 <p className="text-xs font-semibold text-foreground">Upload new version</p>
 
-                {/* Version type selector */}
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
@@ -294,7 +333,6 @@ export function ParamVersionList({ versions, familySlug, familyId, variantId, is
                   )}
                 </div>
 
-                {/* Changelog */}
                 <label className="flex flex-col gap-1.5">
                   <span className="text-xs font-medium text-muted-foreground">Changelog</span>
                   <textarea
@@ -307,7 +345,6 @@ export function ParamVersionList({ versions, familySlug, familyId, variantId, is
                   />
                 </label>
 
-                {/* File */}
                 <label className="flex flex-col gap-1.5">
                   <span className="text-xs font-medium text-muted-foreground">.param file <span className="text-destructive">*</span></span>
                   <input
@@ -383,7 +420,7 @@ export function ParamVersionList({ versions, familySlug, familyId, variantId, is
                     View
                   </Link>
                   <Link
-                    href={`/filter?load=${encodeURIComponent(storageUrl(v.storage_path))}&family=${encodeURIComponent(familyName)}&variant=${encodeURIComponent(variantName)}&version=${encodeURIComponent(v.version_label)}`}
+                    href={`/filter?load=${encodeURIComponent(storageUrl(v.storage_path))}&family=${encodeURIComponent(familyName)}&variant=${encodeURIComponent(variantName)}&client=${encodeURIComponent(clientSetName)}&version=${encodeURIComponent(v.version_label)}`}
                     className="flex items-center gap-1.5 rounded-md bg-secondary border border-border hover:bg-secondary/80 px-3 py-1.5 text-xs font-medium text-foreground transition-colors cursor-pointer whitespace-nowrap"
                   >
                     <Filter className="h-3.5 w-3.5" />
@@ -488,8 +525,8 @@ export function ParamVersionList({ versions, familySlug, familyId, variantId, is
                   disabled={cloning}
                   className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer disabled:opacity-40"
                 >
-                  {families.map((dt) => (
-                    <option key={dt.id} value={dt.id}>{dt.name}</option>
+                  {families.map((f) => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
                   ))}
                 </select>
               </label>
@@ -500,34 +537,61 @@ export function ParamVersionList({ versions, familySlug, familyId, variantId, is
                 <select
                   value={cloneVariantId}
                   onChange={(e) => setCloneVariantId(e.target.value)}
-                  disabled={cloning}
+                  disabled={cloning || variants.length === 0}
                   className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer disabled:opacity-40"
                 >
-                  {variants.map((ps) => (
-                    <option key={ps.id} value={ps.id}>{ps.name}</option>
+                  {variants.length === 0 && <option value="">No variants</option>}
+                  {variants.map((v) => (
+                    <option key={v.id} value={v.id}>{v.name}</option>
                   ))}
-                  <option value={NEW_VARIANT}>＋ Create new variant…</option>
                 </select>
               </label>
 
-              {/* New variant fields — shown inline when "Create new variant" is selected */}
-              {isNewVariant && (
+              {/* Client set */}
+              <label className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-muted-foreground">Client + drone</span>
+                <select
+                  value={cloneClientSetId}
+                  onChange={(e) => setCloneClientSetId(e.target.value)}
+                  disabled={cloning}
+                  className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer disabled:opacity-40"
+                >
+                  {clientSets.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.client_name}{c.serial ? ` · ${c.serial}` : ""}
+                    </option>
+                  ))}
+                  <option value={NEW_CLIENT_SET}>＋ Create new client + drone…</option>
+                </select>
+              </label>
+
+              {isNewClientSet && (
                 <div className="flex flex-col gap-2.5 rounded-lg border border-border bg-secondary/50 px-3.5 py-3">
                   <label className="flex flex-col gap-1.5">
-                    <span className="text-xs font-medium text-muted-foreground">Variant name <span className="text-destructive">*</span></span>
+                    <span className="text-xs font-medium text-muted-foreground">Client <span className="text-destructive">*</span></span>
                     <input
-                      value={newVariantName}
-                      onChange={(e) => setNewVariantName(e.target.value)}
+                      value={newClientName}
+                      onChange={(e) => setNewClientName(e.target.value)}
                       disabled={cloning}
-                      placeholder="e.g. Survey config"
+                      placeholder="e.g. Acme Corp"
                       className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">Serial <span className="text-destructive">*</span></span>
+                    <input
+                      value={newSerial}
+                      onChange={(e) => setNewSerial(e.target.value)}
+                      disabled={cloning}
+                      placeholder="e.g. SN-12345"
+                      className="rounded-md border border-border bg-card px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
                     />
                   </label>
                   <label className="flex flex-col gap-1.5">
                     <span className="text-xs font-medium text-muted-foreground">Description</span>
                     <input
-                      value={newVariantDescription}
-                      onChange={(e) => setNewVariantDescription(e.target.value)}
+                      value={newClientSetDescription}
+                      onChange={(e) => setNewClientSetDescription(e.target.value)}
                       disabled={cloning}
                       placeholder="Optional"
                       className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"

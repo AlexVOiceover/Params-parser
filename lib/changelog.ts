@@ -6,6 +6,15 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.3.0",
+    date: "2026-05-02",
+    items: [
+      "New \"Client + Serial\" layer under each variant for tracking per-drone configs",
+      "Connected-drone card now has View / Save / Upload buttons",
+      "Variant page shows Default config on top with each client's diff count and a one-click compare",
+    ],
+  },
+  {
     version: "0.2.0",
     date: "2026-05-01",
     items: [
