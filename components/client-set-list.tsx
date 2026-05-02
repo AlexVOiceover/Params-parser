@@ -3,21 +3,27 @@
 import { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Trash2, Pencil, Plus, X, AlertTriangle, Check } from "lucide-react";
+import { Trash2, Pencil, Plus, X, AlertTriangle, Check, GitCompareArrows, CornerDownRight } from "lucide-react";
 
-interface ClientSetRow {
+export interface ClientSetCard {
   id: string;
   client_name: string;
   serial: string;
   description: string | null;
   updated_at: string;
-  param_versions?: { version_label: string; created_at: string }[];
+  versions: { version_label: string; created_at: string }[];
+  latestVersionId: string | null;
+  /** Number of params that differ from Default's latest version. null = unknown / no Default to compare. */
+  diffCount: number | null;
+  isDefault: boolean;
 }
 
 interface Props {
   familySlug: string;
   variantId: string;
-  clientSets: ClientSetRow[];
+  clientSets: ClientSetCard[];
+  /** Latest version id of the Default client set, used for one-click compare links. */
+  defaultLatestVersionId: string | null;
   isAdmin: boolean;
   canCreate: boolean;
 }
@@ -28,7 +34,7 @@ function formatDate(iso: string) {
 
 const CLIENT_DATALIST_ID = "client-set-list-clients";
 
-export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canCreate }: Props) {
+export function ClientSetList({ familySlug, variantId, clientSets, defaultLatestVersionId, isAdmin, canCreate }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
 
@@ -37,6 +43,9 @@ export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canC
     const set = new Set(clientSets.map((c) => c.client_name).filter(Boolean));
     return [...set].sort();
   }, [clientSets]);
+
+  const defaultSet = clientSets.find((c) => c.isDefault) ?? null;
+  const others = clientSets.filter((c) => !c.isDefault);
 
   // ── Delete state ──────────────────────────────────────────
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -95,7 +104,7 @@ export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canC
     }
   }
 
-  function openEdit(c: ClientSetRow) {
+  function openEdit(c: ClientSetCard) {
     setEditError(null);
     setEditClientName(c.client_name);
     setEditSerial(c.serial);
@@ -143,6 +152,94 @@ export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canC
     }
   }
 
+  function renderCard(c: ClientSetCard, indented: boolean) {
+    const showCompare =
+      !c.isDefault &&
+      c.latestVersionId !== null &&
+      defaultLatestVersionId !== null;
+
+    return (
+      <div className="relative group/row">
+        <Link
+          href={`/${familySlug}/${variantId}/${c.id}`}
+          className={`group flex items-start justify-between gap-4 rounded-lg border bg-card px-5 py-4 hover:border-primary/50 transition-colors cursor-pointer ${
+            c.isDefault ? "border-primary/40 bg-primary/5" : "border-border"
+          }${isAdmin ? " pr-28" : showCompare ? " pr-14" : ""}`}
+        >
+          <div className="flex flex-col gap-1 min-w-0">
+            <div className="flex items-baseline gap-2 min-w-0 flex-wrap">
+              <span className="font-medium text-foreground group-hover:text-primary transition-colors truncate">
+                {c.client_name}
+              </span>
+              {c.serial && (
+                <span className="font-mono text-xs text-muted-foreground truncate">· {c.serial}</span>
+              )}
+              {c.isDefault ? (
+                <span className="rounded-full bg-primary/15 border border-primary/30 px-1.5 py-0.5 text-[10px] font-semibold text-primary leading-none">
+                  base
+                </span>
+              ) : c.diffCount !== null ? (
+                <span className="text-[10px] text-muted-foreground">
+                  <span className={c.diffCount > 0 ? "font-semibold text-amber-600 dark:text-amber-400" : "text-muted-foreground"}>
+                    {c.diffCount}
+                  </span>
+                  {" param"}{c.diffCount !== 1 ? "s" : ""} differ
+                </span>
+              ) : c.versions.length === 0 ? (
+                <span className="text-[10px] text-muted-foreground italic">no versions yet</span>
+              ) : null}
+            </div>
+            {c.description && (
+              <p className="text-xs text-muted-foreground line-clamp-1">{c.description}</p>
+            )}
+            <span className="text-xs text-muted-foreground mt-1">
+              Updated {formatDate(c.updated_at)}
+            </span>
+            {c.versions.length > 0 && (
+              <span className="text-xs text-muted-foreground">
+                Versions: {[...c.versions].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map((v) => v.version_label).join(", ")}
+              </span>
+            )}
+          </div>
+        </Link>
+
+        {showCompare && (
+          <Link
+            href={`/compare?v=${defaultLatestVersionId}&v=${c.latestVersionId}`}
+            title={`Compare with Default (latest)`}
+            className={`absolute top-1/2 -translate-y-1/2 ${isAdmin ? "right-20" : "right-3"} rounded p-1.5 bg-card border border-border text-muted-foreground hover:text-primary hover:border-primary/50 transition-all cursor-pointer`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GitCompareArrows className="h-3.5 w-3.5" />
+          </Link>
+        )}
+
+        {isAdmin && (
+          <>
+            <button
+              onClick={() => openEdit(c)}
+              title={`Edit ${c.client_name}${c.serial ? ` · ${c.serial}` : ""}`}
+              className="absolute top-1/2 -translate-y-1/2 right-10 rounded p-1.5 opacity-0 group-hover/row:opacity-100 bg-card border border-border text-muted-foreground hover:text-primary hover:border-primary/50 transition-all cursor-pointer"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => { setDeleteError(null); setConfirmId(c.id); }}
+              title={`Delete client set: ${c.client_name}${c.serial ? ` · ${c.serial}` : ""}`}
+              className="absolute top-1/2 -translate-y-1/2 right-3 rounded p-1.5 opacity-0 group-hover/row:opacity-100 bg-card border border-border text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-all cursor-pointer"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </>
+        )}
+
+        {indented && (
+          <CornerDownRight className="absolute -left-5 top-5 h-3.5 w-3.5 text-muted-foreground/50 pointer-events-none" />
+        )}
+      </div>
+    );
+  }
+
   return (
     <>
       <datalist id={CLIENT_DATALIST_ID}>
@@ -152,54 +249,19 @@ export function ClientSetList({ familySlug, variantId, clientSets, isAdmin, canC
       </datalist>
 
       <div className="flex flex-col gap-3">
-        {clientSets.map((c) => (
-          <div key={c.id} className="relative group/row">
-            <Link
-              href={`/${familySlug}/${variantId}/${c.id}`}
-              className={`group flex items-start justify-between gap-4 rounded-lg border border-border bg-card px-5 py-4 hover:border-primary/50 transition-colors cursor-pointer${isAdmin ? " pr-20" : ""}`}
-            >
-              <div className="flex flex-col gap-1 min-w-0">
-                <div className="flex items-baseline gap-2 min-w-0">
-                  <span className="font-medium text-foreground group-hover:text-primary transition-colors truncate">
-                    {c.client_name}
-                  </span>
-                  {c.serial && (
-                    <span className="font-mono text-xs text-muted-foreground truncate">· {c.serial}</span>
-                  )}
-                </div>
-                {c.description && (
-                  <p className="text-xs text-muted-foreground line-clamp-1">{c.description}</p>
-                )}
-                <span className="text-xs text-muted-foreground mt-1">
-                  Updated {formatDate(c.updated_at)}
-                </span>
-                {c.param_versions && c.param_versions.length > 0 && (
-                  <span className="text-xs text-muted-foreground">
-                    Versions: {[...c.param_versions].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map((v) => v.version_label).join(", ")}
-                  </span>
-                )}
-              </div>
-            </Link>
+        {defaultSet && renderCard(defaultSet, false)}
 
-            {isAdmin && (
-              <>
-                <button
-                  onClick={() => openEdit(c)}
-                  title={`Edit ${c.client_name}${c.serial ? ` · ${c.serial}` : ""}`}
-                  className="absolute top-1/2 -translate-y-1/2 right-10 rounded p-1.5 opacity-0 group-hover/row:opacity-100 bg-card border border-border text-muted-foreground hover:text-primary hover:border-primary/50 transition-all cursor-pointer"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  onClick={() => { setDeleteError(null); setConfirmId(c.id); }}
-                  title={`Delete client set: ${c.client_name}${c.serial ? ` · ${c.serial}` : ""}`}
-                  className="absolute top-1/2 -translate-y-1/2 right-3 rounded p-1.5 opacity-0 group-hover/row:opacity-100 bg-card border border-border text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-all cursor-pointer"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </>
-            )}
+        {others.length > 0 && (
+          <div className="flex flex-col gap-2 ml-6 pl-2 border-l-2 border-border">
+            {others.map((c) => (
+              <div key={c.id}>{renderCard(c, true)}</div>
+            ))}
           </div>
+        )}
+
+        {/* If there's no Default, render others flat */}
+        {!defaultSet && others.map((c) => (
+          <div key={c.id}>{renderCard(c, false)}</div>
         ))}
 
         {canCreate && !showAdd && (

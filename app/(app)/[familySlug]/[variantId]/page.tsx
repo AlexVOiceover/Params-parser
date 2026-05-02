@@ -2,10 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { createClient, createSessionClient } from "@/lib/supabase/server";
-import { ClientSetList } from "@/components/client-set-list";
+import { ClientSetList, type ClientSetCard } from "@/components/client-set-list";
 import type { Family, Variant, ClientSet } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+
+interface RawClientSet extends ClientSet {
+  param_versions: { id: string; version_label: string; created_at: string; is_latest: boolean }[];
+}
 
 async function getData(familySlug: string, variantId: string) {
   const supabase = createClient();
@@ -23,16 +27,81 @@ async function getData(familySlug: string, variantId: string) {
       .maybeSingle(),
     supabase
       .from("client_sets")
-      .select("id, client_name, serial, description, created_at, updated_at, created_by, variant_id, param_versions(version_label, created_at)")
+      .select("id, client_name, serial, description, created_at, updated_at, created_by, variant_id, param_versions(id, version_label, created_at, is_latest)")
       .eq("variant_id", variantId)
       .order("client_name")
       .order("serial"),
   ]);
 
+  const sets = (clientSets as unknown as RawClientSet[]) ?? [];
+
+  // Latest version per client set
+  const latestVersionByClientSet = new Map<string, string>();
+  for (const cs of sets) {
+    const latest = cs.param_versions.find((pv) => pv.is_latest)
+      ?? [...cs.param_versions].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+    if (latest) latestVersionByClientSet.set(cs.id, latest.id);
+  }
+
+  // Identify Default (the one with serial = "")
+  const defaultSet = sets.find((cs) => cs.serial === "") ?? null;
+
+  // Compute diff counts vs Default
+  const diffCountByClientSet = new Map<string, number>();
+  if (defaultSet && latestVersionByClientSet.has(defaultSet.id)) {
+    const versionIds = [...latestVersionByClientSet.values()];
+    const { data: paramValues } = await supabase
+      .from("param_values")
+      .select("param_version_id, name, value")
+      .in("param_version_id", versionIds);
+
+    // Pivot: name → versionId → value
+    const valuesByVersion = new Map<string, Map<string, string>>();
+    for (const pv of paramValues ?? []) {
+      let m = valuesByVersion.get(pv.param_version_id);
+      if (!m) {
+        m = new Map();
+        valuesByVersion.set(pv.param_version_id, m);
+      }
+      m.set(pv.name, pv.value);
+    }
+
+    const defaultVersionId = latestVersionByClientSet.get(defaultSet.id)!;
+    const defaultValues = valuesByVersion.get(defaultVersionId) ?? new Map<string, string>();
+
+    for (const [csId, versionId] of latestVersionByClientSet.entries()) {
+      if (csId === defaultSet.id) continue;
+      const csValues = valuesByVersion.get(versionId) ?? new Map<string, string>();
+      const allNames = new Set<string>([...defaultValues.keys(), ...csValues.keys()]);
+      let diff = 0;
+      for (const name of allNames) {
+        if (defaultValues.get(name) !== csValues.get(name)) diff++;
+      }
+      diffCountByClientSet.set(csId, diff);
+    }
+  }
+
+  // Shape the cards for the component
+  const cards: ClientSetCard[] = sets.map((cs) => ({
+    id: cs.id,
+    client_name: cs.client_name,
+    serial: cs.serial,
+    description: cs.description,
+    updated_at: cs.updated_at,
+    versions: cs.param_versions.map((pv) => ({
+      version_label: pv.version_label,
+      created_at: pv.created_at,
+    })),
+    latestVersionId: latestVersionByClientSet.get(cs.id) ?? null,
+    diffCount: diffCountByClientSet.get(cs.id) ?? null,
+    isDefault: cs === defaultSet,
+  }));
+
   return {
     family: family as Family | null,
     variant: variant as Variant | null,
-    clientSets: (clientSets as unknown as (ClientSet & { param_versions: { version_label: string; created_at: string }[] })[]) ?? [],
+    cards,
+    defaultLatestVersionId: defaultSet ? latestVersionByClientSet.get(defaultSet.id) ?? null : null,
   };
 }
 
@@ -55,7 +124,7 @@ export default async function VariantPage({
   const [role, data] = await Promise.all([getRole(), getData(familySlug, variantId)]);
   const isAdmin = role === "admin";
   const canCreate = role === "admin" || role === "contributor";
-  const { family, variant, clientSets } = data;
+  const { family, variant, cards, defaultLatestVersionId } = data;
 
   if (!family || !variant) notFound();
 
@@ -80,11 +149,11 @@ export default async function VariantPage({
 
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-          Client sets{clientSets.length > 0 ? ` (${clientSets.length})` : ""}
+          Client sets{cards.length > 0 ? ` (${cards.length})` : ""}
         </h2>
       </div>
 
-      {clientSets.length === 0 && !canCreate ? (
+      {cards.length === 0 && !canCreate ? (
         <div className="rounded-lg border border-border bg-card px-6 py-10 text-center">
           <p className="text-sm text-muted-foreground">No client sets for this variant yet.</p>
         </div>
@@ -92,7 +161,8 @@ export default async function VariantPage({
         <ClientSetList
           familySlug={familySlug}
           variantId={variantId}
-          clientSets={clientSets}
+          clientSets={cards}
+          defaultLatestVersionId={defaultLatestVersionId}
           isAdmin={isAdmin}
           canCreate={canCreate}
         />
