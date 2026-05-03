@@ -129,6 +129,37 @@ export function ClientsTable({ clients }: Props) {
     }
   }
 
+  // ── Edit drone serial ────────────────────────────────────
+  const [editingDroneId, setEditingDroneId] = useState<string | null>(null);
+  const [editDroneSerial, setEditDroneSerial] = useState("");
+  const [savingDrone, setSavingDrone] = useState(false);
+  const [editDroneErrors, setEditDroneErrors] = useState<Record<string, string>>({});
+
+  function startEditDrone(droneId: string, serial: string) {
+    setEditingDroneId(droneId);
+    setEditDroneSerial(serial);
+    setEditDroneErrors((prev) => { const n = { ...prev }; delete n[droneId]; return n; });
+  }
+
+  async function handleSaveDrone(droneId: string, e: React.FormEvent) {
+    e.preventDefault();
+    if (!editDroneSerial.trim()) return;
+    setSavingDrone(true);
+    const res = await fetch(`/api/admin/drones/${droneId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serial: editDroneSerial.trim() }),
+    });
+    setSavingDrone(false);
+    if (res.ok) {
+      setEditingDroneId(null);
+      startTransition(() => router.refresh());
+    } else {
+      const msg = await res.json().then((b) => b?.error).catch(() => null);
+      setEditDroneErrors((prev) => ({ ...prev, [droneId]: msg ?? "Save failed" }));
+    }
+  }
+
   // ── Delete drone ─────────────────────────────────────────
   const [deleteDroneErrors, setDeleteDroneErrors] = useState<Record<string, string>>({});
 
@@ -260,35 +291,82 @@ export function ClientsTable({ clients }: Props) {
                 {/* Expanded: drone rows */}
                 {isExpanded && (
                   <>
-                    {c.drones.map((d) => (
-                      <tr key={d.id} className="border-b border-border bg-secondary/15 group/drone">
-                        <td className="px-3 py-1.5"></td>
-                        <td className="px-3 py-1.5 pl-8">
-                          <span className="font-mono text-xs text-foreground">{d.serial}</span>
-                        </td>
-                        <td className="px-3 py-1.5"></td>
-                        <td className="px-3 py-1.5 text-right">
-                          <button
-                            onClick={() => handleDeleteDrone(d.id)}
-                            title={`Delete drone ${d.serial}`}
-                            className="rounded p-1 opacity-0 group-hover/drone:opacity-100 text-muted-foreground hover:text-destructive transition-all cursor-pointer"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-
-                    {/* Drone delete errors */}
-                    {c.drones.map((d) =>
-                      deleteDroneErrors[d.id] ? (
-                        <tr key={`err-${d.id}`} className="border-b border-border bg-destructive/5">
-                          <td colSpan={4} className="px-3 py-1.5 pl-8">
-                            <p className="text-xs text-destructive">{deleteDroneErrors[d.id]}</p>
-                          </td>
-                        </tr>
-                      ) : null
-                    )}
+                    {c.drones.map((d) => {
+                      const isEditingDrone = editingDroneId === d.id;
+                      return (
+                        <Fragment key={d.id}>
+                          <tr className="border-b border-border bg-secondary/15 group/drone">
+                            <td className="px-3 py-1.5"></td>
+                            <td className="px-3 py-1.5 pl-8">
+                              {isEditingDrone ? (
+                                <form
+                                  onSubmit={(e) => handleSaveDrone(d.id, e)}
+                                  className="flex items-center gap-2"
+                                >
+                                  <input
+                                    required
+                                    autoFocus
+                                    value={editDroneSerial}
+                                    onChange={(e) => setEditDroneSerial(e.target.value)}
+                                    disabled={savingDrone}
+                                    className="flex-1 max-w-xs rounded-md border border-primary/40 bg-card px-2.5 py-1 text-xs font-mono text-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
+                                  />
+                                  <button
+                                    type="submit"
+                                    disabled={savingDrone || !editDroneSerial.trim()}
+                                    title="Save"
+                                    className="rounded-md bg-primary p-1 text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                                  >
+                                    <Check className="h-3 w-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingDroneId(null)}
+                                    disabled={savingDrone}
+                                    title="Cancel"
+                                    className="rounded-md border border-border p-1 text-muted-foreground hover:bg-secondary transition-colors cursor-pointer disabled:opacity-40"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </form>
+                              ) : (
+                                <span className="font-mono text-xs text-foreground">{d.serial}</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-1.5"></td>
+                            <td className="px-3 py-1.5 text-right">
+                              {!isEditingDrone && (
+                                <div className="flex items-center justify-end gap-1 opacity-0 group-hover/drone:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={() => startEditDrone(d.id, d.serial)}
+                                    title={`Edit drone ${d.serial}`}
+                                    className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteDrone(d.id)}
+                                    title={`Delete drone ${d.serial}`}
+                                    className="rounded p-1 text-muted-foreground hover:text-destructive hover:bg-secondary transition-colors cursor-pointer"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                          {(editDroneErrors[d.id] || deleteDroneErrors[d.id]) && (
+                            <tr className="border-b border-border bg-destructive/5">
+                              <td colSpan={4} className="px-3 py-1.5 pl-8">
+                                <p className="text-xs text-destructive">
+                                  {editDroneErrors[d.id] ?? deleteDroneErrors[d.id]}
+                                </p>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
 
                     {/* Add drone row */}
                     {isAdding ? (
