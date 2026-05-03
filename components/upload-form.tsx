@@ -7,7 +7,7 @@ import Link from "next/link";
 
 type Client = { id: string; name: string };
 type Drone = { id: string; client_id: string; variant_id: string; serial: string };
-type Family = { id: string; name: string };
+type Family = { id: string; slug: string; name: string };
 type Variant = { id: string; name: string; family_id: string };
 type ClientSet = {
   id: string;
@@ -46,6 +46,7 @@ export function UploadForm({ data }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [donePath, setDonePath] = useState<string | null>(null);
 
   const variantById = useMemo(() => new Map(data.variants.map((v) => [v.id, v])), [data.variants]);
   const familyById = useMemo(() => new Map(data.families.map((f) => [f.id, f])), [data.families]);
@@ -95,6 +96,7 @@ export function UploadForm({ data }: Props) {
     setFile(null);
     setError(null);
     setDone(false);
+    setDonePath(null);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -160,6 +162,13 @@ export function UploadForm({ data }: Props) {
       }
     }
 
+    // Build the deep link to the variant page (Default + all client sets).
+    const variant = variantById.get(selectedDrone.variant_id);
+    const family = variant?.family_id ? familyById.get(variant.family_id) : null;
+    if (family && variant) {
+      setDonePath(`/${family.slug}/${variant.id}`);
+    }
+
     setDone(true);
     setSubmitting(false);
     router.refresh();
@@ -181,10 +190,10 @@ export function UploadForm({ data }: Props) {
             Upload another
           </button>
           <Link
-            href="/"
+            href={donePath ?? "/"}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
           >
-            Go to catalog
+            {donePath ? "Open variant" : "Go to catalog"}
           </Link>
         </div>
       </div>

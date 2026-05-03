@@ -34,7 +34,7 @@ export default async function UploadPage() {
   ] = await Promise.all([
     admin.from("clients").select("id, name").order("name"),
     admin.from("drones").select("id, client_id, variant_id, serial").order("serial"),
-    admin.from("families").select("id, name").order("name"),
+    admin.from("families").select("id, slug, name").order("name"),
     admin.from("variants").select("id, name, family_id").order("name"),
     admin.from("client_sets").select("id, client_id, drone_id, variant_id"),
   ]);

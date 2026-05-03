@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 
 interface ClientRow { id: string; name: string }
 interface DroneRow { id: string; client_id: string; variant_id: string; serial: string }
-interface FamilyRow { id: string; name: string }
+interface FamilyRow { id: string; slug: string; name: string }
 interface VariantRow { id: string; name: string; family_id: string | null }
 interface ClientSetRow { id: string; client_id: string | null; drone_id: string | null; variant_id: string }
 interface VersionRow { client_set_id: string; version_label: string }
@@ -40,6 +40,7 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [donePath, setDonePath] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -47,7 +48,7 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
     Promise.all([
       supabase.from("clients").select("id, name").order("name"),
       supabase.from("drones").select("id, client_id, variant_id, serial").order("serial"),
-      supabase.from("families").select("id, name").order("name"),
+      supabase.from("families").select("id, slug, name").order("name"),
       supabase.from("variants").select("id, name, family_id").order("name"),
       supabase.from("client_sets").select("id, client_id, drone_id, variant_id"),
       supabase.from("param_versions").select("client_set_id, version_label"),
@@ -180,6 +181,13 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
       }
     }
 
+    // Build the deep link to the variant page (Default + all client sets).
+    const variant = variantById.get(selectedDrone.variant_id);
+    const family = variant?.family_id ? familyById.get(variant.family_id) : null;
+    if (family && variant) {
+      setDonePath(`/${family.slug}/${variant.id}`);
+    }
+
     setDone(true);
     setSubmitting(false);
   }
@@ -213,10 +221,10 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
             <p className="text-sm text-foreground font-medium">Published to catalog</p>
             <p className="text-xs text-muted-foreground">The version is now visible in the catalog.</p>
             <a
-              href="/"
+              href={donePath ?? "/"}
               className="flex items-center gap-1.5 mt-2 text-xs text-primary hover:underline cursor-pointer"
             >
-              Go to catalog <ExternalLink className="h-3 w-3" />
+              {donePath ? "Open variant" : "Go to catalog"} <ExternalLink className="h-3 w-3" />
             </a>
           </div>
         ) : (
