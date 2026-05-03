@@ -138,6 +138,8 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
       const client = clients.find((c) => c.id === clientId);
       fd.set("mode", "new-client-set");
       fd.set("variantId", selectedDrone.variant_id);
+      fd.set("clientId", clientId);
+      fd.set("droneId", selectedDrone.id);
       fd.set("clientName", client?.name ?? "");
       fd.set("serial", selectedDrone.serial);
     }

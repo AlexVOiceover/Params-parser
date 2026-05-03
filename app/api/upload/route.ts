@@ -43,6 +43,8 @@ export async function POST(request: NextRequest) {
         const mode = (formData.get("mode") as string | null) ?? "existing";
         const variantId = formData.get("variantId") as string | null;
         let clientSetId = formData.get("clientSetId") as string | null;
+        const clientId = formData.get("clientId") as string | null;
+        const droneId = formData.get("droneId") as string | null;
         const clientName = formData.get("clientName") as string | null;
         const serial = formData.get("serial") as string | null;
         const versionLabel = formData.get("versionLabel") as string;
@@ -82,6 +84,8 @@ export async function POST(request: NextRequest) {
             client_name: clientName!.trim(),
             serial: serial!.trim(),
             variant_id: variantId!,
+            client_id: clientId,
+            drone_id: droneId,
             created_by: user.id,
           }).select("id").single();
           if (csError || !newCs) {
