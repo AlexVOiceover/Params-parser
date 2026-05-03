@@ -143,16 +143,19 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
 
   async function handleSave() {
     if (!editId) return;
+    const target = clientSets.find((c) => c.id === editId);
+    if (!target) return;
     setSaving(true);
     setEditError(null);
+    const body: Record<string, string> = { description: editDescription };
+    if (!target.isDefault) {
+      body.clientName = editClientName;
+      body.serial = editSerial;
+    }
     const res = await fetch(`/api/admin/client-sets/${editId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        clientName: editClientName,
-        serial: editSerial,
-        description: editDescription,
-      }),
+      body: JSON.stringify(body),
     });
     if (res.ok) {
       setEditId(null);
@@ -196,7 +199,7 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
                   <span className={c.diffCount > 0 ? "font-semibold text-amber-600 dark:text-amber-400" : "text-muted-foreground"}>
                     {c.diffCount}
                   </span>
-                  {" param"}{c.diffCount !== 1 ? "s" : ""} differ
+                  {" param"}{c.diffCount !== 1 ? "s" : ""} differ from Default
                 </span>
               ) : c.versions.length === 0 ? (
                 <span className="text-[10px] text-muted-foreground italic">no versions yet</span>
@@ -376,7 +379,9 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
             <div className="flex items-center justify-between border-b border-border bg-toolbar px-5 py-3.5">
               <div className="flex items-center gap-2">
                 <Pencil className="h-4 w-4 text-primary" />
-                <h2 className="text-sm font-bold text-foreground">Edit client + drone</h2>
+                <h2 className="text-sm font-bold text-foreground">
+                  {editTarget.isDefault ? "Edit Default" : "Edit client + drone"}
+                </h2>
               </div>
               <button
                 onClick={() => setEditId(null)}
@@ -388,24 +393,28 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
             </div>
 
             <div className="px-5 py-4 flex flex-col gap-3">
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-muted-foreground">Client <span className="text-destructive">*</span></span>
-                <input
-                  value={editClientName}
-                  onChange={(e) => setEditClientName(e.target.value)}
-                  disabled={saving}
-                  className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
-                />
-              </label>
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-muted-foreground">Serial <span className="text-destructive">*</span></span>
-                <input
-                  value={editSerial}
-                  onChange={(e) => setEditSerial(e.target.value)}
-                  disabled={saving}
-                  className="rounded-md border border-border bg-secondary px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
-                />
-              </label>
+              {!editTarget.isDefault && (
+                <>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">Client <span className="text-destructive">*</span></span>
+                    <input
+                      value={editClientName}
+                      onChange={(e) => setEditClientName(e.target.value)}
+                      disabled={saving}
+                      className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">Serial <span className="text-destructive">*</span></span>
+                    <input
+                      value={editSerial}
+                      onChange={(e) => setEditSerial(e.target.value)}
+                      disabled={saving}
+                      className="rounded-md border border-border bg-secondary px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
+                    />
+                  </label>
+                </>
+              )}
               <label className="flex flex-col gap-1.5">
                 <span className="text-xs font-medium text-muted-foreground">Description</span>
                 <input
@@ -433,8 +442,8 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
               </button>
               <button
                 onClick={handleSave}
-                disabled={saving || !editClientName.trim() || !editSerial.trim()}
-                className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                disabled={saving || (!editTarget.isDefault && (!editClientName.trim() || !editSerial.trim()))}
+                className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
               >
                 <Check className="h-3.5 w-3.5" />
                 {saving ? "Saving…" : "Save"}
