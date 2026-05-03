@@ -30,23 +30,20 @@ export async function PATCH(
     return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
   }
 
-  // If changing variant, refuse if any existing client_set under this drone is for a different variant.
+  const admin = createAdminClient();
+
+  // If changing variant, cascade the change to all client_sets under this drone
+  // so the param-version history follows the drone to its new variant.
   if (update.variant_id) {
-    const adminCheck = createAdminClient();
-    const { data: sets } = await adminCheck
+    const { error: csError } = await admin
       .from("client_sets")
-      .select("variant_id")
+      .update({ variant_id: update.variant_id as string })
       .eq("drone_id", id);
-    const conflicting = (sets ?? []).find((s) => s.variant_id !== update.variant_id);
-    if (conflicting) {
-      return NextResponse.json(
-        { error: "Cannot change variant: this drone has param sets for a different variant" },
-        { status: 409 }
-      );
+    if (csError) {
+      return NextResponse.json({ error: `Failed to update param sets: ${csError.message}` }, { status: 500 });
     }
   }
 
-  const admin = createAdminClient();
   const { error } = await admin.from("drones").update(update).eq("id", id);
   if (error) {
     const msg = error.code === "23505" ? "A drone with that serial already exists for this client" : error.message;

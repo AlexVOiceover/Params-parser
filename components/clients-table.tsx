@@ -180,9 +180,17 @@ export function ClientsTable({ clients, families, variants }: Props) {
     setEditDroneErrors((prev) => { const n = { ...prev }; delete n[droneId]; return n; });
   }
 
-  async function handleSaveDrone(droneId: string, e: React.FormEvent) {
+  async function handleSaveDrone(droneId: string, originalVariantId: string, e: React.FormEvent) {
     e.preventDefault();
     if (!editDroneSerial.trim() || !editDroneVariantId) return;
+
+    if (editDroneVariantId !== originalVariantId) {
+      const ok = window.confirm(
+        `Changing the family/variant of this drone will move all of its existing param sets to "${variantLabel(editDroneVariantId)}". Continue?`
+      );
+      if (!ok) return;
+    }
+
     setSavingDrone(true);
     const res = await fetch(`/api/admin/drones/${droneId}`, {
       method: "PATCH",
@@ -340,7 +348,7 @@ export function ClientsTable({ clients, families, variants }: Props) {
                               <td className="px-3 py-2"></td>
                               <td colSpan={3} className="px-3 py-2 pl-8">
                                 <form
-                                  onSubmit={(e) => handleSaveDrone(d.id, e)}
+                                  onSubmit={(e) => handleSaveDrone(d.id, d.variant_id, e)}
                                   className="flex flex-wrap items-center gap-2"
                                 >
                                   <input
