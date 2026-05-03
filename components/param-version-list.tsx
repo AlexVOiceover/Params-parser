@@ -52,6 +52,19 @@ function storageUrl(path: string) {
   return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/param-files/${path}`;
 }
 
+async function downloadParamFile(path: string, filename: string) {
+  const res = await fetch(storageUrl(path));
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function nextVersions(versions: ParamVersionRow[]): { major: string; minor: string | null } {
   const parsed = versions
     .map((v) => v.version_label.match(/^(\d+)\.(\d+)$/))
@@ -426,14 +439,14 @@ export function ParamVersionList({
                     <Filter className="h-3.5 w-3.5" />
                     Open in Filter
                   </Link>
-                  <a
-                    href={storageUrl(v.storage_path)}
-                    download
-                    className="flex items-center gap-1.5 rounded-md bg-primary/15 border border-primary/30 hover:bg-primary/25 px-3 py-1.5 text-xs font-medium text-primary transition-colors cursor-pointer"
+                  <button
+                    type="button"
+                    onClick={() => downloadParamFile(v.storage_path, `${clientSetName}-v${v.version_label}.param`.replace(/\s+/g, "_"))}
+                    className="flex items-center gap-1.5 rounded-md bg-primary/15 border border-primary/30 hover:bg-primary/25 px-3 py-1.5 text-xs font-medium text-primary transition-colors cursor-pointer whitespace-nowrap"
                   >
                     <Download className="h-3.5 w-3.5" />
                     Download .param
-                  </a>
+                  </button>
                 </div>
               </div>
               {v.changelog && (
