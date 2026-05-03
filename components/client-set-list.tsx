@@ -26,23 +26,25 @@ interface Props {
   defaultLatestVersionId: string | null;
   isAdmin: boolean;
   canCreate: boolean;
+  /** All registered clients, for the "add client + drone" picker. */
+  clients: { id: string; name: string }[];
+  /** Drones registered on this variant that don't yet have a client_set on it. */
+  availableDrones: { id: string; client_id: string; serial: string }[];
 }
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-const CLIENT_DATALIST_ID = "client-set-list-clients";
-
-export function ClientSetList({ familySlug, variantId, clientSets, defaultLatestVersionId, isAdmin, canCreate }: Props) {
+export function ClientSetList({ familySlug, variantId, clientSets, defaultLatestVersionId, isAdmin, canCreate, clients, availableDrones }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
 
-  // Client-name suggestions for autocomplete
-  const clientNames = useMemo(() => {
-    const set = new Set(clientSets.map((c) => c.client_name).filter(Boolean));
-    return [...set].sort();
-  }, [clientSets]);
+  // Only list clients that actually have an unused drone on this variant.
+  const clientsWithDrones = useMemo(() => {
+    const ids = new Set(availableDrones.map((d) => d.client_id));
+    return clients.filter((c) => ids.has(c.id));
+  }, [clients, availableDrones]);
 
   const defaultSet = clientSets.find((c) => c.isDefault) ?? null;
   const others = clientSets.filter((c) => !c.isDefault);
@@ -62,26 +64,35 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
 
   // ── Create state ──────────────────────────────────────────
   const [showAdd, setShowAdd] = useState(false);
-  const [newClientName, setNewClientName] = useState("");
-  const [newSerial, setNewSerial] = useState("");
+  const [newClientId, setNewClientId] = useState("");
+  const [newDroneId, setNewDroneId] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+
+  const dronesForNewClient = useMemo(
+    () => availableDrones.filter((d) => d.client_id === newClientId),
+    [availableDrones, newClientId]
+  );
 
   const confirmTarget = clientSets.find((c) => c.id === confirmId);
   const editTarget = clientSets.find((c) => c.id === editId);
 
   function resetAdd() {
     setShowAdd(false);
-    setNewClientName("");
-    setNewSerial("");
+    setNewClientId("");
+    setNewDroneId("");
     setNewDescription("");
     setCreateError(null);
   }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!newClientName.trim() || !newSerial.trim()) return;
+    if (!newClientId || !newDroneId) return;
+    const client = clients.find((c) => c.id === newClientId);
+    const drone = availableDrones.find((d) => d.id === newDroneId);
+    if (!client || !drone) return;
+
     setSubmitting(true);
     setCreateError(null);
     const res = await fetch("/api/admin/client-sets", {
@@ -89,8 +100,10 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         variantId,
-        clientName: newClientName.trim(),
-        serial: newSerial.trim(),
+        clientId: newClientId,
+        droneId: newDroneId,
+        clientName: client.name,
+        serial: drone.serial,
         description: newDescription.trim() || null,
       }),
     });
@@ -242,12 +255,6 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
 
   return (
     <>
-      <datalist id={CLIENT_DATALIST_ID}>
-        {clientNames.map((n) => (
-          <option key={n} value={n} />
-        ))}
-      </datalist>
-
       <div className="flex flex-col gap-3">
         {defaultSet && renderCard(defaultSet, false)}
 
@@ -291,49 +298,72 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
               </button>
             </div>
 
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-muted-foreground">Client <span className="text-destructive">*</span></span>
-              <input
-                required
-                autoFocus
-                list={CLIENT_DATALIST_ID}
-                value={newClientName}
-                onChange={(e) => setNewClientName(e.target.value)}
-                disabled={submitting}
-                placeholder="e.g. Acme Corp"
-                className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-muted-foreground">Serial <span className="text-destructive">*</span></span>
-              <input
-                required
-                value={newSerial}
-                onChange={(e) => setNewSerial(e.target.value)}
-                disabled={submitting}
-                placeholder="e.g. SN-12345"
-                className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
-              />
-            </label>
-            <input
-              value={newDescription}
-              onChange={(e) => setNewDescription(e.target.value)}
-              disabled={submitting}
-              placeholder="Description (optional)"
-              className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
-            />
-            {createError && (
-              <p className="text-xs text-destructive bg-destructive/15 border border-destructive/40 rounded-md px-3 py-2">
-                {createError}
+            {clientsWithDrones.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic">
+                No drones registered for this variant.{" "}
+                <Link href="/admin/clients" className="text-primary hover:underline">
+                  Register one in Clients
+                </Link>{" "}
+                first.
               </p>
+            ) : (
+              <>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-muted-foreground">Client <span className="text-destructive">*</span></span>
+                  <select
+                    required
+                    autoFocus
+                    value={newClientId}
+                    onChange={(e) => { setNewClientId(e.target.value); setNewDroneId(""); }}
+                    disabled={submitting}
+                    className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40 cursor-pointer"
+                  >
+                    <option value="">Select client…</option>
+                    {clientsWithDrones.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </label>
+
+                {newClientId && (
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-muted-foreground">Drone <span className="text-destructive">*</span></span>
+                    <select
+                      required
+                      value={newDroneId}
+                      onChange={(e) => setNewDroneId(e.target.value)}
+                      disabled={submitting}
+                      className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm font-mono text-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40 cursor-pointer"
+                    >
+                      <option value="">Select drone…</option>
+                      {dronesForNewClient.map((d) => (
+                        <option key={d.id} value={d.id}>{d.serial}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+
+                <input
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  disabled={submitting}
+                  placeholder="Description (optional)"
+                  className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
+                />
+                {createError && (
+                  <p className="text-xs text-destructive bg-destructive/15 border border-destructive/40 rounded-md px-3 py-2">
+                    {createError}
+                  </p>
+                )}
+                <button
+                  type="submit"
+                  disabled={submitting || !newClientId || !newDroneId}
+                  className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  {submitting ? "Creating…" : "Create"}
+                </button>
+              </>
             )}
-            <button
-              type="submit"
-              disabled={submitting || !newClientName.trim() || !newSerial.trim()}
-              className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed"
-            >
-              {submitting ? "Creating…" : "Create"}
-            </button>
           </form>
         )}
       </div>
@@ -361,7 +391,6 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
               <label className="flex flex-col gap-1.5">
                 <span className="text-xs font-medium text-muted-foreground">Client <span className="text-destructive">*</span></span>
                 <input
-                  list={CLIENT_DATALIST_ID}
                   value={editClientName}
                   onChange={(e) => setEditClientName(e.target.value)}
                   disabled={saving}

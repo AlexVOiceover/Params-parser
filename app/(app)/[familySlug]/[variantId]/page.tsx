@@ -14,7 +14,7 @@ interface RawClientSet extends ClientSet {
 async function getData(familySlug: string, variantId: string) {
   const supabase = createClient();
 
-  const [{ data: family }, { data: variant }, { data: clientSets }] = await Promise.all([
+  const [{ data: family }, { data: variant }, { data: clientSets }, { data: clientsRaw }, { data: dronesRaw }] = await Promise.all([
     supabase
       .from("families")
       .select("id, slug, name, description")
@@ -27,10 +27,12 @@ async function getData(familySlug: string, variantId: string) {
       .maybeSingle(),
     supabase
       .from("client_sets")
-      .select("id, client_name, serial, description, created_at, updated_at, created_by, variant_id, param_versions(id, version_label, created_at, is_latest)")
+      .select("id, client_name, serial, description, created_at, updated_at, created_by, variant_id, client_id, drone_id, param_versions(id, version_label, created_at, is_latest)")
       .eq("variant_id", variantId)
       .order("client_name")
       .order("serial"),
+    supabase.from("clients").select("id, name").order("name"),
+    supabase.from("drones").select("id, client_id, serial, variant_id").eq("variant_id", variantId).order("serial"),
   ]);
 
   const sets = (clientSets as unknown as RawClientSet[]) ?? [];
@@ -97,11 +99,23 @@ async function getData(familySlug: string, variantId: string) {
     isDefault: cs === defaultSet,
   }));
 
+  // Drones already used by an existing client_set on this variant, so we can
+  // hide them from the "add client + drone" picker.
+  const usedDroneIds = new Set(
+    sets
+      .map((cs) => ((cs as unknown) as { drone_id: string | null }).drone_id)
+      .filter((id): id is string => !!id)
+  );
+
   return {
     family: family as Family | null,
     variant: variant as Variant | null,
     cards,
     defaultLatestVersionId: defaultSet ? latestVersionByClientSet.get(defaultSet.id) ?? null : null,
+    clients: (clientsRaw ?? []) as { id: string; name: string }[],
+    drones: ((dronesRaw ?? []) as { id: string; client_id: string; serial: string; variant_id: string }[])
+      .filter((d) => !usedDroneIds.has(d.id))
+      .map((d) => ({ id: d.id, client_id: d.client_id, serial: d.serial })),
   };
 }
 
@@ -124,7 +138,7 @@ export default async function VariantPage({
   const [role, data] = await Promise.all([getRole(), getData(familySlug, variantId)]);
   const isAdmin = role === "admin";
   const canCreate = role === "admin" || role === "contributor";
-  const { family, variant, cards, defaultLatestVersionId } = data;
+  const { family, variant, cards, defaultLatestVersionId, clients, drones } = data;
 
   if (!family || !variant) notFound();
 
@@ -165,6 +179,8 @@ export default async function VariantPage({
           defaultLatestVersionId={defaultLatestVersionId}
           isAdmin={isAdmin}
           canCreate={canCreate}
+          clients={clients}
+          availableDrones={drones}
         />
       )}
     </div>

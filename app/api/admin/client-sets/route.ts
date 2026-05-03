@@ -36,7 +36,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const { variantId, clientName, serial, description } = await request.json() as { variantId: string; clientName: string; serial: string; description?: string };
+  const { variantId, clientId, droneId, clientName, serial, description } = await request.json() as {
+    variantId: string;
+    clientId?: string;
+    droneId?: string;
+    clientName: string;
+    serial: string;
+    description?: string;
+  };
   if (!variantId) return NextResponse.json({ error: "variantId required" }, { status: 400 });
   if (!clientName?.trim()) return NextResponse.json({ error: "Client name required" }, { status: 400 });
   if (!serial?.trim()) return NextResponse.json({ error: "Serial required" }, { status: 400 });
@@ -49,6 +56,8 @@ export async function POST(request: NextRequest) {
       serial: serial.trim(),
       description: description?.trim() || null,
       variant_id: variantId,
+      client_id: clientId ?? null,
+      drone_id: droneId ?? null,
       created_by: user.id,
     })
     .select("id")
