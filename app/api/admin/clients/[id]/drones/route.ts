@@ -8,7 +8,7 @@ export async function GET(
   const { id } = await params;
   const { data, error } = await createSupabase()
     .from("drones")
-    .select("id, serial")
+    .select("id, serial, variant_id")
     .eq("client_id", id)
     .order("serial");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -30,14 +30,15 @@ export async function POST(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const { serial } = await request.json() as { serial?: string };
+  const { serial, variantId } = await request.json() as { serial?: string; variantId?: string };
   if (!serial?.trim()) return NextResponse.json({ error: "Serial is required" }, { status: 400 });
+  if (!variantId) return NextResponse.json({ error: "Variant is required" }, { status: 400 });
 
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("drones")
-    .insert({ client_id: id, serial: serial.trim(), created_by: user.id })
-    .select("id, serial")
+    .insert({ client_id: id, variant_id: variantId, serial: serial.trim(), created_by: user.id })
+    .select("id, serial, variant_id")
     .single();
 
   if (error) {

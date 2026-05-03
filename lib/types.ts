@@ -71,6 +71,7 @@ export interface Client {
 export interface Drone {
   id: string;
   client_id: string;
+  variant_id: string;
   serial: string;
   created_by: string | null;
   created_at: string;

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { createSessionClient, createAdminClient } from "@/lib/supabase/server";
-import { ClientsTable, type ClientWithDrones } from "@/components/clients-table";
+import { ClientsTable, type ClientWithDrones, type FamilyOption, type VariantOption } from "@/components/clients-table";
 
 export const dynamic = "force-dynamic";
 
@@ -24,15 +24,19 @@ export default async function ClientsPage() {
   if (profile?.role !== "admin") redirect("/");
 
   const admin = createAdminClient();
-  const { data: clientsData } = await admin
-    .from("clients")
-    .select("id, name, drones(id, serial)")
-    .order("name");
+  const [{ data: clientsData }, { data: familiesData }, { data: variantsData }] = await Promise.all([
+    admin.from("clients").select("id, name, drones(id, serial, variant_id)").order("name"),
+    admin.from("families").select("id, name").order("name"),
+    admin.from("variants").select("id, name, family_id").order("name"),
+  ]);
+
+  const families: FamilyOption[] = (familiesData ?? []).map((f) => ({ id: f.id, name: f.name }));
+  const variants: VariantOption[] = (variantsData ?? []).map((v) => ({ id: v.id, name: v.name, family_id: v.family_id ?? "" }));
 
   const clients: ClientWithDrones[] = (clientsData ?? []).map((c) => ({
     id: c.id,
     name: c.name,
-    drones: ((c.drones as unknown) as { id: string; serial: string }[] ?? [])
+    drones: ((c.drones as unknown) as { id: string; serial: string; variant_id: string }[] ?? [])
       .slice()
       .sort((a, b) => a.serial.localeCompare(b.serial)),
   }));
@@ -48,7 +52,7 @@ export default async function ClientsPage() {
       <p className="text-sm text-muted-foreground mt-2 mb-6">
         Companies that own one or more drones in the catalog. Click a row to expand its drones.
       </p>
-      <ClientsTable clients={clients} />
+      <ClientsTable clients={clients} families={families} variants={variants} />
     </div>
   );
 }

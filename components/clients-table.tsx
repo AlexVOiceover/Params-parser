@@ -1,22 +1,45 @@
 "use client";
 
-import { Fragment, useState, useTransition } from "react";
+import { Fragment, useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight, Trash2, Plus, X, Pencil, Check } from "lucide-react";
 
 export interface ClientWithDrones {
   id: string;
   name: string;
-  drones: { id: string; serial: string }[];
+  drones: { id: string; serial: string; variant_id: string }[];
+}
+
+export interface FamilyOption {
+  id: string;
+  name: string;
+}
+
+export interface VariantOption {
+  id: string;
+  name: string;
+  family_id: string;
 }
 
 interface Props {
   clients: ClientWithDrones[];
+  families: FamilyOption[];
+  variants: VariantOption[];
 }
 
-export function ClientsTable({ clients }: Props) {
+export function ClientsTable({ clients, families, variants }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
+
+  // Lookups for displaying family/variant labels next to drone serials
+  const variantById = useMemo(() => new Map(variants.map((v) => [v.id, v])), [variants]);
+  const familyById = useMemo(() => new Map(families.map((f) => [f.id, f])), [families]);
+  function variantLabel(variantId: string): string {
+    const v = variantById.get(variantId);
+    if (!v) return "?";
+    const f = familyById.get(v.family_id);
+    return `${f?.name ?? "?"} / ${v.name}`;
+  }
 
   // ── Row expansion ─────────────────────────────────────────
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -105,23 +128,35 @@ export function ClientsTable({ clients }: Props) {
   // ── Add drone (per client) ───────────────────────────────
   const [addingDroneFor, setAddingDroneFor] = useState<string | null>(null);
   const [newDroneSerial, setNewDroneSerial] = useState("");
+  const [newDroneFamilyId, setNewDroneFamilyId] = useState("");
+  const [newDroneVariantId, setNewDroneVariantId] = useState("");
   const [submittingDrone, setSubmittingDrone] = useState(false);
   const [addDroneErrors, setAddDroneErrors] = useState<Record<string, string>>({});
 
+  function startAddDrone(clientId: string) {
+    setAddingDroneFor(clientId);
+    setNewDroneSerial("");
+    setNewDroneFamilyId("");
+    setNewDroneVariantId("");
+    setAddDroneErrors((prev) => { const n = { ...prev }; delete n[clientId]; return n; });
+  }
+
   async function handleAddDrone(clientId: string, e: React.FormEvent) {
     e.preventDefault();
-    if (!newDroneSerial.trim()) return;
+    if (!newDroneSerial.trim() || !newDroneVariantId) return;
     setSubmittingDrone(true);
     setAddDroneErrors((prev) => { const n = { ...prev }; delete n[clientId]; return n; });
     const res = await fetch(`/api/admin/clients/${clientId}/drones`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ serial: newDroneSerial.trim() }),
+      body: JSON.stringify({ serial: newDroneSerial.trim(), variantId: newDroneVariantId }),
     });
     setSubmittingDrone(false);
     if (res.ok) {
       setAddingDroneFor(null);
       setNewDroneSerial("");
+      setNewDroneFamilyId("");
+      setNewDroneVariantId("");
       startTransition(() => router.refresh());
     } else {
       const msg = await res.json().then((b) => b?.error).catch(() => null);
@@ -129,26 +164,30 @@ export function ClientsTable({ clients }: Props) {
     }
   }
 
-  // ── Edit drone serial ────────────────────────────────────
+  // ── Edit drone (serial + variant) ────────────────────────
   const [editingDroneId, setEditingDroneId] = useState<string | null>(null);
   const [editDroneSerial, setEditDroneSerial] = useState("");
+  const [editDroneFamilyId, setEditDroneFamilyId] = useState("");
+  const [editDroneVariantId, setEditDroneVariantId] = useState("");
   const [savingDrone, setSavingDrone] = useState(false);
   const [editDroneErrors, setEditDroneErrors] = useState<Record<string, string>>({});
 
-  function startEditDrone(droneId: string, serial: string) {
+  function startEditDrone(droneId: string, serial: string, variantId: string) {
     setEditingDroneId(droneId);
     setEditDroneSerial(serial);
+    setEditDroneVariantId(variantId);
+    setEditDroneFamilyId(variantById.get(variantId)?.family_id ?? "");
     setEditDroneErrors((prev) => { const n = { ...prev }; delete n[droneId]; return n; });
   }
 
   async function handleSaveDrone(droneId: string, e: React.FormEvent) {
     e.preventDefault();
-    if (!editDroneSerial.trim()) return;
+    if (!editDroneSerial.trim() || !editDroneVariantId) return;
     setSavingDrone(true);
     const res = await fetch(`/api/admin/drones/${droneId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ serial: editDroneSerial.trim() }),
+      body: JSON.stringify({ serial: editDroneSerial.trim(), variantId: editDroneVariantId }),
     });
     setSavingDrone(false);
     if (res.ok) {
@@ -293,15 +332,16 @@ export function ClientsTable({ clients }: Props) {
                   <>
                     {c.drones.map((d) => {
                       const isEditingDrone = editingDroneId === d.id;
+                      const editVariantOptions = variants.filter((v) => v.family_id === editDroneFamilyId);
                       return (
                         <Fragment key={d.id}>
-                          <tr className="border-b border-border bg-secondary/15 group/drone">
-                            <td className="px-3 py-1.5"></td>
-                            <td className="px-3 py-1.5 pl-8">
-                              {isEditingDrone ? (
+                          {isEditingDrone ? (
+                            <tr className="border-b border-border bg-secondary/15">
+                              <td className="px-3 py-2"></td>
+                              <td colSpan={3} className="px-3 py-2 pl-8">
                                 <form
                                   onSubmit={(e) => handleSaveDrone(d.id, e)}
-                                  className="flex items-center gap-2"
+                                  className="flex flex-wrap items-center gap-2"
                                 >
                                   <input
                                     required
@@ -309,11 +349,36 @@ export function ClientsTable({ clients }: Props) {
                                     value={editDroneSerial}
                                     onChange={(e) => setEditDroneSerial(e.target.value)}
                                     disabled={savingDrone}
-                                    className="flex-1 max-w-xs rounded-md border border-primary/40 bg-card px-2.5 py-1 text-xs font-mono text-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
+                                    placeholder="Serial"
+                                    className="w-32 rounded-md border border-primary/40 bg-card px-2.5 py-1 text-xs font-mono text-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
                                   />
+                                  <select
+                                    required
+                                    value={editDroneFamilyId}
+                                    onChange={(e) => { setEditDroneFamilyId(e.target.value); setEditDroneVariantId(""); }}
+                                    disabled={savingDrone}
+                                    className="rounded-md border border-primary/40 bg-card px-2 py-1 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer disabled:opacity-40"
+                                  >
+                                    <option value="">Family…</option>
+                                    {families.map((f) => (
+                                      <option key={f.id} value={f.id}>{f.name}</option>
+                                    ))}
+                                  </select>
+                                  <select
+                                    required
+                                    value={editDroneVariantId}
+                                    onChange={(e) => setEditDroneVariantId(e.target.value)}
+                                    disabled={savingDrone || !editDroneFamilyId}
+                                    className="rounded-md border border-primary/40 bg-card px-2 py-1 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer disabled:opacity-40"
+                                  >
+                                    <option value="">Variant…</option>
+                                    {editVariantOptions.map((v) => (
+                                      <option key={v.id} value={v.id}>{v.name}</option>
+                                    ))}
+                                  </select>
                                   <button
                                     type="submit"
-                                    disabled={savingDrone || !editDroneSerial.trim()}
+                                    disabled={savingDrone || !editDroneSerial.trim() || !editDroneVariantId}
                                     title="Save"
                                     className="rounded-md bg-primary p-1 text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed"
                                   >
@@ -329,16 +394,22 @@ export function ClientsTable({ clients }: Props) {
                                     <X className="h-3 w-3" />
                                   </button>
                                 </form>
-                              ) : (
+                              </td>
+                            </tr>
+                          ) : (
+                            <tr className="border-b border-border bg-secondary/15 group/drone">
+                              <td className="px-3 py-1.5"></td>
+                              <td className="px-3 py-1.5 pl-8">
                                 <span className="font-mono text-xs text-foreground">{d.serial}</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-1.5"></td>
-                            <td className="px-3 py-1.5 text-right">
-                              {!isEditingDrone && (
+                                <span className="ml-2 text-[11px] text-muted-foreground">
+                                  — {variantLabel(d.variant_id)}
+                                </span>
+                              </td>
+                              <td className="px-3 py-1.5"></td>
+                              <td className="px-3 py-1.5 text-right">
                                 <div className="flex items-center justify-end gap-1 opacity-0 group-hover/drone:opacity-100 transition-opacity">
                                   <button
-                                    onClick={() => startEditDrone(d.id, d.serial)}
+                                    onClick={() => startEditDrone(d.id, d.serial, d.variant_id)}
                                     title={`Edit drone ${d.serial}`}
                                     className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
                                   >
@@ -352,9 +423,9 @@ export function ClientsTable({ clients }: Props) {
                                     <Trash2 className="h-3 w-3" />
                                   </button>
                                 </div>
-                              )}
-                            </td>
-                          </tr>
+                              </td>
+                            </tr>
+                          )}
                           {(editDroneErrors[d.id] || deleteDroneErrors[d.id]) && (
                             <tr className="border-b border-border bg-destructive/5">
                               <td colSpan={4} className="px-3 py-1.5 pl-8">
@@ -375,7 +446,7 @@ export function ClientsTable({ clients }: Props) {
                         <td colSpan={3} className="px-3 py-1.5 pl-8">
                           <form
                             onSubmit={(e) => handleAddDrone(c.id, e)}
-                            className="flex items-center gap-2"
+                            className="flex flex-wrap items-center gap-2"
                           >
                             <input
                               required
@@ -384,18 +455,42 @@ export function ClientsTable({ clients }: Props) {
                               onChange={(e) => setNewDroneSerial(e.target.value)}
                               disabled={submittingDrone}
                               placeholder="Serial (e.g. SN-12345)"
-                              className="flex-1 max-w-xs rounded-md border border-primary/40 bg-card px-2.5 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
+                              className="w-40 rounded-md border border-primary/40 bg-card px-2.5 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
                             />
+                            <select
+                              required
+                              value={newDroneFamilyId}
+                              onChange={(e) => { setNewDroneFamilyId(e.target.value); setNewDroneVariantId(""); }}
+                              disabled={submittingDrone}
+                              className="rounded-md border border-primary/40 bg-card px-2 py-1 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer disabled:opacity-40"
+                            >
+                              <option value="">Family…</option>
+                              {families.map((f) => (
+                                <option key={f.id} value={f.id}>{f.name}</option>
+                              ))}
+                            </select>
+                            <select
+                              required
+                              value={newDroneVariantId}
+                              onChange={(e) => setNewDroneVariantId(e.target.value)}
+                              disabled={submittingDrone || !newDroneFamilyId}
+                              className="rounded-md border border-primary/40 bg-card px-2 py-1 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer disabled:opacity-40"
+                            >
+                              <option value="">Variant…</option>
+                              {variants.filter((v) => v.family_id === newDroneFamilyId).map((v) => (
+                                <option key={v.id} value={v.id}>{v.name}</option>
+                              ))}
+                            </select>
                             <button
                               type="submit"
-                              disabled={submittingDrone || !newDroneSerial.trim()}
+                              disabled={submittingDrone || !newDroneSerial.trim() || !newDroneVariantId}
                               className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed"
                             >
                               {submittingDrone ? "Adding…" : "Add"}
                             </button>
                             <button
                               type="button"
-                              onClick={() => { setAddingDroneFor(null); setNewDroneSerial(""); }}
+                              onClick={() => setAddingDroneFor(null)}
                               disabled={submittingDrone}
                               className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-secondary transition-colors cursor-pointer disabled:opacity-40"
                             >
@@ -412,7 +507,7 @@ export function ClientsTable({ clients }: Props) {
                         <td className="px-3 py-1.5"></td>
                         <td colSpan={3} className="px-3 py-1.5 pl-8">
                           <button
-                            onClick={() => { setAddingDroneFor(c.id); setNewDroneSerial(""); }}
+                            onClick={() => startAddDrone(c.id)}
                             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                           >
                             <Plus className="h-3 w-3" />

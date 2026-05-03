@@ -16,11 +16,38 @@ export async function PATCH(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const { serial } = await request.json() as { serial?: string };
-  if (!serial?.trim()) return NextResponse.json({ error: "Serial cannot be empty" }, { status: 400 });
+  const body = await request.json() as { serial?: string; variantId?: string };
+  const update: Record<string, unknown> = {};
+  if (body.serial !== undefined) {
+    if (!body.serial.trim()) return NextResponse.json({ error: "Serial cannot be empty" }, { status: 400 });
+    update.serial = body.serial.trim();
+  }
+  if (body.variantId !== undefined) {
+    if (!body.variantId) return NextResponse.json({ error: "Variant cannot be empty" }, { status: 400 });
+    update.variant_id = body.variantId;
+  }
+  if (Object.keys(update).length === 0) {
+    return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+  }
+
+  // If changing variant, refuse if any existing client_set under this drone is for a different variant.
+  if (update.variant_id) {
+    const adminCheck = createAdminClient();
+    const { data: sets } = await adminCheck
+      .from("client_sets")
+      .select("variant_id")
+      .eq("drone_id", id);
+    const conflicting = (sets ?? []).find((s) => s.variant_id !== update.variant_id);
+    if (conflicting) {
+      return NextResponse.json(
+        { error: "Cannot change variant: this drone has param sets for a different variant" },
+        { status: 409 }
+      );
+    }
+  }
 
   const admin = createAdminClient();
-  const { error } = await admin.from("drones").update({ serial: serial.trim() }).eq("id", id);
+  const { error } = await admin.from("drones").update(update).eq("id", id);
   if (error) {
     const msg = error.code === "23505" ? "A drone with that serial already exists for this client" : error.message;
     return NextResponse.json({ error: msg }, { status: 409 });
