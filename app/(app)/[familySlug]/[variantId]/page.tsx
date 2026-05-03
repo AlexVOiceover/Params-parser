@@ -52,14 +52,24 @@ async function getData(familySlug: string, variantId: string) {
   const diffCountByClientSet = new Map<string, number>();
   if (defaultSet && latestVersionByClientSet.has(defaultSet.id)) {
     const versionIds = [...latestVersionByClientSet.values()];
-    const { data: paramValues } = await supabase
-      .from("param_values")
-      .select("param_version_id, name, value")
-      .in("param_version_id", versionIds);
+    // PostgREST caps each response at 1000 rows; with ~1100 params per version
+    // a 2-version diff already truncates. Fetch in pages.
+    const PAGE_SIZE = 1000;
+    const paramValues: { param_version_id: string; name: string; value: string }[] = [];
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data: page } = await supabase
+        .from("param_values")
+        .select("param_version_id, name, value")
+        .in("param_version_id", versionIds)
+        .range(from, from + PAGE_SIZE - 1);
+      if (!page || page.length === 0) break;
+      paramValues.push(...page);
+      if (page.length < PAGE_SIZE) break;
+    }
 
     // Pivot: name → versionId → value
     const valuesByVersion = new Map<string, Map<string, string>>();
-    for (const pv of paramValues ?? []) {
+    for (const pv of paramValues) {
       let m = valuesByVersion.get(pv.param_version_id);
       if (!m) {
         m = new Map();

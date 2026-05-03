@@ -146,16 +146,31 @@ async function fetchCompareData(
   const supabase = await createSessionClient().catch(() => createClient());
   const admin = createAdminClient();
 
-  const [{ data: versionsData }, { data: paramValuesData }] = await Promise.all([
+  // PostgREST caps each response at 1000 rows; param_values can run over
+  // 1000 per version, so paginate to avoid silently dropping params.
+  async function fetchAllParamValues(ids: string[]) {
+    const PAGE_SIZE = 1000;
+    const out: { param_version_id: string; name: string; value: string }[] = [];
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data: page } = await supabase
+        .from("param_values")
+        .select("param_version_id, name, value")
+        .in("param_version_id", ids)
+        .order("name")
+        .range(from, from + PAGE_SIZE - 1);
+      if (!page || page.length === 0) break;
+      out.push(...page);
+      if (page.length < PAGE_SIZE) break;
+    }
+    return out;
+  }
+
+  const [{ data: versionsData }, paramValuesData] = await Promise.all([
     supabase
       .from("param_versions")
       .select("id, version_label, client_set_id, storage_path")
       .in("id", versionIds),
-    supabase
-      .from("param_values")
-      .select("param_version_id, name, value")
-      .in("param_version_id", versionIds)
-      .order("name"),
+    fetchAllParamValues(versionIds),
   ]);
 
   const clientSetIds = [...new Set((versionsData ?? []).map((v) => v.client_set_id))];
