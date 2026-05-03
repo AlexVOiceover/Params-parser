@@ -16,6 +16,29 @@ export async function DELETE(
 
   const admin = createAdminClient();
 
+  // Block deletion if any drone is registered under this variant — drones
+  // belong to clients and must be reassigned (or removed) explicitly first.
+  const { data: blockingDrones } = await admin
+    .from("drones")
+    .select("serial, clients(name)")
+    .eq("variant_id", id)
+    .limit(5);
+
+  if (blockingDrones && blockingDrones.length > 0) {
+    const sample = blockingDrones
+      .map((d) => {
+        const client = (d.clients as unknown) as { name?: string } | null;
+        return client?.name ? `${client.name} / ${d.serial}` : d.serial;
+      })
+      .join(", ");
+    return NextResponse.json(
+      {
+        error: `This variant is still assigned to ${blockingDrones.length === 1 ? "1 drone" : `${blockingDrones.length}+ drones`} (${sample}). Reassign or remove them in Clients first.`,
+      },
+      { status: 409 }
+    );
+  }
+
   // Get storage paths for every version under every client set of this variant,
   // so we can clean up the bucket after the cascade delete.
   const { data: clientSets } = await admin
@@ -34,7 +57,12 @@ export async function DELETE(
   }
 
   const { error } = await admin.from("variants").delete().eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    return NextResponse.json(
+      { error: "Could not delete this variant. It may still be in use." },
+      { status: 409 }
+    );
+  }
 
   // Best-effort storage cleanup (cascade already removed DB rows)
   if (storagePaths.length) {

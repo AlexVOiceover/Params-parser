@@ -57,7 +57,12 @@ export async function DELETE(
   }
 
   const { error } = await admin.from("families").delete().eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    return NextResponse.json(
+      { error: "Could not delete this family. It may still be in use." },
+      { status: 409 }
+    );
+  }
 
   return NextResponse.json({ ok: true });
 }
