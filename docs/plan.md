@@ -4,11 +4,11 @@
 
 ## Tasks
 
-1. [ ] **Database migration**
-   - [ ] 1.1 Write `supabase/migrations/<ts>_add_clients_and_drones.sql`: create `clients` (`id`, `name UNIQUE`, `created_by`, `created_at`, `updated_at`), create `drones` (`id`, `client_id` FK CASCADE, `serial`, `created_by`, `created_at`, `UNIQUE(client_id, serial)`, `idx_drones_client`). Enable RLS on both. Add `client_sets.client_id` (nullable FK to `clients.id` ON DELETE RESTRICT) and `client_sets.drone_id` (nullable FK to `drones.id` ON DELETE RESTRICT).
-   - [ ] 1.2 In the same migration, backfill: insert one `clients` row per distinct `client_sets.client_name`. Then insert one `drones` row per distinct `(client_name, serial)` where serial is non-empty. Then update each non-Default `client_set` row (i.e. `serial != ''`) to set `client_id` and `drone_id` from the lookups. Defaults (empty serial) keep `client_id = NULL` and `drone_id = NULL`.
-   - [ ] 1.3 RLS policies: `clients_select_all` (public read), `clients_write_admin_or_contributor` (insert/update/delete via the existing `is_contributor_or_admin()` helper for insert/update, `is_admin()` for delete — match the existing variants policy shape). Same shape for `drones_*` policies.
-   - [ ] 1.4 Apply via `npx supabase db push`. Verify with REST: `clients` count matches distinct `client_name` count, `drones` count matches distinct `(client_name, serial)` non-empty pairs, every non-Default `client_set` has both FK columns populated.
+1. [x] **Database migration**
+   - [x] 1.1 Write `supabase/migrations/<ts>_add_clients_and_drones.sql`: create `clients` (`id`, `name UNIQUE`, `created_by`, `created_at`, `updated_at`), create `drones` (`id`, `client_id` FK CASCADE, `serial`, `created_by`, `created_at`, `UNIQUE(client_id, serial)`, `idx_drones_client`). Enable RLS on both. Add `client_sets.client_id` (nullable FK to `clients.id` ON DELETE RESTRICT) and `client_sets.drone_id` (nullable FK to `drones.id` ON DELETE RESTRICT).
+   - [x] 1.2 In the same migration, backfill: insert one `clients` row per distinct `client_sets.client_name`. Then insert one `drones` row per distinct `(client_name, serial)` where serial is non-empty. Then update each non-Default `client_set` row (i.e. `serial != ''`) to set `client_id` and `drone_id` from the lookups. Defaults (empty serial) keep `client_id = NULL` and `drone_id = NULL`.
+   - [x] 1.3 RLS policies: `clients_select_all` (public read), `clients_write_admin_or_contributor` (insert/update/delete via the existing `is_contributor_or_admin()` helper for insert/update, `is_admin()` for delete — match the existing variants policy shape). Same shape for `drones_*` policies.
+   - [x] 1.4 Apply via `npx supabase db push`. Verify with REST: `clients` count matches distinct `client_name` count, `drones` count matches distinct `(client_name, serial)` non-empty pairs, every non-Default `client_set` has both FK columns populated.
 
 2. [ ] **Lib types**
    - [ ] 2.1 In `lib/types.ts`: add `Client` (`id`, `name`, `created_by`, `created_at`, `updated_at`) and `Drone` (`id`, `client_id`, `serial`, `created_by`, `created_at`) interfaces. Update `ClientSet` with optional `client_id: string | null` and `drone_id: string | null` fields.
