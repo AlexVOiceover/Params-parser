@@ -16,6 +16,11 @@ type ClientSet = {
   variant_id: string;
   nextMajor: number;
 };
+type DefaultClientSet = {
+  id: string;
+  variant_id: string;
+  nextMajor: number;
+};
 
 export interface UploadFormData {
   clients: Client[];
@@ -23,7 +28,10 @@ export interface UploadFormData {
   families: Family[];
   variants: Variant[];
   clientSets: ClientSet[];
+  defaultClientSets: DefaultClientSet[];
 }
+
+type UploadKind = "default" | "client";
 
 interface Props {
   data: UploadFormData;
@@ -37,6 +45,9 @@ const labelTextClass = "text-xs font-medium text-muted-foreground";
 
 export function UploadForm({ data }: Props) {
   const router = useRouter();
+  const [kind, setKind] = useState<UploadKind>("default");
+  const [familyId, setFamilyId] = useState("");
+  const [variantId, setVariantId] = useState("");
   const [clientId, setClientId] = useState("");
   const [droneId, setDroneId] = useState("");
   const [versionLabel, setVersionLabel] = useState("");
@@ -56,6 +67,11 @@ export function UploadForm({ data }: Props) {
     const f = familyById.get(v.family_id);
     return `${f?.name ?? "?"} / ${v.name}`;
   }
+
+  const variantsForFamily = useMemo(
+    () => data.variants.filter((v) => v.family_id === familyId),
+    [data.variants, familyId]
+  );
 
   const dronesForClient = useMemo(
     () => data.drones.filter((d) => d.client_id === clientId),
@@ -78,16 +94,25 @@ export function UploadForm({ data }: Props) {
     ) ?? null;
   }, [data.clientSets, selectedDrone]);
 
-  // Auto-suggest version label whenever the picked drone changes (unless user typed their own).
+  // For Default mode — Default client_set already in the catalog for the picked variant, if any.
+  const defaultClientSet = useMemo(() => {
+    if (!variantId) return null;
+    return data.defaultClientSets.find((cs) => cs.variant_id === variantId) ?? null;
+  }, [data.defaultClientSets, variantId]);
+
+  // Auto-suggest version label whenever selection changes (unless user typed their own).
   useEffect(() => {
     if (versionTouched) return;
-    if (!selectedDrone) {
-      setVersionLabel("");
-      return;
+    if (kind === "default") {
+      if (!variantId) { setVersionLabel(""); return; }
+      const next = defaultClientSet?.nextMajor ?? 1;
+      setVersionLabel(`${next}.0`);
+    } else {
+      if (!selectedDrone) { setVersionLabel(""); return; }
+      const next = existingClientSet?.nextMajor ?? 1;
+      setVersionLabel(`${next}.0`);
     }
-    const next = existingClientSet?.nextMajor ?? 1;
-    setVersionLabel(`${next}.0`);
-  }, [selectedDrone, existingClientSet, versionTouched]);
+  }, [kind, variantId, defaultClientSet, selectedDrone, existingClientSet, versionTouched]);
 
   function reset() {
     setVersionLabel("");
@@ -99,9 +124,22 @@ export function UploadForm({ data }: Props) {
     setDonePath(null);
   }
 
+  function switchKind(next: UploadKind) {
+    setKind(next);
+    setFamilyId("");
+    setVariantId("");
+    setClientId("");
+    setDroneId("");
+    setVersionLabel("");
+    setVersionTouched(false);
+    setError(null);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!file || !selectedDrone) return;
+    if (!file) return;
+    if (kind === "default" && !variantId) return;
+    if (kind === "client" && !selectedDrone) return;
     if (!/^\d+\.\d+$/.test(versionLabel.trim())) {
       setError("Version must be in format number.number (e.g. 1.0)");
       return;
@@ -110,18 +148,26 @@ export function UploadForm({ data }: Props) {
     setError(null);
 
     const fd = new FormData();
-    if (existingClientSet) {
+    if (kind === "default") {
+      if (defaultClientSet) {
+        fd.set("mode", "existing");
+        fd.set("clientSetId", defaultClientSet.id);
+      } else {
+        fd.set("mode", "default");
+        fd.set("variantId", variantId);
+      }
+    } else if (existingClientSet) {
       fd.set("mode", "existing");
       fd.set("clientSetId", existingClientSet.id);
     } else {
       // Brand new (client, drone) combination — let the API create the client_set inline.
       const client = data.clients.find((c) => c.id === clientId);
       fd.set("mode", "new-client-set");
-      fd.set("variantId", selectedDrone.variant_id);
+      fd.set("variantId", selectedDrone!.variant_id);
       fd.set("clientId", clientId);
-      fd.set("droneId", selectedDrone.id);
+      fd.set("droneId", selectedDrone!.id);
       fd.set("clientName", client?.name ?? "");
-      fd.set("serial", selectedDrone.serial);
+      fd.set("serial", selectedDrone!.serial);
     }
     fd.set("versionLabel", versionLabel);
     if (changelog) fd.set("changelog", changelog);
@@ -165,7 +211,8 @@ export function UploadForm({ data }: Props) {
     }
 
     // Build the deep link to the variant page (Default + all client sets).
-    const variant = variantById.get(selectedDrone.variant_id);
+    const targetVariantId = kind === "default" ? variantId : selectedDrone!.variant_id;
+    const variant = variantById.get(targetVariantId);
     const family = variant?.family_id ? familyById.get(variant.family_id) : null;
     if (family && variant) {
       setDonePath(`/${family.slug}/${variant.id}`);
@@ -212,54 +259,130 @@ export function UploadForm({ data }: Props) {
       <h1 className="text-xl font-semibold text-foreground mb-6">Upload param file</h1>
 
       <div className="flex flex-col gap-4">
-        {/* Client */}
-        <label className={labelClass}>
-          <span className={labelTextClass}>
-            Client <span className="text-destructive">*</span>
-          </span>
-          <select
-            required
-            value={clientId}
-            onChange={(e) => { setClientId(e.target.value); setDroneId(""); setVersionTouched(false); }}
-            className={selectClass}
-          >
-            <option value="">Select client…</option>
-            {data.clients.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        </label>
+        {/* Kind toggle */}
+        <div className="flex flex-col gap-1.5">
+          <span className={labelTextClass}>Param set type</span>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => switchKind("default")}
+              className={`rounded-md border px-3 py-2 text-sm transition-colors cursor-pointer whitespace-nowrap ${kind === "default" ? "border-primary bg-primary/15 text-primary" : "border-border bg-secondary text-muted-foreground hover:text-foreground"}`}
+            >
+              Default (catalog)
+            </button>
+            <button
+              type="button"
+              onClick={() => switchKind("client")}
+              className={`rounded-md border px-3 py-2 text-sm transition-colors cursor-pointer whitespace-nowrap ${kind === "client" ? "border-primary bg-primary/15 text-primary" : "border-border bg-secondary text-muted-foreground hover:text-foreground"}`}
+            >
+              Client param set
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {kind === "default"
+              ? "The reference param set we ship to clients for a given family/variant."
+              : "A param set tied to a specific client drone (received from a client or read from a drone)."}
+          </p>
+        </div>
 
-        {/* Drone (serial — family / variant) */}
-        {clientId && (
-          <label className={labelClass}>
-            <span className={labelTextClass}>
-              Drone <span className="text-destructive">*</span>
-            </span>
-            {dronesForClient.length === 0 ? (
-              <p className="text-xs text-muted-foreground italic">
-                No drones registered for this client. Add one in <Link href="/admin/clients" className="text-primary hover:underline">Clients</Link>.
-              </p>
-            ) : (
+        {/* Default mode: Family + Variant */}
+        {kind === "default" && (
+          <>
+            <label className={labelClass}>
+              <span className={labelTextClass}>
+                Family <span className="text-destructive">*</span>
+              </span>
               <select
                 required
-                value={droneId}
-                onChange={(e) => { setDroneId(e.target.value); setVersionTouched(false); }}
+                value={familyId}
+                onChange={(e) => { setFamilyId(e.target.value); setVariantId(""); setVersionTouched(false); }}
                 className={selectClass}
               >
-                <option value="">Select drone…</option>
-                {dronesForClient.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.serial} — {variantLabel(d.variant_id)}
-                  </option>
+                <option value="">Select family…</option>
+                {data.families.map((f) => (
+                  <option key={f.id} value={f.id}>{f.name}</option>
                 ))}
               </select>
+            </label>
+
+            {familyId && (
+              <label className={labelClass}>
+                <span className={labelTextClass}>
+                  Variant <span className="text-destructive">*</span>
+                </span>
+                {variantsForFamily.length === 0 ? (
+                  <p className="text-xs text-muted-foreground italic">
+                    No variants for this family yet.
+                  </p>
+                ) : (
+                  <select
+                    required
+                    value={variantId}
+                    onChange={(e) => { setVariantId(e.target.value); setVersionTouched(false); }}
+                    className={selectClass}
+                  >
+                    <option value="">Select variant…</option>
+                    {variantsForFamily.map((v) => (
+                      <option key={v.id} value={v.id}>{v.name}</option>
+                    ))}
+                  </select>
+                )}
+              </label>
             )}
-          </label>
+          </>
+        )}
+
+        {/* Client mode: Client + Drone */}
+        {kind === "client" && (
+          <>
+            <label className={labelClass}>
+              <span className={labelTextClass}>
+                Client <span className="text-destructive">*</span>
+              </span>
+              <select
+                required
+                value={clientId}
+                onChange={(e) => { setClientId(e.target.value); setDroneId(""); setVersionTouched(false); }}
+                className={selectClass}
+              >
+                <option value="">Select client…</option>
+                {data.clients.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </label>
+
+            {clientId && (
+              <label className={labelClass}>
+                <span className={labelTextClass}>
+                  Drone <span className="text-destructive">*</span>
+                </span>
+                {dronesForClient.length === 0 ? (
+                  <p className="text-xs text-muted-foreground italic">
+                    No drones registered for this client. Add one in <Link href="/admin/clients" className="text-primary hover:underline">Clients</Link>.
+                  </p>
+                ) : (
+                  <select
+                    required
+                    value={droneId}
+                    onChange={(e) => { setDroneId(e.target.value); setVersionTouched(false); }}
+                    className={selectClass}
+                  >
+                    <option value="">Select drone…</option>
+                    {dronesForClient.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.serial} — {variantLabel(d.variant_id)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </label>
+            )}
+          </>
         )}
 
         {/* Version */}
-        {droneId && (
+        {((kind === "default" && variantId) || (kind === "client" && droneId)) && (
           <label className={labelClass}>
             <span className={labelTextClass}>
               Version <span className="text-destructive">*</span>
@@ -278,7 +401,7 @@ export function UploadForm({ data }: Props) {
         )}
 
         {/* Changelog */}
-        {droneId && (
+        {((kind === "default" && variantId) || (kind === "client" && droneId)) && (
           <label className={labelClass}>
             <span className={labelTextClass}>Changelog</span>
             <textarea
@@ -292,7 +415,7 @@ export function UploadForm({ data }: Props) {
         )}
 
         {/* File */}
-        {droneId && (
+        {((kind === "default" && variantId) || (kind === "client" && droneId)) && (
           <label className={labelClass}>
             <span className={labelTextClass}>
               .param file <span className="text-destructive">*</span>
@@ -320,7 +443,7 @@ export function UploadForm({ data }: Props) {
 
         <button
           type="submit"
-          disabled={submitting || !droneId || !versionLabel.trim() || !file}
+          disabled={submitting || (kind === "client" ? !droneId : !variantId) || !versionLabel.trim() || !file}
           className="flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed"
         >
           <Upload className="h-4 w-4" />

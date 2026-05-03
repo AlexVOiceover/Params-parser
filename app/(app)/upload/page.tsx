@@ -58,6 +58,13 @@ export default async function UploadPage() {
     if (major > cur) maxMajorByClientSet.set(v.client_set_id, major);
   }
 
+  // Default client_sets keyed by variant_id (one per variant). Used for "Default" upload mode.
+  const { data: defaultClientSetsData } = await admin
+    .from("client_sets")
+    .select("id, variant_id")
+    .eq("client_name", "Default")
+    .eq("serial", "");
+
   const data: UploadFormData = {
     clients: clientsData ?? [],
     drones: dronesData ?? [],
@@ -71,6 +78,11 @@ export default async function UploadPage() {
       id: cs.id,
       client_id: cs.client_id ?? "",
       drone_id: cs.drone_id ?? "",
+      variant_id: cs.variant_id,
+      nextMajor: (maxMajorByClientSet.get(cs.id) ?? 0) + 1,
+    })),
+    defaultClientSets: (defaultClientSetsData ?? []).map((cs) => ({
+      id: cs.id,
       variant_id: cs.variant_id,
       nextMajor: (maxMajorByClientSet.get(cs.id) ?? 0) + 1,
     })),
