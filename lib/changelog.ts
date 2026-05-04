@@ -6,6 +6,19 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.5.0",
+    date: "2026-05-04",
+    items: [
+      "Sign-in is now passwordless: enter your email and click the magic link.",
+      "New \"Client\" role: a user account tied to one company. Clients sign in, see only their own drones and param sets (plus the relevant Defaults to compare against), and can upload param sets for their own drones.",
+      "Admins can invite users with a chosen role; for client users, they pick which company the user belongs to.",
+      "User table now has a delete button (you can't delete yourself).",
+      "Catalog home and family pages hide families/variants a client doesn't own a drone on, so they only see relevant items.",
+      "Header drop-down now shows the company a client is linked to.",
+      "Mobile header layout: long labels collapse to icons so all controls stay reachable on narrow screens.",
+    ],
+  },
+  {
     version: "0.4.0",
     date: "2026-05-04",
     items: [

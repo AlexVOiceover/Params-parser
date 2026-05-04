@@ -1,47 +1,84 @@
-# 03 Clients admin section
+# 04 Magic-link auth + Client role with RLS-enforced visibility
 
-> Introduce `clients` (companies) and `drones` (serials) tables, an admin UI at `/admin/clients`, and rename the user-dropdown "Admin" link to "Users" to make room for the new "Clients" link beside it. Backfill existing free-text `client_sets.client_name + serial` data into the new tables. Upload flow keeps using free-text fields this stage — Stage 04 switches it to dropdowns.
+> Replace email+password with passwordless magic links (matching the sister app ProdTrack), introduce a `client` role bound to one `clients` row, and rewrite RLS so the database itself prevents one client from reading another's data. Existing admin keeps access throughout.
 
 ## Tasks
 
-1. [x] **Database migration**
-   - [x] 1.1 Write `supabase/migrations/<ts>_add_clients_and_drones.sql`: create `clients` (`id`, `name UNIQUE`, `created_by`, `created_at`, `updated_at`), create `drones` (`id`, `client_id` FK CASCADE, `serial`, `created_by`, `created_at`, `UNIQUE(client_id, serial)`, `idx_drones_client`). Enable RLS on both. Add `client_sets.client_id` (nullable FK to `clients.id` ON DELETE RESTRICT) and `client_sets.drone_id` (nullable FK to `drones.id` ON DELETE RESTRICT).
-   - [x] 1.2 In the same migration, backfill: insert one `clients` row per distinct `client_sets.client_name`. Then insert one `drones` row per distinct `(client_name, serial)` where serial is non-empty. Then update each non-Default `client_set` row (i.e. `serial != ''`) to set `client_id` and `drone_id` from the lookups. Defaults (empty serial) keep `client_id = NULL` and `drone_id = NULL`.
-   - [x] 1.3 RLS policies: `clients_select_all` (public read), `clients_write_admin_or_contributor` (insert/update/delete via the existing `is_contributor_or_admin()` helper for insert/update, `is_admin()` for delete — match the existing variants policy shape). Same shape for `drones_*` policies.
-   - [x] 1.4 Apply via `npx supabase db push`. Verify with REST: `clients` count matches distinct `client_name` count, `drones` count matches distinct `(client_name, serial)` non-empty pairs, every non-Default `client_set` has both FK columns populated.
+1. [x] **Magic-link login form**
+   - [x] 1.1 Rewrite `app/login/page.tsx`: replace password form with email-only form, call `supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: '${origin}/auth/callback?next=...', shouldCreateUser: false } })`, swap form for "Check your email" success state on submit, read `?next=` and `?error=auth_failed` from URL, keep "Accounts created by administrators" footer.
+   - [x] 1.2 Verify the existing layout in `app/login/layout.tsx` still wraps correctly. No changes expected unless the layout assumed password fields.
 
-2. [ ] **Lib types**
-   - [ ] 2.1 In `lib/types.ts`: add `Client` (`id`, `name`, `created_by`, `created_at`, `updated_at`) and `Drone` (`id`, `client_id`, `serial`, `created_by`, `created_at`) interfaces. Update `ClientSet` with optional `client_id: string | null` and `drone_id: string | null` fields.
+2. [x] **Auth callback route**
+   - [x] 2.1 Create `app/auth/callback/route.ts` with a GET handler: read `code` and `next` from `request.nextUrl.searchParams`, call `supabase.auth.exchangeCodeForSession(code)` via `createSessionClient()`, redirect to `next` (default `/`) on success or `/login?error=auth_failed` on failure or missing code.
+   - [x] 2.2 Confirm the route runs on Node (not Edge) so `@supabase/ssr` cookie setters work — App Router route handlers default to Node, so no extra config unless something forces Edge.
 
-3. [ ] **API routes — clients**
-   - [ ] 3.1 Create `app/api/admin/clients/route.ts` with `GET` (list — body `{ clients: [{id, name}] }`) and `POST` (create — body `{ name }`).
-   - [ ] 3.2 Create `app/api/admin/clients/[id]/route.ts` with `PATCH` (rename — body `{ name }`) and `DELETE` (block if any `client_sets.client_id` references this id; otherwise cascades drones via FK).
+3. [x] **Dev-mode magic-link bypass**
+   - [x] 3.1 Add a server action (e.g. `app/login/actions.ts`) that takes an email, uses `createAdminClient()` to call `admin.auth.admin.generateLink({ type: 'magiclink', email })`, then `verifyOtp({ email, token: linkData.properties.email_otp, type: 'magiclink' })` to log in directly. Skip silently if `SUPABASE_SERVICE_ROLE_KEY` isn't set or `NODE_ENV !== 'development'`.
+   - [x] 3.2 In `app/login/page.tsx`, when in dev, call this server action instead of `signInWithOtp`. Production path unchanged.
 
-4. [ ] **API routes — drones**
-   - [ ] 4.1 Create `app/api/admin/clients/[id]/drones/route.ts` with `GET` (list drones for a client) and `POST` (add — body `{ serial }`).
-   - [ ] 4.2 Create `app/api/admin/drones/[id]/route.ts` with `DELETE` (block if any `client_sets.drone_id` references this id).
+4. [x] **Verify admin still has access (manual)**
+   - [x] 4.1 Note in `scratchpad.md` to verify before merging: sign out, request a magic link with admin email, confirm session lands on `/` and `/admin` is reachable.
 
-5. [ ] **Header rename + new link**
-   - [ ] 5.1 In `components/app-header.tsx`: rename the existing admin menu item label from `Admin` to `Users` (keep the `/admin` href and Settings icon). Add a new menu item below it: `Clients` linking to `/admin/clients`, also gated by `isAdmin`. Use the `Building2` lucide icon for it.
+5. [x] **Remove password code paths**
+   - [x] 5.1 `grep -rn "signInWithPassword"` confirms zero callers — the rewrite of `app/login/page.tsx` removed the only one. Nothing else to delete.
+   - [x] 5.2 admin-dashboard had no password-mentioning copy to update.
 
-6. [ ] **Admin UI — list page**
-   - [ ] 6.1 Create `app/(app)/admin/clients/page.tsx`: server component, redirects non-admin users back to `/`. Fetches all clients (admin client) and their drone counts. Renders the breadcrumb `Catalog > Clients` and delegates to a `ClientList` component for the list + inline create.
-   - [ ] 6.2 Create `components/client-list.tsx` (mirror `family-grid.tsx`'s structure: card grid, inline create, inline rename, delete-with-confirm). Each card shows the client name + drone count and links to `/admin/clients/[id]`.
+6. [x] **Document Supabase dashboard config**
+   - [x] 6.1 Add a section to `scratchpad.md` listing the manual dashboard changes the user must apply: Site URL, Redirect URLs (localhost + prod + preview pattern), Email signups off, Magic-Link template confirmation.
 
-7. [ ] **Admin UI — detail page**
-   - [ ] 7.1 Create `app/(app)/admin/clients/[clientId]/page.tsx`: server component, admin gate, breadcrumb `Catalog > Clients > {clientName}`. Fetches the client + its drones. Editable client name (inline) and a DroneList component beneath.
-   - [ ] 7.2 Create `components/drone-list.tsx`: simple list of serials with inline add (`POST /api/admin/clients/[id]/drones`) and per-row delete (`DELETE /api/admin/drones/[id]`). Block-delete error surfacing if the drone is in use.
+7. [x] **Schema: profiles.client_id and client role**
+   - [x] 7.1 Wrote `supabase/migrations/20260504130615_add_client_role.sql`: adds `profiles.client_id`, drops the inline role check (looked up by name via `pg_constraint`), adds `profiles_role_check` with `'client'` included, adds `profiles_client_id_matches_role`.
+   - [x] 7.2 Applied via `npx supabase db push`. Existing admin row passes new constraint (admin + null client_id).
 
-8. [ ] **Final pass**
-   - [ ] 8.1 Run `node_modules/.bin/tsc --noEmit`; fix any errors.
-   - [ ] 8.2 Smoke-test on Vercel preview: open `/admin/clients`, create a new client, rename it, add and remove drones, delete an unused client. Verify backfill: every existing non-Default `(client_name, serial)` is reachable as a `clients` + `drones` row, and the corresponding `client_sets.client_id` / `drone_id` columns are populated.
-   - [ ] 8.3 Commit per logical chunk (migration, types, api, ui), push, watch Vercel preview build.
+8. [x] **Schema: client_sets.is_default flag**
+   - [x] 8.1 Wrote and applied `supabase/migrations/20260504130826_client_sets_is_default.sql`: adds column, backfills, creates the partial unique index.
+   - [x] 8.2 Verified: all 3 Default rows flagged true, 4 client rows flagged false; no rows where the legacy predicate matches but is_default=false.
+
+9. [x] **RLS helper functions**
+   - [x] 9.1 Wrote `supabase/migrations/20260504131946_rls_helpers.sql` adding `current_role()` and `current_client_id()`. `is_contributor_or_admin()` already exists from the initial migration; reused it instead of adding a duplicate.
+   - [x] 9.2 Migration applied. Helpers will be exercised by the next migrations' policies.
+
+10. [x] **RLS rewrite: clients and drones**
+    - [x] 10.1 Wrote and applied `supabase/migrations/20260504134208_rls_clients_drones.sql`.
+    - [x] 10.2 Admin still sees all (admin path = `is_contributor_or_admin()`).
+
+11. [x] **RLS rewrite: client_sets**
+    - [x] 11.1 Wrote and applied `supabase/migrations/20260504151229_rls_client_sets.sql`.
+    - [x] 11.2 Admin path = `is_contributor_or_admin()` so reads and writes still work as today.
+
+12. [x] **RLS rewrite: param_versions and param_values**
+    - [x] 12.1 Wrote and applied `supabase/migrations/20260504151949_rls_param_versions_values.sql`. Inlined the visibility predicate (admin/contributor OR own client_set OR Default-of-relevant-variant) on both SELECT and INSERT, plus admin-only update/delete.
+    - [x] 12.2 Service-role queries still return all rows; admin-session check needs the user to verify in browser.
+
+13. [x] **Admin invite UI: role + client picker**
+    - [x] 13.1 Updated `components/admin-dashboard.tsx`: invite form has Role + conditional Client picker; user table has a combined Role/Client cell that auto-clears or prompts for client_id when changing roles.
+    - [x] 13.2 Rewrote `app/api/admin/users/route.ts`: validates role + client pairing, invites via Supabase, then updates `profiles` with role and client_id.
+    - [x] 13.3 Rewrote `app/api/admin/users/[id]/route.ts` to accept `{ role, clientId }` and update both columns atomically.
+
+14. [x] **UI gating: AppHeader**
+    - [x] 14.1 Already gated by `isAdmin` (which is false for client role). No code change needed.
+
+15. [x] **UI gating: upload flow**
+    - [x] 15.1 `app/(app)/upload/page.tsx` accepts `client` role, forwards `role` + `userClientId` to `UploadForm`. `UploadForm` hides the Default-mode toggle for clients, locks `kind='client'`, pre-fills + disables the Client select, and the page filters the clients/drones lists down to the user's own.
+    - [x] 15.2 `components/catalog-upload-modal.tsx`: relies on RLS — for a client user, `clients` and `drones` queries already return only their own company, so the modal's selects naturally show only allowed options. No code change needed.
+
+16. [x] **UI gating: variant page and admin redirects**
+    - [x] 16.1 `canCreate` was already gated on `role === 'admin' || role === 'contributor'` — false for client. No change.
+    - [x] 16.2 Updated `middleware.ts` to redirect `client`-role users from `/admin/*` to `/`.
+    - [x] 16.3 Empty-state copy on the catalog will need a follow-up if client UX needs polish, but it's tolerable today: a client with no data sees the empty catalog. Punt unless smoke test reveals a problem.
+
+17. [x] **Smoke-test all three roles (manual)**
+    - [x] 17.1 Admin verified throughout the implementation.
+    - [x] 17.3 Client (alexrguez@gmail.com → Standhope AI) verified: only own family/variant visible, only own drone's set + Default in the variant page.
+    - [ ] 17.2 Contributor not separately tested — same code paths as admin minus role-management routes; pre-existing flow.
+
+18. [x] **Version bump and changelog**
+    - [x] 18.1 v0.5.0 entry added at the top of `lib/changelog.ts` covering magic-link sign-in, the client role, RLS-enforced visibility, the new admin invite/delete UI, the per-client filtered catalog, and the mobile header fix.
 
 ## Notes
 
-- **Order of deploy is non-critical this stage**: the migration only adds new tables and *nullable* FK columns on `client_sets`. Old code keeps working because it doesn't reference them. Same playbook regardless: migration first via `supabase db push`, then push code.
-- **Deletion safety**: blocking client/drone deletion when referenced by `client_sets` is intentional. Stage 04's upload flow will ensure new uploads always set the FKs, so deletes that look like they should work but fail will guide the user to remove the param sets first.
-- **No UI changes outside of the new admin pages and the header**: the catalog, variant, client-set, version, compare, and filter pages are untouched. Stage 04 changes the upload flow to consume the new tables.
-- **`is_default` boolean** is *not* added in this stage; Default detection still uses `serial = ""` per the variant page. Stage 05 needs the boolean for the role-aware RLS policy.
-- **Empty serial = Default**: backfill skips `drones` row creation for these. `client_sets` for Defaults keep both new FKs NULL. Stage 05 will encode this rule explicitly with the `is_default` column.
-- **MAVLink references** in `lib/mavlink-serial.ts` are unrelated protocol code; do not touch.
+- Migration ordering is task-7 → 8 → 9 → 10 → 11 → 12 — schema first, then policies, then app code. Each migration is independently safe (helpers are permissive for existing roles; new policies don't restrict admin/contributor).
+- The admin's row stays valid through every stage: password works through tasks 1–4; `profiles_client_id_matches_role` allows non-client roles with NULL client_id (existing rows pass); admin gating in task 16 doesn't fire for admin role.
+- `shouldCreateUser: false` produces the same "Check your email" UI for typo'd emails as for real ones (anti-enumeration). Acceptable.
+- `is_default` backfill matches `serial = '' AND client_name = 'Default'`. Spot-checked earlier in this conversation.
+- Out of scope: OAuth providers, ProdTrack SSO, password reset, client-side drone CRUD, audit logs, storage-bucket private mode (param-files stays public-read for now — flagged as a follow-up).

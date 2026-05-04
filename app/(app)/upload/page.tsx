@@ -16,13 +16,18 @@ export default async function UploadPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, client_id")
     .eq("id", user.id)
     .single();
 
-  if (!profile || !["contributor", "admin"].includes(profile.role)) {
+  if (!profile || !["contributor", "admin", "client"].includes(profile.role)) {
     redirect("/");
   }
+  if (profile.role === "client" && !profile.client_id) {
+    redirect("/");
+  }
+  const role = profile.role as "admin" | "contributor" | "client";
+  const userClientId = profile.client_id as string | null;
 
   const admin = createAdminClient();
   const [
@@ -65,9 +70,17 @@ export default async function UploadPage() {
     .eq("client_name", "Default")
     .eq("serial", "");
 
+  // Client users only ever see their own company and drones.
+  const visibleClients = role === "client"
+    ? (clientsData ?? []).filter((c) => c.id === userClientId)
+    : (clientsData ?? []);
+  const visibleDrones = role === "client"
+    ? (dronesData ?? []).filter((d) => d.client_id === userClientId)
+    : (dronesData ?? []);
+
   const data: UploadFormData = {
-    clients: clientsData ?? [],
-    drones: dronesData ?? [],
+    clients: visibleClients,
+    drones: visibleDrones,
     families: familiesData ?? [],
     variants: (variantsData ?? []).map((v) => ({
       id: v.id,
@@ -88,5 +101,5 @@ export default async function UploadPage() {
     })),
   };
 
-  return <UploadForm data={data} />;
+  return <UploadForm data={data} role={role} userClientId={userClientId} />;
 }

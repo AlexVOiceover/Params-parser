@@ -29,7 +29,7 @@ export function AppHeader() {
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const serialMode = useSerialMode();
   const hasWebSerial = serialMode !== "unsupported";
-  const { user, role, signOut } = useAuth();
+  const { user, role, clientName, signOut } = useAuth();
 
   const isAdmin = role === "admin";
 
@@ -55,10 +55,10 @@ export function AppHeader() {
 
   return (
     <>
-    <header className="flex items-center gap-3 border-b border-border bg-toolbar px-4 py-2.5 shrink-0">
+    <header className="flex items-center gap-2 sm:gap-3 border-b border-border bg-toolbar px-3 sm:px-4 py-2.5 shrink-0">
       <Link
         href="/"
-        className="flex items-center gap-2 text-sm font-semibold text-foreground hover:text-primary transition-colors cursor-pointer"
+        className="flex items-center gap-2 text-sm font-semibold text-foreground hover:text-primary transition-colors cursor-pointer shrink-0"
       >
         <Library className="h-4 w-4 text-primary" />
         AIR6 Params
@@ -66,7 +66,7 @@ export function AppHeader() {
       <button
         onClick={() => setWhatsNewOpen(true)}
         title="What's new"
-        className="rounded-md border border-border bg-secondary px-1.5 py-0.5 text-[10px] font-mono font-medium text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors cursor-pointer"
+        className="hidden sm:inline-flex rounded-md border border-border bg-secondary px-1.5 py-0.5 text-[10px] font-mono font-medium text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors cursor-pointer"
       >
         v{CURRENT_VERSION}
       </button>
@@ -75,29 +75,33 @@ export function AppHeader() {
       {hasWebSerial && (
         <button
           onClick={openImportDialog}
-          className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+          title="Import from drone"
+          aria-label="Import from drone"
+          className={`flex items-center gap-1.5 rounded-md border px-2 sm:px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
             hasParams
               ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/25"
               : "border-border text-foreground hover:bg-secondary"
           }`}
         >
           <Usb className="h-3.5 w-3.5" />
-          {hasParams ? `Drone (${droneParams.length} params)` : "Import from drone"}
+          <span className="hidden sm:inline">{hasParams ? `Drone (${droneParams.length} params)` : "Import from drone"}</span>
+          {hasParams && <span className="sm:hidden">{droneParams.length}</span>}
         </button>
       )}
 
-      <div className="w-px h-4 bg-border shrink-0 ml-1" />
+      <div className="w-px h-4 bg-border shrink-0 ml-1 hidden sm:block" />
       <ThemeToggle />
 
-      <div ref={userMenuRef} className="relative">
+      <div ref={userMenuRef} className="relative shrink-0">
         {user ? (
           <button
             onClick={() => setUserMenuOpen((v) => !v)}
-            className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
+            className="flex items-center gap-1.5 rounded-md border border-border px-2 sm:px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
             title={user.email ?? ""}
+            aria-label={user.email ?? "Account"}
           >
             <UserIcon className="h-3.5 w-3.5" />
-            <span className="max-w-32 truncate">{user.email}</span>
+            <span className="hidden sm:inline max-w-32 truncate">{user.email}</span>
             <ChevronDown
               className={`h-3 w-3 transition-transform ${userMenuOpen ? "rotate-180" : ""}`}
             />
@@ -116,6 +120,9 @@ export function AppHeader() {
               {role && (
                 <div className="text-[10px] uppercase tracking-wide text-muted-foreground mt-0.5">
                   {role}
+                  {role === "client" && clientName && (
+                    <span className="normal-case"> · {clientName}</span>
+                  )}
                 </div>
               )}
             </div>

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronRight } from "lucide-react";
-import { createClient, createSessionClient } from "@/lib/supabase/server";
+import { createSessionClient } from "@/lib/supabase/server";
 import { ClientSetList, type ClientSetCard } from "@/components/client-set-list";
 import type { Family, Variant, ClientSet } from "@/lib/types";
 
@@ -12,7 +12,7 @@ interface RawClientSet extends ClientSet {
 }
 
 async function getData(familySlug: string, variantId: string) {
-  const supabase = createClient();
+  const supabase = await createSessionClient();
 
   const [{ data: family }, { data: variant }, { data: clientSets }, { data: clientsRaw }, { data: dronesRaw }] = await Promise.all([
     supabase

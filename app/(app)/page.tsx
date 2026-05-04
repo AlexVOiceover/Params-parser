@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Columns2, Filter, Upload } from "lucide-react";
-import { createClient, createSessionClient } from "@/lib/supabase/server";
+import { createSessionClient } from "@/lib/supabase/server";
 import { FamilyGrid } from "@/components/family-grid";
 
 export const dynamic = "force-dynamic";
@@ -10,22 +10,62 @@ export const metadata: Metadata = {
   title: "Catalog — AIR6",
 };
 
-async function getFamilies() {
-  const supabase = createClient();
+async function getProfile(): Promise<{ role: string | null; clientId: string | null }> {
+  try {
+    const supabase = await createSessionClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { role: null, clientId: null };
+    const { data } = await supabase
+      .from("profiles")
+      .select("role, client_id")
+      .eq("id", user.id)
+      .single();
+    return { role: data?.role ?? null, clientId: data?.client_id ?? null };
+  } catch {
+    return { role: null, clientId: null };
+  }
+}
 
-  const { data: families } = await supabase
-    .from("families")
-    .select("id, slug, name, description")
-    .order("name");
+async function getFamilies(role: string | null, clientId: string | null) {
+  const supabase = await createSessionClient();
 
+  // For client users, find which variants they own drones on, then derive
+  // which families to show. Other roles see everything.
+  let allowedVariantIds: Set<string> | null = null;
+  if (role === "client" && clientId) {
+    const { data: drones } = await supabase
+      .from("drones")
+      .select("variant_id")
+      .eq("client_id", clientId);
+    allowedVariantIds = new Set((drones ?? []).map((d) => d.variant_id));
+    // No drones → no families.
+    if (allowedVariantIds.size === 0) return [];
+  }
+
+  let familiesQ = supabase.from("families").select("id, slug, name, description").order("name");
+
+  // Restrict families to those that own at least one allowed variant.
+  if (allowedVariantIds) {
+    const { data: variants } = await supabase
+      .from("variants")
+      .select("family_id")
+      .in("id", [...allowedVariantIds]);
+    const allowedFamilyIds = new Set((variants ?? []).map((v) => v.family_id).filter(Boolean) as string[]);
+    if (allowedFamilyIds.size === 0) return [];
+    familiesQ = familiesQ.in("id", [...allowedFamilyIds]);
+  }
+
+  const { data: families } = await familiesQ;
   if (!families?.length) return [];
 
   const counts = await Promise.all(
     families.map(async (f) => {
-      const { count } = await supabase
+      let q = supabase
         .from("variants")
         .select("id", { count: "exact", head: true })
         .eq("family_id", f.id);
+      if (allowedVariantIds) q = q.in("id", [...allowedVariantIds]);
+      const { count } = await q;
       return { ...f, variant_count: count ?? 0 };
     })
   );
@@ -33,26 +73,11 @@ async function getFamilies() {
   return counts;
 }
 
-async function getRole(): Promise<string | null> {
-  try {
-    const supabase = await createSessionClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-    const { data } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-    return data?.role ?? null;
-  } catch {
-    return null;
-  }
-}
-
 export default async function CatalogPage() {
-  const [families, role] = await Promise.all([getFamilies(), getRole()]);
-  const isAdmin = role === "admin";
-  const canUpload = role === "admin" || role === "contributor";
+  const profile = await getProfile();
+  const families = await getFamilies(profile.role, profile.clientId);
+  const isAdmin = profile.role === "admin";
+  const canUpload = profile.role === "admin" || profile.role === "contributor" || profile.role === "client";
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-10">

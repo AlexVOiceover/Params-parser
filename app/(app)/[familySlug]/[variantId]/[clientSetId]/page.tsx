@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronRight } from "lucide-react";
-import { createClient, createSessionClient } from "@/lib/supabase/server";
+import { createSessionClient } from "@/lib/supabase/server";
 import { ParamVersionList } from "@/components/param-version-list";
 import type { Family, Variant, ClientSet, ParamVersion } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 async function getData(familySlug: string, variantId: string, clientSetId: string) {
-  const supabase = createClient();
+  const supabase = await createSessionClient();
 
   const [{ data: family }, { data: variant }, { data: clientSet }, { data: versions }] = await Promise.all([
     supabase
