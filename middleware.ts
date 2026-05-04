@@ -33,15 +33,28 @@ export async function middleware(request: NextRequest) {
   // Refresh session — must happen before any conditional logic
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Protect admin and upload routes
-  if (
-    !user &&
-    (request.nextUrl.pathname.startsWith("/admin") ||
-      request.nextUrl.pathname.startsWith("/upload"))
-  ) {
+  const path = request.nextUrl.pathname;
+  const needsAuth = path.startsWith("/admin") || path.startsWith("/upload");
+
+  if (needsAuth && !user) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
+  }
+
+  // Block client-role users from /admin/*; the page-level redirect would
+  // catch them too, but middleware short-circuits the request earlier.
+  if (user && path.startsWith("/admin")) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+    if (profile?.role === "client") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/";
+      return NextResponse.redirect(url);
+    }
   }
 
   return supabaseResponse;
