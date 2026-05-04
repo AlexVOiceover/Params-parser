@@ -35,6 +35,8 @@ type UploadKind = "default" | "client";
 
 interface Props {
   data: UploadFormData;
+  role: "admin" | "contributor" | "client";
+  userClientId: string | null;
 }
 
 const inputClass =
@@ -43,12 +45,15 @@ const selectClass = inputClass + " cursor-pointer";
 const labelClass = "flex flex-col gap-1.5";
 const labelTextClass = "text-xs font-medium text-muted-foreground";
 
-export function UploadForm({ data }: Props) {
+export function UploadForm({ data, role, userClientId }: Props) {
   const router = useRouter();
-  const [kind, setKind] = useState<UploadKind>("default");
+  const isClient = role === "client";
+  // Client users always upload as a client; the toggle is hidden for them.
+  const [kind, setKind] = useState<UploadKind>(isClient ? "client" : "default");
   const [familyId, setFamilyId] = useState("");
   const [variantId, setVariantId] = useState("");
-  const [clientId, setClientId] = useState("");
+  // Client users are locked to their own company.
+  const [clientId, setClientId] = useState(isClient ? (userClientId ?? "") : "");
   const [droneId, setDroneId] = useState("");
   const [versionLabel, setVersionLabel] = useState("");
   const [versionTouched, setVersionTouched] = useState(false);
@@ -259,31 +264,33 @@ export function UploadForm({ data }: Props) {
       <h1 className="text-xl font-semibold text-foreground mb-6">Upload param file</h1>
 
       <div className="flex flex-col gap-4">
-        {/* Kind toggle */}
-        <div className="flex flex-col gap-1.5">
-          <span className={labelTextClass}>Param set type</span>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => switchKind("default")}
-              className={`rounded-md border px-3 py-2 text-sm transition-colors cursor-pointer whitespace-nowrap ${kind === "default" ? "border-primary bg-primary/15 text-primary" : "border-border bg-secondary text-muted-foreground hover:text-foreground"}`}
-            >
-              Default (catalog)
-            </button>
-            <button
-              type="button"
-              onClick={() => switchKind("client")}
-              className={`rounded-md border px-3 py-2 text-sm transition-colors cursor-pointer whitespace-nowrap ${kind === "client" ? "border-primary bg-primary/15 text-primary" : "border-border bg-secondary text-muted-foreground hover:text-foreground"}`}
-            >
-              Client param set
-            </button>
+        {/* Kind toggle — hidden for client users (they never upload Defaults) */}
+        {!isClient && (
+          <div className="flex flex-col gap-1.5">
+            <span className={labelTextClass}>Param set type</span>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => switchKind("default")}
+                className={`rounded-md border px-3 py-2 text-sm transition-colors cursor-pointer whitespace-nowrap ${kind === "default" ? "border-primary bg-primary/15 text-primary" : "border-border bg-secondary text-muted-foreground hover:text-foreground"}`}
+              >
+                Default (catalog)
+              </button>
+              <button
+                type="button"
+                onClick={() => switchKind("client")}
+                className={`rounded-md border px-3 py-2 text-sm transition-colors cursor-pointer whitespace-nowrap ${kind === "client" ? "border-primary bg-primary/15 text-primary" : "border-border bg-secondary text-muted-foreground hover:text-foreground"}`}
+              >
+                Client param set
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {kind === "default"
+                ? "The reference param set we ship to clients for a given family/variant."
+                : "A param set tied to a specific client drone (received from a client or read from a drone)."}
+            </p>
           </div>
-          <p className="text-xs text-muted-foreground">
-            {kind === "default"
-              ? "The reference param set we ship to clients for a given family/variant."
-              : "A param set tied to a specific client drone (received from a client or read from a drone)."}
-          </p>
-        </div>
+        )}
 
         {/* Default mode: Family + Variant */}
         {kind === "default" && (
@@ -342,8 +349,9 @@ export function UploadForm({ data }: Props) {
               <select
                 required
                 value={clientId}
+                disabled={isClient}
                 onChange={(e) => { setClientId(e.target.value); setDroneId(""); setVersionTouched(false); }}
-                className={selectClass}
+                className={selectClass + (isClient ? " opacity-60" : "")}
               >
                 <option value="">Select client…</option>
                 {data.clients.map((c) => (

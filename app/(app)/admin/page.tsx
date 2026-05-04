@@ -23,13 +23,27 @@ export default async function AdminPage() {
   if (profile?.role !== "admin") redirect("/");
 
   const admin = createAdminClient();
-  const [{ data: profiles }, { data: authUsers }] = await Promise.all([
-    admin.from("profiles").select("id, username, role, created_at").order("created_at"),
+  const [{ data: profiles }, { data: authUsers }, { data: clients }] = await Promise.all([
+    admin.from("profiles").select("id, username, role, client_id, created_at").order("created_at"),
     admin.auth.admin.listUsers({ perPage: 1000 }),
+    admin.from("clients").select("id, name").order("name"),
   ]);
 
   const emailById = Object.fromEntries((authUsers?.users ?? []).map((u) => [u.id, u.email ?? ""]));
-  const profilesWithEmail = (profiles ?? []).map((p) => ({ ...p, email: emailById[p.id] ?? "" }));
+  const profilesWithEmail = (profiles ?? []).map((p) => ({
+    id: p.id,
+    username: p.username,
+    role: p.role,
+    client_id: p.client_id ?? null,
+    created_at: p.created_at,
+    email: emailById[p.id] ?? "",
+  }));
 
-  return <AdminDashboard profiles={profilesWithEmail} />;
+  return (
+    <AdminDashboard
+      profiles={profilesWithEmail}
+      clients={clients ?? []}
+      currentUserId={user.id}
+    />
+  );
 }
