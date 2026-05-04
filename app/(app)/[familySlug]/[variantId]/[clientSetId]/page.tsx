@@ -23,7 +23,7 @@ async function getData(familySlug: string, variantId: string, clientSetId: strin
       .maybeSingle(),
     supabase
       .from("client_sets")
-      .select("id, client_name, serial, description, created_at, updated_at, created_by, variant_id")
+      .select("id, client_name, serial, description, created_at, updated_at, created_by, variant_id, client_id, drone_id")
       .eq("id", clientSetId)
       .maybeSingle(),
     supabase
@@ -33,10 +33,29 @@ async function getData(familySlug: string, variantId: string, clientSetId: strin
       .order("created_at", { ascending: false }),
   ]);
 
+  // Resolve live name + serial via FK; fall back to captured text if missing.
+  let resolvedClientSet: ClientSet | null = null;
+  if (clientSet) {
+    const cs = clientSet as ClientSet & { client_id: string | null; drone_id: string | null };
+    const [{ data: live_client }, { data: live_drone }] = await Promise.all([
+      cs.client_id
+        ? supabase.from("clients").select("name").eq("id", cs.client_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+      cs.drone_id
+        ? supabase.from("drones").select("serial").eq("id", cs.drone_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+    resolvedClientSet = {
+      ...cs,
+      client_name: live_client?.name ?? cs.client_name,
+      serial: live_drone?.serial ?? cs.serial,
+    };
+  }
+
   return {
     family: family as Family | null,
     variant: variant as Variant | null,
-    clientSet: clientSet as ClientSet | null,
+    clientSet: resolvedClientSet,
     versions: (versions as ParamVersion[]) ?? [],
   };
 }
