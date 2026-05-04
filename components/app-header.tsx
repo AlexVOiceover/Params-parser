@@ -135,7 +135,7 @@ export function AppHeader() {
                   className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
                 >
                   <Building2 className="h-3.5 w-3.5" />
-                  Clients
+                  Clients & Drones
                 </Link>
               </>
             )}
