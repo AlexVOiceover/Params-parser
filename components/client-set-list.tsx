@@ -235,14 +235,16 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
             <button
               onClick={() => openEdit(c)}
               title={`Edit ${c.client_name}${c.serial ? ` · ${c.serial}` : ""}`}
-              className="absolute top-1/2 -translate-y-1/2 right-10 rounded p-1.5 opacity-0 group-hover/row:opacity-100 bg-card border border-border text-muted-foreground hover:text-primary hover:border-primary/50 transition-all cursor-pointer"
+              aria-label={`Edit ${c.client_name}`}
+              className="absolute top-1/2 -translate-y-1/2 right-10 rounded p-1.5 bg-card border border-border text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors cursor-pointer"
             >
               <Pencil className="h-3.5 w-3.5" />
             </button>
             <button
               onClick={() => { setDeleteError(null); setConfirmId(c.id); }}
               title={`Delete client set: ${c.client_name}${c.serial ? ` · ${c.serial}` : ""}`}
-              className="absolute top-1/2 -translate-y-1/2 right-3 rounded p-1.5 opacity-0 group-hover/row:opacity-100 bg-card border border-border text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-all cursor-pointer"
+              aria-label={`Delete ${c.client_name}`}
+              className="absolute top-1/2 -translate-y-1/2 right-3 rounded p-1.5 bg-card border border-border text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-colors cursor-pointer"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
