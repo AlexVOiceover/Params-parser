@@ -2,6 +2,21 @@ import type { Param, Rule, ProtectionList, ParamGroup, ParamDefinition } from ".
 import defaultListsJson from "@/data/protection-lists.json";
 
 /**
+ * Extract the trailing integer from a drone serial string, used to match the
+ * `SCR_USER1` parameter the firmware writes to identify itself. Examples:
+ *   AIR4-0426-0023 → 23
+ *   2012           → 2012
+ *   001            → 1
+ *   00A            → null  (no trailing digits)
+ */
+export function parseSerialId(serial: string): number | null {
+  const match = /(\d+)\s*$/.exec(serial);
+  if (!match) return null;
+  const n = parseInt(match[1], 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
  * Parse a .param file content string into a list of Param objects.
  * Format: PARAM_NAME,VALUE (one per line, # for comments)
  */
