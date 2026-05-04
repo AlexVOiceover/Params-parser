@@ -13,3 +13,8 @@ public/sw.js.map
 public/swe-worker-*.js
 public/workbox-*.js
 .env*.local
+
+# Claude Code local config — personal, contains tool-permission allowlist.
+.claude/settings.local.json
+.claude/loop
+.claude/scheduled_tasks.lock

@@ -1,165 +1,310 @@
-# Plan — Clients, drones, and per-client roles
+# Plan — Magic-link auth + Client role with RLS-enforced visibility
 
-A small refactor in the header, then a new **Clients** entity, then a real **role-based access** model so client users can see their own params (and the variant Default they came from) but not other clients'.
+Two changes that share the same touch points (login, invites, profiles), so we ship them together:
 
-The goal is to remove free-text in the upload flow (Client name + Serial) and replace it with proper dropdowns sourced from a new `clients` table and its child `drones` table. Same data; just structured.
+1. **Replace email + password with magic links.** Same UX as the sister app (ProdTrack). Invite-only, no self-signup.
+2. **Introduce a `client` role.** A user invited as `client` is bound to one row in `public.clients` and can only see/upload to that company's data. Enforced at the **database** (RLS), not just the UI — so a client user opening browser devtools and querying Supabase directly cannot read another company's drones or param sets.
 
----
-
-## Stage 1 — Header dropdown rename
-
-User dropdown in the AppHeader currently has a "Settings" button. Rename to **Users** since we're going to add more administration links beside it. No new functionality.
-
-- File: `components/app-header.tsx`. Change the icon label `Settings` → `Users` and update the `href` if it changes (currently `/admin`, which itself manages users). Keep the icon (Settings cog or switch to `Users` icon — TBD).
+Existing admin (`alexrodriguez@airborne-robotics.com`) keeps working throughout. No data migration; no change to `client_sets`, `param_versions`, etc. except adding one boolean column.
 
 ---
 
-## Stage 2 — Add a `clients` admin section
+## Stage 1 — Magic-link login
 
-A new entry in the same dropdown: **Clients**. Sits alongside Users. Clicking it opens `/admin/clients`.
+**Goal:** the `/login` page is one email field and a "Send magic link" button. Clicking the email link signs the user in.
 
-### 2.1 Schema
+### 1.1 Login form
+
+- File: [app/login/page.tsx](app/login/page.tsx). Drop the password input and the `signInWithPassword` call. Replace with:
+  ```ts
+  await supabase.auth.signInWithOtp({
+    email,
+    options: {
+      emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+      shouldCreateUser: false,
+    },
+  });
+  ```
+- `shouldCreateUser: false` keeps invite-only behavior. Emails not already in `auth.users` get the same UI but no link is sent.
+- After submit, swap the form for a "Check your email" success state, matching ProdTrack's copy.
+- Read `?next=` from the URL and pass it through so deep-links work after sign-in.
+- Show an inline error if `?error=auth_failed` is in the URL (the callback redirects there on failure).
+- Keep the footer line: *"Accounts are created by administrators. No self-registration."*
+
+### 1.2 Auth callback route
+
+- New file: `app/auth/callback/route.ts`. GET handler. Reads `code` and `next` from the URL, calls `supabase.auth.exchangeCodeForSession(code)`, redirects to `next` (default `/`) on success, `/login?error=auth_failed` on failure.
+- Adapted from ProdTrack's `src/routes/auth/callback/+server.ts`.
+- No "first-time profile setup" detour — our `handle_new_user` trigger already populates `profiles`.
+
+### 1.3 Dev-mode bypass (optional, ported from ProdTrack)
+
+- In development, after the user submits their email, instead of mailing the link, use the service role to call `admin.auth.admin.generateLink({ type: 'magiclink', email })` and feed the returned `email_otp` straight into `verifyOtp`. Result: instant local sign-in, no inbox needed.
+- Implemented as a server action so the service-role key never reaches the browser. Skips silently if `SUPABASE_SERVICE_ROLE_KEY` isn't configured.
+- Production path is unchanged.
+
+### 1.4 Remove password code paths
+
+- After 1.1 lands, no callers of `signInWithPassword` remain. Verify with `grep`.
+- No DB change — Supabase keeps the bcrypt hashes on `auth.users` but they become unused. (Reversible if needed.)
+
+### 1.5 Supabase dashboard config (manual; document in `SCRATCHPAD.md`)
+
+I cannot click these for you — they need the dashboard:
+
+- Authentication → URL Configuration → **Site URL** = production origin (`https://air6params.vercel.app`).
+- Authentication → URL Configuration → **Redirect URLs**: add `http://localhost:3000/auth/callback`, `https://air6params.vercel.app/auth/callback`, and the Vercel preview pattern (`https://*-alexrodriguez-7999s-projects.vercel.app/auth/callback`).
+- Authentication → Providers → **Email** → "Enable email signups" off (we're invite-only).
+- Authentication → Email Templates → **Magic Link**: confirm `{{ .ConfirmationURL }}` lands on `/auth/callback`.
+
+### 1.6 Verify admin still has access
+
+- Before this stage merges to main, sign out and request a magic link with the admin email; confirm the session lands on `/` and `/admin` is reachable.
+- Fallback: the admin's password is still valid in the DB until 1.4 ships, so we can revert in a hotfix.
+
+---
+
+## Stage 2 — Schema changes for the `client` role
+
+**Goal:** add the columns needed so a profile can be marked as a `client` user belonging to a specific company, and so RLS can cleanly identify the per-variant Default.
+
+### 2.1 Migration
 
 ```sql
-CREATE TABLE public.clients (
-  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  name        text        UNIQUE NOT NULL,        -- e.g. "Acme Corp"
-  created_by  uuid        REFERENCES public.profiles ON DELETE SET NULL,
-  created_at  timestamptz NOT NULL DEFAULT now(),
-  updated_at  timestamptz NOT NULL DEFAULT now()
-);
+-- profiles: add client_id and broaden the role check
+ALTER TABLE public.profiles
+  ADD COLUMN client_id uuid REFERENCES public.clients(id) ON DELETE SET NULL;
 
-CREATE TABLE public.drones (
-  id         uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  client_id  uuid        NOT NULL REFERENCES public.clients ON DELETE CASCADE,
-  serial     text        NOT NULL,
-  created_by uuid        REFERENCES public.profiles ON DELETE SET NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (client_id, serial)
-);
+ALTER TABLE public.profiles
+  DROP CONSTRAINT IF EXISTS profiles_role_check;
+ALTER TABLE public.profiles
+  ADD CONSTRAINT profiles_role_check
+  CHECK (role IN ('viewer', 'contributor', 'admin', 'client'));
 
-CREATE INDEX idx_drones_client ON public.drones (client_id);
+-- A 'client' role MUST have a client_id; non-client roles MUST NOT.
+ALTER TABLE public.profiles
+  ADD CONSTRAINT profiles_client_id_matches_role
+  CHECK (
+    (role = 'client' AND client_id IS NOT NULL)
+    OR (role <> 'client' AND client_id IS NULL)
+  );
+
+-- client_sets: explicit Default flag (today identified by serial = '').
+ALTER TABLE public.client_sets
+  ADD COLUMN is_default boolean NOT NULL DEFAULT false;
+
+UPDATE public.client_sets
+  SET is_default = true
+  WHERE serial = '' AND client_name = 'Default';
+
+CREATE UNIQUE INDEX client_sets_one_default_per_variant
+  ON public.client_sets (variant_id) WHERE is_default;
 ```
 
-RLS: admin/technician (see Stage 4) can read+write everything. Client users see only their own client and its drones (Stage 4 wires this up).
-
-### 2.2 Routes & UI
-
-- **`/admin/clients`** — list of clients with inline create. Click a client to open its detail page.
-- **`/admin/clients/[clientId]`** — client name (editable), list of drones (serials), inline create/delete.
-- API:
-  - `GET /api/admin/clients` (list), `POST` (create)
-  - `PATCH /api/admin/clients/[id]` (rename)
-  - `DELETE /api/admin/clients/[id]` (cascades drones — block deletion if any client_set references the client; until Stage 3 backfill, no link to enforce yet)
-  - `POST /api/admin/clients/[id]/drones` (add serial)
-  - `DELETE /api/admin/clients/[id]/drones/[droneId]`
-
-### 2.3 Backfill from existing `client_sets`
-
-`client_sets` already has free-text `client_name` + `serial`. Migration creates one `clients` row per distinct `client_name` and one `drones` row per (client_name, serial) pair. Then we add `client_sets.client_id` and `client_sets.drone_id` columns and link them up. Free-text columns stay for one stage so we can verify, then drop them in Stage 3.
-
----
-
-## Stage 3 — Switch upload flow to dropdowns
-
-After Stage 2 backfill, `client_sets` has both the new FKs and the old text columns. This stage:
-
-- Updates the upload form (`upload-form.tsx`) and Publish-to-Catalog modal (`catalog-upload-modal.tsx`) to use:
-  - **Client** select (existing only, dropdown of `clients.name`)
-  - **Drone** select (filtered by chosen client, options are `drones.serial`)
-  - "+ New client" / "+ New drone" inline affordances → POST to the client/drone APIs, then refresh the dropdown.
-- API `/api/upload`: takes `clientId` + `droneId` (or `clientName` + `serial` for inline-creates), looks up or creates the matching `client_set`, attaches the version.
-- Variant page's `client-set-list.tsx`: source the autocomplete from `clients.name` instead of inferring from existing `client_sets`.
-- Compare page, version-tree, source-indicator: read display values from `clients.name` + `drones.serial` (still surfaced as `clientName` / `serial` strings in `CompareVersion`).
-- Drop `client_sets.client_name` and `client_sets.serial` columns once everything reads from the FKs. Migration verifies no row has null FKs first.
-
----
-
-## Stage 4 — Roles & per-client visibility
-
-### 4.1 Schema
-
-`profiles` already has `role` (`admin` / `contributor` today). Extend:
+### 2.2 RLS helper functions
 
 ```sql
-ALTER TABLE public.profiles ADD COLUMN client_id uuid REFERENCES public.clients ON DELETE SET NULL;
+CREATE OR REPLACE FUNCTION public.current_role() RETURNS text
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
+$$ SELECT role FROM public.profiles WHERE id = auth.uid() $$;
+
+CREATE OR REPLACE FUNCTION public.current_client_id() RETURNS uuid
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
+$$ SELECT client_id FROM public.profiles WHERE id = auth.uid() $$;
+
+CREATE OR REPLACE FUNCTION public.is_admin_or_contributor() RETURNS boolean
+  LANGUAGE sql STABLE AS
+$$ SELECT public.current_role() IN ('admin', 'contributor') $$;
 ```
 
-Roles become:
-- **admin** — full access (existing).
-- **technician** — same access as today's contributor (read all, upload, manage variants/clients/drones). Replace existing `contributor` value with `technician` in a one-line migration.
-- **client** — bound to a `profiles.client_id`. Read-only access scoped to their own client.
+`SECURITY DEFINER` is required because RLS policies can't query their own table — the helpers run as the function owner so they bypass the policy on `profiles`.
 
-### 4.2 RLS rewrite
+---
 
-The interesting policies:
+## Stage 3 — RLS rewrite (the security part)
 
-- `client_sets` SELECT: visible if `is_admin_or_technician()` OR `client_set.client_id == auth.uid()→profiles.client_id` OR `client_set` is the **Default** for a variant whose any client this user owns reads from.
-- `param_versions` SELECT: piggybacks on `client_sets` visibility (already does, since it joins through `client_sets`).
-- `clients` SELECT: admin/technician see all; client users see only their own row.
-- `drones` SELECT: same.
-- `families` / `variants`: stay public-read (catalog metadata is shared).
+**Goal:** the database itself refuses to return another company's data, no matter how the request is made (server, browser, raw API call).
 
-The "Default visible to anyone who owns a child" rule is the subtle one. Concretely: every Variant's Default `client_set` is exposed to any client user whose own client has at least one `client_set` under that Variant. In SQL the policy becomes:
+This stage is one migration. Each policy has the same shape: admins/contributors see everything, clients see only their stuff.
+
+### 3.1 `clients` and `drones`
 
 ```sql
-CREATE POLICY "client_sets_select" ON public.client_sets FOR SELECT
-USING (
-  public.is_admin_or_technician()
-  OR client_id = (SELECT client_id FROM public.profiles WHERE id = auth.uid())
+DROP POLICY IF EXISTS clients_select ON public.clients;
+CREATE POLICY clients_select ON public.clients FOR SELECT USING (
+  public.is_admin_or_contributor()
+  OR id = public.current_client_id()
+);
+
+-- Mutation stays admin-only (matches today).
+DROP POLICY IF EXISTS clients_modify ON public.clients;
+CREATE POLICY clients_modify ON public.clients FOR ALL USING (
+  public.current_role() = 'admin'
+) WITH CHECK (public.current_role() = 'admin');
+```
+
+```sql
+CREATE POLICY drones_select ON public.drones FOR SELECT USING (
+  public.is_admin_or_contributor()
+  OR client_id = public.current_client_id()
+);
+
+CREATE POLICY drones_modify ON public.drones FOR ALL USING (
+  public.is_admin_or_contributor()
+) WITH CHECK (public.is_admin_or_contributor());
+```
+
+### 3.2 `client_sets` — the interesting one
+
+A client user sees:
+- their own company's `client_sets`, AND
+- the per-variant `Default` for any variant where their company has at least one `client_set` (so they have something to compare against).
+
+```sql
+CREATE POLICY client_sets_select ON public.client_sets FOR SELECT USING (
+  public.is_admin_or_contributor()
+  OR client_id = public.current_client_id()
   OR (
-    is_default                              -- needs the boolean column from the suggested follow-up
+    is_default
     AND EXISTS (
       SELECT 1 FROM public.client_sets cs
       WHERE cs.variant_id = client_sets.variant_id
-        AND cs.client_id = (SELECT client_id FROM public.profiles WHERE id = auth.uid())
+        AND cs.client_id = public.current_client_id()
     )
   )
 );
+
+-- Insert: admins/contributors anywhere; clients only under their own client_id and a drone they own.
+CREATE POLICY client_sets_insert ON public.client_sets FOR INSERT WITH CHECK (
+  public.is_admin_or_contributor()
+  OR (
+    public.current_role() = 'client'
+    AND client_id = public.current_client_id()
+    AND EXISTS (
+      SELECT 1 FROM public.drones d
+      WHERE d.id = drone_id AND d.client_id = public.current_client_id()
+    )
+    AND is_default = false
+  )
+);
+
+CREATE POLICY client_sets_update ON public.client_sets FOR UPDATE USING (
+  public.is_admin_or_contributor()
+);
+
+CREATE POLICY client_sets_delete ON public.client_sets FOR DELETE USING (
+  public.current_role() = 'admin'
+);
 ```
 
-(Today we identify Default by `serial = ""`; before this stage we should add an explicit `is_default boolean` column to make the policy clean.)
+### 3.3 `param_versions` and `param_values`
 
-### 4.3 UI gating
+These don't need their own client-id check — visibility piggybacks on `client_sets`:
 
-- Catalog home: same content for everyone, but the family/variant counts a client user sees should reflect only their own client_sets + Defaults.
-- Variant page: client users see only the Default + their own client's `client_sets`. The "Add client + drone" affordance is hidden.
-- Upload, Admin, Clients pages: hidden from client users entirely.
-- AppHeader: drop the Users / Clients menu items for client users.
-- Login flow: post-login, show a different empty state ("No drones yet — your account isn't linked to a client") for unlinked client users. Admin invites them via `/admin` and sets `profiles.client_id`.
+```sql
+CREATE POLICY param_versions_select ON public.param_versions FOR SELECT USING (
+  EXISTS (SELECT 1 FROM public.client_sets cs WHERE cs.id = client_set_id)
+);
 
-### 4.4 Admin invites
+-- Insert/update/delete already check via client_sets in current policies; tighten so clients can insert
+-- but only for client_sets they're allowed to write to.
+CREATE POLICY param_versions_insert ON public.param_versions FOR INSERT WITH CHECK (
+  EXISTS (SELECT 1 FROM public.client_sets cs WHERE cs.id = client_set_id)
+);
+```
 
-Existing admin dashboard's "Invite user" form gains:
-- Role picker (`admin` / `technician` / `client`).
-- When `client` is picked, a Client dropdown appears (required).
-- When `admin` or `technician` is picked, the Client dropdown is hidden.
+(`SELECT 1 FROM client_sets …` re-runs RLS on `client_sets` because `param_versions` queries it through the policy chain — the user can't see a `param_version` whose parent `client_set` they can't see.)
+
+`param_values` already joins through `param_versions` → `client_sets`; same pattern.
+
+### 3.4 `families` and `variants`
+
+Stay public-read. Catalog metadata is shared.
+
+### 3.5 Smoke-test plan
+
+After the RLS migration:
+- As admin: full access (no regression).
+- As contributor: same as admin for read, can't manage roles.
+- As client (Stanhope AI test account): from the Supabase JS client in the browser, confirm:
+  - `from('clients').select('*')` returns only Stanhope AI.
+  - `from('drones').select('*')` returns only Stanhope AI's drones.
+  - `from('client_sets').select('*').eq('variant_id', AIR4Rugged_Base)` returns Stanhope AI's set + the Default. `eq` on another variant where Stanhope AI has no set returns nothing.
+  - `from('param_values').select('*').eq('param_version_id', someCgiVersionId)` returns nothing.
 
 ---
 
-## Stage 5 — Cleanup & smoke tests
+## Stage 4 — Admin invite UI: role + client picker
 
-- Drop unused columns from earlier migrations (the free-text ones on `client_sets` after Stage 3 verifies the FKs).
-- Manually walk through the whole flow as each role:
-  - **admin** does everything.
-  - **technician** can upload and manage but can't promote roles.
-  - **client** sees only their own data + Defaults; cannot mutate.
-- Update CHANGELOG.
+**Goal:** when an admin invites a user, they pick the role; if `client`, also the company.
+
+### 4.1 Admin dashboard
+
+- File: [components/admin-dashboard.tsx](components/admin-dashboard.tsx). Add to the "Invite user" form:
+  - **Role** select (`admin` / `contributor` / `client`).
+  - **Client** select — visible only when role is `client`. Required. Options come from `clients.name`.
+- Existing user table: add a "Client" column (only populated for client-role users). Allow admins to change a user's role; if changing to `client`, force a client picker; if changing away from `client`, clear `client_id`.
+
+### 4.2 Invite API
+
+- File: [app/api/admin/users/route.ts](app/api/admin/users/route.ts). Accept `{ email, role, clientId? }`.
+- Validate the role/client_id pairing matches the new check constraint.
+- Call `admin.auth.admin.inviteUserByEmail(email)`.
+- After invite returns the new auth user's `id`, update `public.profiles` with the chosen role and (if client) `client_id`. Done in one transaction so a half-invited user doesn't get stuck as `viewer`.
+
+### 4.3 Role-change API
+
+- File: [app/api/admin/users/[id]/route.ts](app/api/admin/users/%5Bid%5D/route.ts). Accept `{ role, clientId? }` and update both columns atomically. Same validation as 4.2.
 
 ---
 
-## Out of scope (future stages)
+## Stage 5 — UI gating for client users
 
-- Client users adding their own drones / param sets directly. For now everything is admin/technician-driven; clients are pure consumers.
-- Client-side comments/notes on param versions.
-- Multi-tenant branding.
+**Goal:** a client user only sees the parts of the app that make sense for them. RLS already prevents them from *reading* forbidden data — this stage is about not showing dead links.
+
+- **AppHeader** ([components/app-header.tsx](components/app-header.tsx)): hide "Users", "Clients & Drones" menu entries for `client` role.
+- **Catalog home, family, variant pages**: no code changes needed — RLS filters the data they read. The catalog will simply show only the families/variants relevant to them. Verify the empty states render gracefully when a client has zero data ("Your account isn't linked to any drones yet — please contact your administrator.").
+- **Variant page** ([app/(app)/[familySlug]/[variantId]/page.tsx](app/(app)/%5BfamilySlug%5D/%5BvariantId%5D/page.tsx)): the "Add client + drone" button is for admins/contributors. Add a `canCreate` check that's already wired through; ensure it's `false` for client role.
+- **Upload page** ([app/(app)/upload/page.tsx](app/(app)/upload/page.tsx)): allowed for `client` role too (per the new requirement). But:
+  - Default mode (Family + Variant) is hidden for client users — they don't upload Defaults.
+  - Client mode is the only mode shown. The Client dropdown is forced to their own company (and disabled). The Drone dropdown shows only their own drones.
+- **Catalog upload modal** ([components/catalog-upload-modal.tsx](components/catalog-upload-modal.tsx)): same restrictions — force client to their own company.
+- **Admin pages**: middleware already redirects on `/admin/*` based on `getUser()`. Add a role check so client users get redirected to `/` (not just unauthenticated ones).
 
 ---
 
-## Notes / Risks
+## Stage 6 — Verify everything
 
-- **Role migration**: renaming `contributor` → `technician` will break any code that hard-codes the string. Audit before the migration: `grep -rn '"contributor"' app components lib`. Update in lockstep.
-- **`is_default` column**: today Default is identified by `serial = ""`. Stage 4's RLS policy needs a clean predicate, so add an explicit boolean column (`client_sets.is_default`) and backfill from `serial = ""` *before* the RLS rewrite. One per variant; enforce with a partial unique index.
-- **Backfill ordering**: Stage 2 backfill creates `clients` + `drones` from `client_sets.client_name + serial`. Empty-serial Defaults get a synthetic drone? Or skip drone creation for Defaults entirely? Decision needed before Stage 2 lands. (Probably: Defaults aren't tied to a client at all — they belong to the variant. May need `client_sets.client_id` to be nullable, with `is_default = true` implying `client_id IS NULL`.)
-- **Storage paths**: unchanged. `client_sets.id` is still the storage prefix.
-- **Coordinate with Vercel**: same playbook as Phases 1–2. Schema migration first, then matching code deploy.
+Manual smoke test as each role:
+- **admin**: existing flows unchanged. Magic link sign-in works. Can invite all three roles.
+- **contributor**: same as today. Magic link works.
+- **client** (new test account, link to Stanhope AI):
+  - Can sign in via magic link.
+  - Sees only Stanhope AI's data in the catalog (and per-variant Defaults where Stanhope AI has a set).
+  - Cannot reach `/admin/*` or `/admin/clients`.
+  - Can upload to their own drones; can't pick Default mode; can't upload to a drone that isn't theirs.
+  - Can compare their version against the Default.
+  - Browser-console probe (`supabase.from('client_sets').select('*')`) returns only allowed rows.
+
+Also bump version and add a CHANGELOG entry: "Magic-link sign-in; new client role with per-company access."
+
+---
+
+## Out of scope
+
+- **OAuth providers** (Google etc.) — additive later.
+- **Cross-app SSO with ProdTrack** — separate user pools per the earlier discussion. Could be revisited.
+- **Password reset** — moot once passwords are gone.
+- **Client users editing their own drone records** — admins/contributors still own drone CRUD. Clients only upload param sets to drones already registered for them.
+- **Per-user audit log** — not needed yet.
+
+---
+
+## Notes / risks
+
+- **`shouldCreateUser: false`** means a typo'd email gives the same "Check your email" UI as a real one (Supabase's anti-enumeration default). Acceptable.
+- **The `is_default` migration** updates rows by `client_name = 'Default' AND serial = ''`. Confirm this matches every Default before running. (Spot-checked earlier in this session — looked clean.)
+- **The check constraint `profiles_client_id_matches_role`** means existing rows MUST satisfy it before being added. Existing admins/contributors all have `client_id IS NULL` (column is brand new), so they pass. Verified before adding the constraint.
+- **The admin's row stays valid** through Stage 1 (password still works) and through Stage 2 (constraint allows non-client roles with NULL client_id). Stage 5 doesn't gate `/admin/*` until after we've verified the admin can sign in via magic link. So at no point does the admin lose access.
+- **Migration ordering**: 2 → 3 → app code. If the RLS migration runs before the new helper-function calls in app code, nothing breaks because `is_admin_or_contributor()` is permissive for existing roles. If app code ships before RLS, nothing breaks because RLS is still permissive. Either order is safe.
+- **Storage bucket policies** for `param-files` aren't covered above. Currently public-read. We should make uploads RLS-checked and downloads use signed URLs, but that's its own piece of work and out of scope here. (Today, anyone with a bucket URL can read any param file. Worth flagging for a follow-up.)
