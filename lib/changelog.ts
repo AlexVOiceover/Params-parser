@@ -6,6 +6,19 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.4.0",
+    date: "2026-05-04",
+    items: [
+      "New Clients & Drones admin section: register companies and their drones, each drone bound to a family/variant",
+      "Upload page now has a Default vs Client toggle — pick a Family/Variant for catalog defaults, or a Client/Drone for client-supplied param sets",
+      "Variant page's \"Add client + drone\" picker reads from registered clients and drones (no more free-text)",
+      "Diff counts on the variant page now show \"X params differ from Default\" and reflect the full param set",
+      "Download .param button now downloads the file instead of opening it in a new tab",
+      "Edit Default form drops the Client/Serial fields (only Description is editable)",
+      "Friendlier error when a variant can't be deleted because a drone still references it",
+    ],
+  },
+  {
     version: "0.3.0",
     date: "2026-05-02",
     items: [
