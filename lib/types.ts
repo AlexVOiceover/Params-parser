@@ -84,6 +84,7 @@ export interface ClientSet {
   serial: string;
   client_id: string | null;
   drone_id: string | null;
+  is_default: boolean;
   description: string | null;
   created_by: string | null;
   created_at: string;

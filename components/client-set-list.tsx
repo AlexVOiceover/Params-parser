@@ -3,7 +3,8 @@
 import { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Trash2, Pencil, Plus, X, AlertTriangle, Check, GitCompareArrows, CornerDownRight } from "lucide-react";
+import { Trash2, Pencil, Plus, X, AlertTriangle, Check, GitCompareArrows, CornerDownRight, Usb } from "lucide-react";
+import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
 
 export interface ClientSetCard {
   id: string;
@@ -16,6 +17,8 @@ export interface ClientSetCard {
   /** Number of params that differ from Default's latest version. null = unknown / no Default to compare. */
   diffCount: number | null;
   isDefault: boolean;
+  /** FK to the drone this client_set belongs to. Used to match against the connected drone. */
+  droneId: string | null;
 }
 
 interface Props {
@@ -39,6 +42,8 @@ function formatDate(iso: string) {
 export function ClientSetList({ familySlug, variantId, clientSets, defaultLatestVersionId, isAdmin, canCreate, clients, availableDrones }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
+  const match = useConnectedDroneMatch();
+  const connectedDroneId = match.status === "matched" ? match.drone?.id ?? null : null;
 
   // Only list clients that actually have an unused drone on this variant.
   const clientsWithDrones = useMemo(() => {
@@ -173,26 +178,37 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
       !c.isDefault &&
       c.latestVersionId !== null &&
       defaultLatestVersionId !== null;
+    const isConnected = connectedDroneId !== null && c.droneId === connectedDroneId;
 
     return (
       <div className="relative group/row">
         <Link
           href={`/${familySlug}/${variantId}/${c.id}`}
           className={`group flex items-start justify-between gap-4 rounded-lg border bg-card px-5 py-4 hover:border-primary/50 transition-colors cursor-pointer ${
-            c.isDefault ? "border-primary/40 bg-primary/5" : "border-border"
+            isConnected
+              ? "border-emerald-500/60 bg-emerald-500/10 ring-1 ring-emerald-500/40"
+              : c.isDefault
+              ? "border-primary/40 bg-primary/5"
+              : "border-border"
           }${isAdmin ? " pr-28" : showCompare ? " pr-14" : ""}`}
         >
           <div className="flex flex-col gap-1 min-w-0">
             <div className="flex items-baseline gap-2 min-w-0 flex-wrap">
-              <span className="font-medium text-foreground group-hover:text-primary transition-colors truncate">
-                {c.client_name}
+              <span className={`font-medium group-hover:text-primary transition-colors truncate ${c.isDefault ? "text-primary text-base" : "text-foreground"}`}>
+                {c.isDefault ? "Default" : c.client_name}
               </span>
-              {c.serial && (
+              {!c.isDefault && c.serial && (
                 <span className="font-mono text-xs text-muted-foreground truncate">· {c.serial}</span>
               )}
+              {isConnected && (
+                <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 leading-none whitespace-nowrap">
+                  <Usb className="h-2.5 w-2.5" />
+                  this drone
+                </span>
+              )}
               {c.isDefault ? (
-                <span className="rounded-full bg-primary/15 border border-primary/30 px-1.5 py-0.5 text-[10px] font-semibold text-primary leading-none">
-                  base
+                <span className="rounded-full bg-primary/15 border border-primary/30 px-1.5 py-0.5 text-[10px] font-semibold text-primary leading-none whitespace-nowrap">
+                  catalog reference
                 </span>
               ) : c.diffCount !== null ? (
                 <span className="text-[10px] text-muted-foreground">
@@ -263,7 +279,8 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
       <div className="flex flex-col gap-3">
         {defaultSet && renderCard(defaultSet, false)}
 
-        {others.length > 0 && (
+        {/* When there's a Default, indent the others as its children. */}
+        {defaultSet && others.length > 0 && (
           <div className="flex flex-col gap-2 ml-6 pl-2 border-l-2 border-border">
             {others.map((c) => (
               <div key={c.id}>{renderCard(c, true)}</div>
@@ -271,7 +288,7 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
           </div>
         )}
 
-        {/* If there's no Default, render others flat */}
+        {/* No Default — render others flat. */}
         {!defaultSet && others.map((c) => (
           <div key={c.id}>{renderCard(c, false)}</div>
         ))}

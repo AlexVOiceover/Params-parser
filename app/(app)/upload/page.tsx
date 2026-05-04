@@ -67,8 +67,7 @@ export default async function UploadPage() {
   const { data: defaultClientSetsData } = await admin
     .from("client_sets")
     .select("id, variant_id")
-    .eq("client_name", "Default")
-    .eq("serial", "");
+    .eq("is_default", true);
 
   // Client users only ever see their own company and drones.
   const visibleClients = role === "client"

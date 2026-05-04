@@ -90,8 +90,7 @@ export async function POST(request: NextRequest) {
             .from("client_sets")
             .select("id")
             .eq("variant_id", variantId!)
-            .eq("client_name", "Default")
-            .eq("serial", "")
+            .eq("is_default", true)
             .maybeSingle();
           if (existing) {
             clientSetId = existing.id;
@@ -100,6 +99,7 @@ export async function POST(request: NextRequest) {
               client_name: "Default",
               serial: "",
               variant_id: variantId!,
+              is_default: true,
               created_by: user.id,
             }).select("id").single();
             if (csError || !newCs) {

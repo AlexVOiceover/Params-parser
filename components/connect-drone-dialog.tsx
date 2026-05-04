@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Usb, X, Trash2 } from "lucide-react";
+import { Usb, X, Trash2, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { openDroneConnection } from "@/lib/mavlink-serial";
 import { getStoredDroneParamsCount } from "@/lib/drone-params-context";
+import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
 import { useSerialMode } from "@/lib/use-serial-mode";
 import type { Param } from "@/lib/types";
 
@@ -42,6 +43,7 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
   const disconnectRef = useRef<(() => void) | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
   const serialMode = useSerialMode();
+  const match = useConnectedDroneMatch();
 
   useEffect(() => {
     setStoredCount(getStoredDroneParamsCount());
@@ -176,7 +178,50 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
 
           {/* Done summary */}
           {stage === "done" && (
-            <p className="text-xs text-emerald-400">✓ {received} parameters loaded.</p>
+            <>
+              <p className="text-xs text-emerald-400">✓ {received} parameters loaded.</p>
+              {match.status !== "idle" && (
+                <div className="rounded-md border border-border bg-secondary/50 px-3 py-2 flex flex-col gap-1">
+                  {match.status === "loading" && (
+                    <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Looking up drone…
+                    </p>
+                  )}
+                  {match.status === "matched" && match.drone && (
+                    <>
+                      <p className="flex items-center gap-2 text-xs font-medium text-foreground">
+                        <CheckCircle className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                        Drone identified
+                      </p>
+                      <dl className="grid grid-cols-[auto,1fr] gap-x-3 gap-y-0.5 text-xs">
+                        <dt className="text-muted-foreground">Drone</dt>
+                        <dd className="font-mono text-foreground">{match.drone.serial}</dd>
+                        {match.drone.client_name && (
+                          <>
+                            <dt className="text-muted-foreground">Client</dt>
+                            <dd className="text-foreground">{match.drone.client_name}</dd>
+                          </>
+                        )}
+                        {match.drone.family_name && match.drone.variant_name && (
+                          <>
+                            <dt className="text-muted-foreground">Catalog</dt>
+                            <dd className="text-foreground">
+                              {match.drone.family_name} / {match.drone.variant_name}
+                            </dd>
+                          </>
+                        )}
+                      </dl>
+                    </>
+                  )}
+                  {match.status === "unmatched" && (
+                    <p className="flex items-center gap-2 text-xs text-amber-400">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      Drone not registered in the catalog.
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
           )}
 
           {/* Log */}

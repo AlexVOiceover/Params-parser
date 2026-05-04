@@ -3,7 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Trash2, Pencil, Plus, X, AlertTriangle, Check } from "lucide-react";
+import { Trash2, Pencil, Plus, X, AlertTriangle, Check, Usb } from "lucide-react";
+import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
 
 interface VariantRow {
   id: string;
@@ -27,6 +28,8 @@ function formatDate(iso: string) {
 export function VariantList({ familySlug, familyId, variants, isAdmin }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
+  const match = useConnectedDroneMatch();
+  const connectedVariantId = match.status === "matched" ? match.drone?.variant_id ?? null : null;
 
   // ── Delete state ──────────────────────────────────────────
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -123,16 +126,30 @@ export function VariantList({ familySlug, familyId, variants, isAdmin }: Props) 
   return (
     <>
       <div className="flex flex-col gap-3">
-        {variants.map((ps) => (
+        {variants.map((ps) => {
+          const isConnected = connectedVariantId === ps.id;
+          return (
           <div key={ps.id} className="relative group/row">
             <Link
               href={`/${familySlug}/${ps.id}`}
-              className={`group flex items-start justify-between gap-4 rounded-lg border border-border bg-card px-5 py-4 hover:border-primary/50 transition-colors cursor-pointer${isAdmin ? " pr-20" : ""}`}
+              className={`group flex items-start justify-between gap-4 rounded-lg border bg-card px-5 py-4 hover:border-primary/50 transition-colors cursor-pointer ${
+                isConnected
+                  ? "border-emerald-500/60 bg-emerald-500/10 ring-1 ring-emerald-500/40"
+                  : "border-border"
+              }${isAdmin ? " pr-20" : ""}`}
             >
               <div className="flex flex-col gap-1 min-w-0">
-                <span className="font-medium text-foreground group-hover:text-primary transition-colors truncate">
-                  {ps.name}
-                </span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium text-foreground group-hover:text-primary transition-colors truncate">
+                    {ps.name}
+                  </span>
+                  {isConnected && (
+                    <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 leading-none whitespace-nowrap">
+                      <Usb className="h-2.5 w-2.5" />
+                      your drone
+                    </span>
+                  )}
+                </div>
                 {ps.description && (
                   <p className="text-xs text-muted-foreground line-clamp-1">{ps.description}</p>
                 )}
@@ -166,7 +183,8 @@ export function VariantList({ familySlug, familyId, variants, isAdmin }: Props) 
               </>
             )}
           </div>
-        ))}
+          );
+        })}
 
         {isAdmin && !showAdd && (
           <button
