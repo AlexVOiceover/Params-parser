@@ -6,6 +6,16 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.6.0",
+    date: "2026-05-04",
+    items: [
+      "Connected drones are now matched to the catalog via SCR_USER1. Plug in a drone, finish import, and the modal shows the drone's serial, client and family/variant.",
+      "Catalog and family pages highlight the family / variant / client set that matches the connected drone with an emerald 'your drone' badge.",
+      "Default param sets are now labelled 'Default' and 'catalog reference' across the app, instead of the underlying client_name string.",
+      "Fixed a render bug where client sets on a variant without a Default were duplicated.",
+    ],
+  },
+  {
     version: "0.5.0",
     date: "2026-05-04",
     items: [
