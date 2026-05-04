@@ -27,7 +27,7 @@ async function getData(familySlug: string, variantId: string) {
       .maybeSingle(),
     supabase
       .from("client_sets")
-      .select("id, client_name, serial, description, created_at, updated_at, created_by, variant_id, client_id, drone_id, param_versions(id, version_label, created_at, is_latest)")
+      .select("id, client_name, serial, description, created_at, updated_at, created_by, variant_id, client_id, drone_id, is_default, param_versions(id, version_label, created_at, is_latest)")
       .eq("variant_id", variantId)
       .order("client_name")
       .order("serial"),
@@ -45,8 +45,8 @@ async function getData(familySlug: string, variantId: string) {
     if (latest) latestVersionByClientSet.set(cs.id, latest.id);
   }
 
-  // Identify Default (the one with serial = "")
-  const defaultSet = sets.find((cs) => cs.serial === "") ?? null;
+  // Identify Default via the explicit is_default flag.
+  const defaultSet = sets.find((cs) => cs.is_default) ?? null;
 
   // Compute diff counts vs Default
   const diffCountByClientSet = new Map<string, number>();
@@ -117,6 +117,7 @@ async function getData(familySlug: string, variantId: string) {
       latestVersionId: latestVersionByClientSet.get(cs.id) ?? null,
       diffCount: diffCountByClientSet.get(cs.id) ?? null,
       isDefault: cs === defaultSet,
+      droneId: cs.drone_id ?? null,
     };
   });
 

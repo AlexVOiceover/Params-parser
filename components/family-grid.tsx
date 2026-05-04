@@ -3,8 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Trash2, Plus, X, Pencil } from "lucide-react";
+import { Trash2, Plus, X, Pencil, Usb } from "lucide-react";
 import { ConnectedDroneCard } from "@/components/connected-drone-card";
+import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
 
 interface FamilyRow {
   id: string;
@@ -26,6 +27,8 @@ function toSlug(name: string): string {
 export function FamilyGrid({ families, isAdmin }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
+  const match = useConnectedDroneMatch();
+  const connectedFamilySlug = match.status === "matched" ? match.drone?.family_slug ?? null : null;
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
@@ -137,11 +140,23 @@ export function FamilyGrid({ families, isAdmin }: Props) {
           <div key={f.id} className="relative group/card flex flex-col gap-1">
             <Link
               href={`/${f.slug}`}
-              className={`flex flex-col gap-2 rounded-lg border border-border bg-card p-5 hover:border-primary/50 hover:bg-card/80 transition-colors cursor-pointer${isAdmin ? " pr-10" : ""}`}
+              className={`flex flex-col gap-2 rounded-lg border bg-card p-5 hover:border-primary/50 hover:bg-card/80 transition-colors cursor-pointer ${
+                connectedFamilySlug === f.slug
+                  ? "border-emerald-500/60 bg-emerald-500/10 ring-1 ring-emerald-500/40"
+                  : "border-border"
+              }${isAdmin ? " pr-10" : ""}`}
             >
-              <span className="font-semibold text-foreground group-hover/card:text-primary transition-colors">
-                {f.name}
-              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-foreground group-hover/card:text-primary transition-colors">
+                  {f.name}
+                </span>
+                {connectedFamilySlug === f.slug && (
+                  <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 leading-none whitespace-nowrap">
+                    <Usb className="h-2.5 w-2.5" />
+                    your drone
+                  </span>
+                )}
+              </div>
               {f.description && (
                 <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
                   {f.description}
