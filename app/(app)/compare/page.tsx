@@ -44,7 +44,14 @@ interface FamilyNode {
 // ── Selection branch: full hierarchy for version tree ─────────────────────────
 
 type VariantRow = { id: string; name: string; family_id: string | null };
-type ClientSetRow = { id: string; client_name: string; serial: string; variant_id: string };
+type ClientSetRow = {
+  id: string;
+  client_name: string;
+  serial: string;
+  variant_id: string;
+  client_id: string | null;
+  drone_id: string | null;
+};
 type VersionRow = { id: string; version_label: string; is_latest: boolean; client_set_id: string };
 
 async function fetchTree(): Promise<FamilyNode[]> {
@@ -72,11 +79,26 @@ async function fetchTree(): Promise<FamilyNode[]> {
   if (variantIds.length) {
     const { data } = await supabase
       .from("client_sets")
-      .select("id, client_name, serial, variant_id")
+      .select("id, client_name, serial, variant_id, client_id, drone_id")
       .in("variant_id", variantIds)
       .order("client_name")
       .order("serial");
     clientSets = data ?? [];
+  }
+
+  // Live lookups so renames in /admin/clients propagate.
+  const clientIds = [...new Set(clientSets.map((c) => c.client_id).filter((id): id is string => !!id))];
+  const droneIds = [...new Set(clientSets.map((c) => c.drone_id).filter((id): id is string => !!id))];
+  const [{ data: liveClients }, { data: liveDrones }] = await Promise.all([
+    clientIds.length ? supabase.from("clients").select("id, name").in("id", clientIds) : Promise.resolve({ data: [] }),
+    droneIds.length ? supabase.from("drones").select("id, serial").in("id", droneIds) : Promise.resolve({ data: [] }),
+  ]);
+  const clientNameById = new Map((liveClients ?? []).map((c) => [c.id, c.name]));
+  const droneSerialById = new Map((liveDrones ?? []).map((d) => [d.id, d.serial]));
+  function liveLabel(c: ClientSetRow): string {
+    const name = (c.client_id && clientNameById.get(c.client_id)) || c.client_name;
+    const serial = (c.drone_id && droneSerialById.get(c.drone_id)) || c.serial;
+    return serial ? `${name} · ${serial}` : name;
   }
 
   const clientSetIds = clientSets.map((c) => c.id);
@@ -124,7 +146,7 @@ async function fetchTree(): Promise<FamilyNode[]> {
           clientSets: (clientSetsByVariant.get(v.id) ?? [])
             .map((c) => ({
               id: c.id,
-              name: c.serial ? `${c.client_name} · ${c.serial}` : c.client_name,
+              name: liveLabel(c),
               versions: (versionsByClientSet.get(c.id) ?? []).map((ver) => ({
                 id: ver.id,
                 label: ver.version_label,
@@ -175,8 +197,18 @@ async function fetchCompareData(
 
   const clientSetIds = [...new Set((versionsData ?? []).map((v) => v.client_set_id))];
   const { data: clientSetsData } = clientSetIds.length
-    ? await supabase.from("client_sets").select("id, client_name, serial, variant_id").in("id", clientSetIds)
+    ? await supabase.from("client_sets").select("id, client_name, serial, variant_id, client_id, drone_id").in("id", clientSetIds)
     : { data: [] };
+
+  // Live name/serial lookups
+  const liveClientIds = [...new Set((clientSetsData ?? []).map((c) => c.client_id).filter((id): id is string => !!id))];
+  const liveDroneIds = [...new Set((clientSetsData ?? []).map((c) => c.drone_id).filter((id): id is string => !!id))];
+  const [{ data: liveClientsData2 }, { data: liveDronesData2 }] = await Promise.all([
+    liveClientIds.length ? supabase.from("clients").select("id, name").in("id", liveClientIds) : Promise.resolve({ data: [] }),
+    liveDroneIds.length ? supabase.from("drones").select("id, serial").in("id", liveDroneIds) : Promise.resolve({ data: [] }),
+  ]);
+  const clientNameById2 = new Map((liveClientsData2 ?? []).map((c) => [c.id, c.name]));
+  const droneSerialById2 = new Map((liveDronesData2 ?? []).map((d) => [d.id, d.serial]));
 
   const variantIds = [...new Set((clientSetsData ?? []).map((c) => c.variant_id))];
   const { data: variantsData } = variantIds.length
@@ -202,12 +234,18 @@ async function fetchCompareData(
     const clientSet = v ? clientSetMap.get(v.client_set_id) : undefined;
     const variant = clientSet ? variantMap.get(clientSet.variant_id) : undefined;
     const family = variant?.family_id ? familyMap.get(variant.family_id) : undefined;
+    let clientName = "?";
+    if (clientSet) {
+      const liveName = clientSet.client_id ? clientNameById2.get(clientSet.client_id) : undefined;
+      const liveSerial = clientSet.drone_id ? droneSerialById2.get(clientSet.drone_id) : undefined;
+      const name = liveName ?? clientSet.client_name;
+      const serial = liveSerial ?? clientSet.serial;
+      clientName = serial ? `${name} · ${serial}` : name;
+    }
     return {
       id,
       label: v?.version_label ?? "?",
-      clientName: clientSet
-        ? (clientSet.serial ? `${clientSet.client_name} · ${clientSet.serial}` : clientSet.client_name)
-        : "?",
+      clientName,
       variantName: variant?.name ?? "?",
       familyName: family?.name ?? "?",
     };

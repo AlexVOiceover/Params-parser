@@ -93,21 +93,32 @@ async function getData(familySlug: string, variantId: string) {
     }
   }
 
+  // Live name/serial lookups so renames in /admin/clients propagate here
+  // without needing to backfill the captured-at-upload text columns on
+  // client_sets. Fall back to the captured columns for legacy rows where
+  // client_id / drone_id are still null (e.g. the Default rows).
+  const clientNameById = new Map((clientsRaw ?? []).map((c) => [c.id, c.name]));
+  const droneSerialById = new Map((dronesRaw ?? []).map((d) => [d.id, d.serial]));
+
   // Shape the cards for the component
-  const cards: ClientSetCard[] = sets.map((cs) => ({
-    id: cs.id,
-    client_name: cs.client_name,
-    serial: cs.serial,
-    description: cs.description,
-    updated_at: cs.updated_at,
-    versions: cs.param_versions.map((pv) => ({
-      version_label: pv.version_label,
-      created_at: pv.created_at,
-    })),
-    latestVersionId: latestVersionByClientSet.get(cs.id) ?? null,
-    diffCount: diffCountByClientSet.get(cs.id) ?? null,
-    isDefault: cs === defaultSet,
-  }));
+  const cards: ClientSetCard[] = sets.map((cs) => {
+    const liveClientName = cs.client_id ? clientNameById.get(cs.client_id) : undefined;
+    const liveSerial = cs.drone_id ? droneSerialById.get(cs.drone_id) : undefined;
+    return {
+      id: cs.id,
+      client_name: liveClientName ?? cs.client_name,
+      serial: liveSerial ?? cs.serial,
+      description: cs.description,
+      updated_at: cs.updated_at,
+      versions: cs.param_versions.map((pv) => ({
+        version_label: pv.version_label,
+        created_at: pv.created_at,
+      })),
+      latestVersionId: latestVersionByClientSet.get(cs.id) ?? null,
+      diffCount: diffCountByClientSet.get(cs.id) ?? null,
+      isDefault: cs === defaultSet,
+    };
+  });
 
   // Drones already used by an existing client_set on this variant, so we can
   // hide them from the "add client + drone" picker.
