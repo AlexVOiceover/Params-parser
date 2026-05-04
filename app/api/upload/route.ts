@@ -37,12 +37,15 @@ export async function POST(request: NextRequest) {
         // 3. Parse form data
         // Modes:
         //   "existing"        — clientSetId provided
-        //   "new-client-set"  — variantId + clientName + serial provided
+        //   "new-client-set"  — variantId + clientName + serial (+ clientId/droneId) provided
+        //   "default"         — variantId provided; resolves or creates the variant's Default client_set
         controller.enqueue(msg("Reading file…"));
         const formData = await request.formData();
         const mode = (formData.get("mode") as string | null) ?? "existing";
         const variantId = formData.get("variantId") as string | null;
         let clientSetId = formData.get("clientSetId") as string | null;
+        const clientId = formData.get("clientId") as string | null;
+        const droneId = formData.get("droneId") as string | null;
         const clientName = formData.get("clientName") as string | null;
         const serial = formData.get("serial") as string | null;
         const versionLabel = formData.get("versionLabel") as string;
@@ -64,6 +67,11 @@ export async function POST(request: NextRequest) {
           controller.close();
           return;
         }
+        if (mode === "default" && !variantId) {
+          controller.enqueue(msg("Variant id is required", true));
+          controller.close();
+          return;
+        }
         if (!/^\d+\.\d+$/.test(versionLabel.trim())) {
           controller.enqueue(msg("Invalid version format", true));
           controller.close();
@@ -75,6 +83,34 @@ export async function POST(request: NextRequest) {
 
         const admin = createAdminClient();
 
+        // 3a. Default mode — find or create the variant's Default client_set
+        if (mode === "default") {
+          controller.enqueue(msg("Resolving Default param set…"));
+          const { data: existing } = await admin
+            .from("client_sets")
+            .select("id")
+            .eq("variant_id", variantId!)
+            .eq("client_name", "Default")
+            .eq("serial", "")
+            .maybeSingle();
+          if (existing) {
+            clientSetId = existing.id;
+          } else {
+            const { data: newCs, error: csError } = await admin.from("client_sets").insert({
+              client_name: "Default",
+              serial: "",
+              variant_id: variantId!,
+              created_by: user.id,
+            }).select("id").single();
+            if (csError || !newCs) {
+              controller.enqueue(msg(`Failed to create Default param set: ${csError?.message ?? "unknown error"}`, true));
+              controller.close();
+              return;
+            }
+            clientSetId = newCs.id;
+          }
+        }
+
         // 3b. Create new client set under existing variant if needed
         if (mode === "new-client-set") {
           controller.enqueue(msg(`Creating client set "${clientName} · ${serial}"…`));
@@ -82,6 +118,8 @@ export async function POST(request: NextRequest) {
             client_name: clientName!.trim(),
             serial: serial!.trim(),
             variant_id: variantId!,
+            client_id: clientId,
+            drone_id: droneId,
             created_by: user.id,
           }).select("id").single();
           if (csError || !newCs) {

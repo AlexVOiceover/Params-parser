@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   Library,
   Settings,
+  Building2,
   Usb,
   User as UserIcon,
   LogOut,
@@ -119,14 +120,24 @@ export function AppHeader() {
               )}
             </div>
             {isAdmin && (
-              <Link
-                href="/admin"
-                onClick={() => setUserMenuOpen(false)}
-                className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
-              >
-                <Settings className="h-3.5 w-3.5" />
-                Admin
-              </Link>
+              <>
+                <Link
+                  href="/admin"
+                  onClick={() => setUserMenuOpen(false)}
+                  className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                  Users
+                </Link>
+                <Link
+                  href="/admin/clients"
+                  onClick={() => setUserMenuOpen(false)}
+                  className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  <Building2 className="h-3.5 w-3.5" />
+                  Clients & Drones
+                </Link>
+              </>
             )}
             <button
               onClick={() => {

@@ -2,11 +2,15 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { X, Upload, CheckCircle, ExternalLink } from "lucide-react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
-interface FamilyRow { id: string; name: string }
+interface ClientRow { id: string; name: string }
+interface DroneRow { id: string; client_id: string; variant_id: string; serial: string }
+interface FamilyRow { id: string; slug: string; name: string }
 interface VariantRow { id: string; name: string; family_id: string | null }
-interface ClientSetRow { id: string; client_name: string; serial: string; variant_id: string }
+interface ClientSetRow { id: string; client_id: string | null; drone_id: string | null; variant_id: string }
+interface VersionRow { client_set_id: string; version_label: string }
 
 interface Props {
   content: string;
@@ -20,49 +24,102 @@ const selectClass = inputClass + " cursor-pointer";
 const labelClass = "flex flex-col gap-1.5";
 const labelTextClass = "text-xs font-medium text-muted-foreground";
 
-const CLIENT_DATALIST_ID = "catalog-upload-modal-clients";
-
 export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
+  const [clients, setClients] = useState<ClientRow[]>([]);
+  const [drones, setDrones] = useState<DroneRow[]>([]);
   const [families, setFamilies] = useState<FamilyRow[]>([]);
   const [variants, setVariants] = useState<VariantRow[]>([]);
   const [clientSets, setClientSets] = useState<ClientSetRow[]>([]);
+  const [versions, setVersions] = useState<VersionRow[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
-  const [familyId, setFamilyId] = useState("");
-  const [variantId, setVariantId] = useState("");
-  const [clientName, setClientName] = useState("");
-  const [serial, setSerial] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [droneId, setDroneId] = useState("");
   const [versionLabel, setVersionLabel] = useState("");
+  const [versionTouched, setVersionTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [donePath, setDonePath] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
     if (!supabase) return;
     Promise.all([
-      supabase.from("families").select("id, name").order("name"),
+      supabase.from("clients").select("id, name").order("name"),
+      supabase.from("drones").select("id, client_id, variant_id, serial").order("serial"),
+      supabase.from("families").select("id, slug, name").order("name"),
       supabase.from("variants").select("id, name, family_id").order("name"),
-      supabase.from("client_sets").select("id, client_name, serial, variant_id").order("client_name"),
-    ]).then(([f, v, c]) => {
+      supabase.from("client_sets").select("id, client_id, drone_id, variant_id"),
+      supabase.from("param_versions").select("client_set_id, version_label"),
+    ]).then(([c, d, f, v, cs, vs]) => {
+      setClients(c.data ?? []);
+      setDrones(d.data ?? []);
       setFamilies(f.data ?? []);
       setVariants(v.data ?? []);
-      setClientSets(c.data ?? []);
+      setClientSets(cs.data ?? []);
+      setVersions(vs.data ?? []);
+      setLoaded(true);
     });
   }, []);
 
-  const filteredVariants = variants.filter((v) => v.family_id === familyId);
+  const variantById = useMemo(() => new Map(variants.map((v) => [v.id, v])), [variants]);
+  const familyById = useMemo(() => new Map(families.map((f) => [f.id, f])), [families]);
+  function variantLabel(variantId: string): string {
+    const v = variantById.get(variantId);
+    if (!v) return "?";
+    const f = v.family_id ? familyById.get(v.family_id) : undefined;
+    return `${f?.name ?? "?"} / ${v.name}`;
+  }
 
-  // Client-name suggestions: distinct client_names already used on this variant
-  const clientNameSuggestions = useMemo(() => {
-    if (!variantId) return [];
-    const set = new Set(
-      clientSets.filter((c) => c.variant_id === variantId).map((c) => c.client_name)
-    );
-    return [...set].sort();
-  }, [clientSets, variantId]);
+  const dronesForClient = useMemo(
+    () => drones.filter((d) => d.client_id === clientId),
+    [drones, clientId]
+  );
+
+  const selectedDrone = useMemo(
+    () => drones.find((d) => d.id === droneId) ?? null,
+    [drones, droneId]
+  );
+
+  // Find existing client_set for this drone (matched on client + drone + variant).
+  const existingClientSet = useMemo(() => {
+    if (!selectedDrone) return null;
+    return clientSets.find(
+      (cs) =>
+        cs.client_id === selectedDrone.client_id &&
+        cs.drone_id === selectedDrone.id &&
+        cs.variant_id === selectedDrone.variant_id
+    ) ?? null;
+  }, [clientSets, selectedDrone]);
+
+  // Compute next major version for the selected drone's existing client_set.
+  const nextMajor = useMemo(() => {
+    if (!existingClientSet) return 1;
+    let max = 0;
+    for (const v of versions) {
+      if (v.client_set_id !== existingClientSet.id) continue;
+      const m = /^(\d+)\.\d+$/.exec(v.version_label);
+      if (!m) continue;
+      const major = parseInt(m[1], 10);
+      if (major > max) max = major;
+    }
+    return max + 1;
+  }, [versions, existingClientSet]);
+
+  // Auto-fill version label whenever drone changes (unless user typed something).
+  useEffect(() => {
+    if (versionTouched) return;
+    if (!selectedDrone) {
+      setVersionLabel("");
+      return;
+    }
+    setVersionLabel(`${nextMajor}.0`);
+  }, [selectedDrone, nextMajor, versionTouched]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!selectedDrone) return;
     if (!/^\d+\.\d+$/.test(versionLabel.trim())) {
       setError("Version must be in format number.number (e.g. 1.0)");
       return;
@@ -73,20 +130,18 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
     const filename = suggestedName.endsWith(".param") ? suggestedName : `${suggestedName}.param`;
     const file = new File([content], filename, { type: "text/plain" });
 
-    // Look up an existing (client_name, serial) in this variant — append a version to it if found.
-    const existing = clientSets.find(
-      (c) => c.variant_id === variantId && c.client_name === clientName.trim() && c.serial === serial.trim()
-    );
-
     const fd = new FormData();
-    if (existing) {
+    if (existingClientSet) {
       fd.set("mode", "existing");
-      fd.set("clientSetId", existing.id);
+      fd.set("clientSetId", existingClientSet.id);
     } else {
+      const client = clients.find((c) => c.id === clientId);
       fd.set("mode", "new-client-set");
-      fd.set("variantId", variantId);
-      fd.set("clientName", clientName.trim());
-      fd.set("serial", serial.trim());
+      fd.set("variantId", selectedDrone.variant_id);
+      fd.set("clientId", clientId);
+      fd.set("droneId", selectedDrone.id);
+      fd.set("clientName", client?.name ?? "");
+      fd.set("serial", selectedDrone.serial);
     }
     fd.set("versionLabel", versionLabel);
     fd.set("file", file);
@@ -128,16 +183,20 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
       }
     }
 
+    // Build the deep link to the variant page (Default + all client sets).
+    const variant = variantById.get(selectedDrone.variant_id);
+    const family = variant?.family_id ? familyById.get(variant.family_id) : null;
+    if (family && variant) {
+      setDonePath(`/${family.slug}/${variant.id}`);
+    }
+
     setDone(true);
     setSubmitting(false);
   }
 
   const submitDisabled =
     submitting ||
-    !familyId ||
-    !variantId ||
-    !clientName.trim() ||
-    !serial.trim() ||
+    !droneId ||
     !versionLabel.trim();
 
   return (
@@ -164,97 +223,73 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
             <p className="text-sm text-foreground font-medium">Published to catalog</p>
             <p className="text-xs text-muted-foreground">The version is now visible in the catalog.</p>
             <a
-              href="/"
+              href={donePath ?? "/"}
               className="flex items-center gap-1.5 mt-2 text-xs text-primary hover:underline cursor-pointer"
             >
-              Go to catalog <ExternalLink className="h-3 w-3" />
+              {donePath ? "Open variant" : "Go to catalog"} <ExternalLink className="h-3 w-3" />
             </a>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-5 py-4 overflow-y-auto">
-            <datalist id={CLIENT_DATALIST_ID}>
-              {clientNameSuggestions.map((n) => (
-                <option key={n} value={n} />
-              ))}
-            </datalist>
-
-            {/* Family */}
+            {/* Client */}
             <label className={labelClass}>
-              <span className={labelTextClass}>Family <span className="text-destructive">*</span></span>
+              <span className={labelTextClass}>Client <span className="text-destructive">*</span></span>
               <select
                 required
-                value={familyId}
-                onChange={(e) => { setFamilyId(e.target.value); setVariantId(""); }}
+                value={clientId}
+                onChange={(e) => { setClientId(e.target.value); setDroneId(""); setVersionTouched(false); }}
                 className={selectClass}
+                disabled={!loaded}
               >
-                <option value="">Select family…</option>
-                {families.map((f) => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
+                <option value="">Select client…</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
             </label>
 
-            {/* Variant */}
-            {familyId && (
+            {/* Drone */}
+            {clientId && (
               <label className={labelClass}>
-                <span className={labelTextClass}>Variant <span className="text-destructive">*</span></span>
-                <select
-                  required
-                  value={variantId}
-                  onChange={(e) => setVariantId(e.target.value)}
-                  className={selectClass}
-                >
-                  <option value="">Select variant…</option>
-                  {filteredVariants.map((v) => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
-                  ))}
-                </select>
+                <span className={labelTextClass}>Drone <span className="text-destructive">*</span></span>
+                {dronesForClient.length === 0 ? (
+                  <p className="text-xs text-muted-foreground italic">
+                    No drones registered for this client. Add one in <Link href="/admin/clients" className="text-primary hover:underline" onClick={onClose}>Clients</Link>.
+                  </p>
+                ) : (
+                  <select
+                    required
+                    value={droneId}
+                    onChange={(e) => { setDroneId(e.target.value); setVersionTouched(false); }}
+                    className={selectClass}
+                  >
+                    <option value="">Select drone…</option>
+                    {dronesForClient.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.serial} — {variantLabel(d.variant_id)}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </label>
             )}
 
-            {/* Client */}
-            {variantId && (
+            {/* Version */}
+            {droneId && (
               <label className={labelClass}>
-                <span className={labelTextClass}>Client <span className="text-destructive">*</span></span>
+                <span className={labelTextClass}>Version label <span className="text-destructive">*</span></span>
                 <input
                   required
-                  list={CLIENT_DATALIST_ID}
-                  value={clientName}
-                  onChange={(e) => setClientName(e.target.value)}
-                  placeholder="e.g. Acme Corp"
-                  className={inputClass}
-                />
-              </label>
-            )}
-
-            {/* Serial */}
-            {variantId && (
-              <label className={labelClass}>
-                <span className={labelTextClass}>Serial <span className="text-destructive">*</span></span>
-                <input
-                  required
-                  value={serial}
-                  onChange={(e) => setSerial(e.target.value)}
-                  placeholder="e.g. SN-12345"
+                  value={versionLabel}
+                  onChange={(e) => { setVersionLabel(e.target.value); setVersionTouched(true); }}
+                  placeholder="e.g. 1.0"
                   className={inputClass + " font-mono"}
                 />
+                {versionLabel.trim() && !/^\d+\.\d+$/.test(versionLabel.trim()) && (
+                  <p className="text-xs text-destructive mt-0.5">Must be number.number (e.g. 1.0)</p>
+                )}
               </label>
             )}
-
-            {/* Version label */}
-            <label className={labelClass}>
-              <span className={labelTextClass}>Version label <span className="text-destructive">*</span></span>
-              <input
-                required
-                value={versionLabel}
-                onChange={(e) => setVersionLabel(e.target.value)}
-                placeholder="e.g. 1.0"
-                className={inputClass + " font-mono"}
-              />
-              {versionLabel.trim() && !/^\d+\.\d+$/.test(versionLabel.trim()) && (
-                <p className="text-xs text-destructive mt-0.5">Must be number.number (e.g. 1.0)</p>
-              )}
-            </label>
 
             {error && (
               <p className="text-xs text-destructive bg-destructive/15 border border-destructive/40 rounded-md px-3 py-2">
