@@ -185,7 +185,10 @@ export default async function VariantPage({
 
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-          Client sets{cards.length > 0 ? ` (${cards.length})` : ""}
+          {(() => {
+            const clientCount = cards.filter((c) => !c.isDefault).length;
+            return `Client sets${clientCount > 0 ? ` (${clientCount})` : ""}`;
+          })()}
         </h2>
       </div>
 
