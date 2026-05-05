@@ -6,6 +6,15 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.7.0",
+    date: "2026-05-05",
+    items: [
+      "Creating a family now also creates a 'Base' variant with a 'Default' reference set, so the catalog is never empty after one click.",
+      "Creating a variant now also creates a 'Default' reference set under it.",
+      "Default sets can be renamed — the new name shows on the card. The 'catalog reference' label still marks them, regardless of name.",
+    ],
+  },
+  {
     version: "0.6.0",
     date: "2026-05-04",
     items: [
