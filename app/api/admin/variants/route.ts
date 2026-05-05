@@ -48,5 +48,24 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, id: data.id });
+
+  // Auto-seed a Default client_set under this variant. Non-fatal on failure —
+  // the user can add one manually later.
+  const warnings: string[] = [];
+  const { error: defaultErr } = await admin
+    .from("client_sets")
+    .insert({
+      client_name: "Default",
+      serial: "",
+      variant_id: data.id,
+      is_default: true,
+      client_id: null,
+      drone_id: null,
+      created_by: user.id,
+    });
+  if (defaultErr) {
+    warnings.push(`Variant created, but auto-create Default failed: ${defaultErr.message}`);
+  }
+
+  return NextResponse.json({ ok: true, id: data.id, warnings: warnings.length ? warnings : undefined });
 }

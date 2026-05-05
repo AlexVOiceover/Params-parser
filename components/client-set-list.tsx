@@ -153,7 +153,9 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
     setSaving(true);
     setEditError(null);
     const body: Record<string, string> = { description: editDescription };
-    if (!target.isDefault) {
+    if (target.isDefault) {
+      body.clientName = editClientName;
+    } else {
       body.clientName = editClientName;
       body.serial = editSerial;
     }
@@ -195,7 +197,7 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
           <div className="flex flex-col gap-1 min-w-0">
             <div className="flex items-baseline gap-2 min-w-0 flex-wrap">
               <span className={`font-medium group-hover:text-primary transition-colors truncate ${c.isDefault ? "text-primary text-base" : "text-foreground"}`}>
-                {c.isDefault ? "Default" : c.client_name}
+                {c.client_name}
               </span>
               {!c.isDefault && c.serial && (
                 <span className="font-mono text-xs text-muted-foreground truncate">· {c.serial}</span>
@@ -412,7 +414,18 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
             </div>
 
             <div className="px-5 py-4 flex flex-col gap-3">
-              {!editTarget.isDefault && (
+              {editTarget.isDefault ? (
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">Name <span className="text-destructive">*</span></span>
+                  <input
+                    value={editClientName}
+                    onChange={(e) => setEditClientName(e.target.value)}
+                    disabled={saving}
+                    placeholder="Default"
+                    className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
+                  />
+                </label>
+              ) : (
                 <>
                   <label className="flex flex-col gap-1.5">
                     <span className="text-xs font-medium text-muted-foreground">Client <span className="text-destructive">*</span></span>
@@ -461,7 +474,7 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
               </button>
               <button
                 onClick={handleSave}
-                disabled={saving || (!editTarget.isDefault && (!editClientName.trim() || !editSerial.trim()))}
+                disabled={saving || !editClientName.trim() || (!editTarget.isDefault && !editSerial.trim())}
                 className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
               >
                 <Check className="h-3.5 w-3.5" />

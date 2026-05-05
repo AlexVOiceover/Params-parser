@@ -40,5 +40,33 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 409 });
   }
 
-  return NextResponse.json(data, { status: 201 });
+  // Auto-seed: every new family ships with a "Base" variant and that variant
+  // ships with a "Default" client_set. Failures here are non-fatal — the
+  // family stays, the user can manually add a Base/Default if they need to.
+  const warnings: string[] = [];
+  const { data: variant, error: variantErr } = await admin
+    .from("variants")
+    .insert({ name: "Base", family_id: data.id, created_by: user.id })
+    .select("id")
+    .single();
+  if (variantErr) {
+    warnings.push(`Family created, but auto-create Base variant failed: ${variantErr.message}`);
+  } else {
+    const { error: defaultErr } = await admin
+      .from("client_sets")
+      .insert({
+        client_name: "Default",
+        serial: "",
+        variant_id: variant.id,
+        is_default: true,
+        client_id: null,
+        drone_id: null,
+        created_by: user.id,
+      });
+    if (defaultErr) {
+      warnings.push(`Base variant created, but auto-create Default failed: ${defaultErr.message}`);
+    }
+  }
+
+  return NextResponse.json({ ...data, warnings: warnings.length ? warnings : undefined }, { status: 201 });
 }
