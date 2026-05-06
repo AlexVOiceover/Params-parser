@@ -288,80 +288,6 @@ export function ParamVersionList({
   return (
     <>
       <div className="flex flex-col gap-3">
-        {isAdmin && (
-          <div className="rounded-lg border border-dashed border-border bg-card overflow-hidden">
-            {!uploadOpen ? (
-              <button
-                onClick={openUpload}
-                className="flex w-full items-center gap-2 px-5 py-4 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors cursor-pointer"
-              >
-                <Upload className="h-4 w-4 shrink-0" />
-                Upload new version…
-              </button>
-            ) : (
-              <div className="px-5 py-4 flex flex-col gap-3">
-                <div className="flex items-center gap-3">
-                  <p className="text-xs font-semibold text-foreground">Upload new version</p>
-                  <span className="font-mono text-lg font-bold text-primary leading-none">{uploadVersionLabel}</span>
-                </div>
-
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-xs font-medium text-muted-foreground">Changelog</span>
-                  <textarea
-                    value={uploadChangelog}
-                    onChange={(e) => setUploadChangelog(e.target.value)}
-                    disabled={uploading}
-                    rows={2}
-                    placeholder="Optional"
-                    className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring resize-none disabled:opacity-40"
-                  />
-                </label>
-
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-xs font-medium text-muted-foreground">.param file <span className="text-destructive">*</span></span>
-                  <input
-                    type="file"
-                    accept=".param"
-                    disabled={uploading}
-                    onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-                    className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground file:mr-3 file:rounded file:border-0 file:bg-primary/20 file:px-2 file:py-1 file:text-xs file:text-primary file:cursor-pointer cursor-pointer disabled:opacity-40"
-                  />
-                  {uploadFile && (
-                    <span className="text-xs text-muted-foreground">{uploadFile.name} ({(uploadFile.size / 1024).toFixed(1)} KB)</span>
-                  )}
-                </label>
-
-                {uploadLog.length > 0 && (
-                  <div className="rounded-md border border-border bg-black/30 px-3 py-2 flex flex-col gap-0.5">
-                    {uploadLog.map((entry, i) => (
-                      <p key={i} className={`font-mono text-[11px] leading-relaxed ${entry.error ? "text-destructive" : "text-muted-foreground"}`}>
-                        <span className="text-muted-foreground/50 mr-1.5">›</span>{entry.text}
-                      </p>
-                    ))}
-                    {uploading && (
-                      <p className="font-mono text-[11px] text-muted-foreground/50 animate-pulse">
-                        <span className="mr-1.5">›</span>…
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-end gap-2 pt-1">
-                  <button onClick={() => { setUploadOpen(false); setUploadLog([]); }} disabled={uploading} className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary transition-colors cursor-pointer disabled:opacity-40 whitespace-nowrap">Cancel</button>
-                  <button
-                    onClick={handleUpload}
-                    disabled={uploadDisabled || uploadHasError}
-                    className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
-                  >
-                    <Upload className="h-3.5 w-3.5" />
-                    {uploading ? "Uploading…" : "Upload"}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         {versions.length === 0 && !isAdmin && (
           <div className="rounded-lg border border-border bg-card px-6 py-10 text-center">
             <p className="text-sm text-muted-foreground">No versions uploaded yet.</p>
@@ -435,6 +361,80 @@ export function ParamVersionList({
             )}
           </div>
         ))}
+
+        {isAdmin && (
+          <div className="rounded-lg border border-dashed border-border bg-card overflow-hidden">
+            {!uploadOpen ? (
+              <button
+                onClick={openUpload}
+                className="flex w-full items-center gap-2 px-5 py-4 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors cursor-pointer"
+              >
+                <Upload className="h-4 w-4 shrink-0" />
+                Upload new version…
+              </button>
+            ) : (
+              <div className="px-5 py-4 flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  <p className="text-xs font-semibold text-foreground">Upload new version</p>
+                  <span className="font-mono text-lg font-bold text-primary leading-none">{uploadVersionLabel}</span>
+                </div>
+
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">Changelog</span>
+                  <textarea
+                    value={uploadChangelog}
+                    onChange={(e) => setUploadChangelog(e.target.value)}
+                    disabled={uploading}
+                    rows={2}
+                    placeholder="Optional"
+                    className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring resize-none disabled:opacity-40"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">.param file <span className="text-destructive">*</span></span>
+                  <input
+                    type="file"
+                    accept=".param"
+                    disabled={uploading}
+                    onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+                    className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground file:mr-3 file:rounded file:border-0 file:bg-primary/20 file:px-2 file:py-1 file:text-xs file:text-primary file:cursor-pointer cursor-pointer disabled:opacity-40"
+                  />
+                  {uploadFile && (
+                    <span className="text-xs text-muted-foreground">{uploadFile.name} ({(uploadFile.size / 1024).toFixed(1)} KB)</span>
+                  )}
+                </label>
+
+                {uploadLog.length > 0 && (
+                  <div className="rounded-md border border-border bg-black/30 px-3 py-2 flex flex-col gap-0.5">
+                    {uploadLog.map((entry, i) => (
+                      <p key={i} className={`font-mono text-[11px] leading-relaxed ${entry.error ? "text-destructive" : "text-muted-foreground"}`}>
+                        <span className="text-muted-foreground/50 mr-1.5">›</span>{entry.text}
+                      </p>
+                    ))}
+                    {uploading && (
+                      <p className="font-mono text-[11px] text-muted-foreground/50 animate-pulse">
+                        <span className="mr-1.5">›</span>…
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button onClick={() => { setUploadOpen(false); setUploadLog([]); }} disabled={uploading} className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary transition-colors cursor-pointer disabled:opacity-40 whitespace-nowrap">Cancel</button>
+                  <button
+                    onClick={handleUpload}
+                    disabled={uploadDisabled || uploadHasError}
+                    className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    {uploading ? "Uploading…" : "Upload"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Delete version modal ───────────────────────────── */}
