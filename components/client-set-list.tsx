@@ -41,7 +41,7 @@ function formatDate(iso: string) {
 
 export function ClientSetList({ familySlug, variantId, clientSets, defaultLatestVersionId, isAdmin, canCreate, clients, availableDrones }: Props) {
   const router = useRouter();
-  const [, startTransition] = useTransition();
+  const [isPending, startTransition] = useTransition();
   const match = useConnectedDroneMatch();
   const connectedDroneId = match.status === "matched" ? match.drone?.id ?? null : null;
 
@@ -136,9 +136,12 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
     setDeleteError(null);
     const res = await fetch(`/api/admin/client-sets/${confirmId}`, { method: "DELETE" });
     if (res.ok) {
-      setConfirmId(null);
-      setDeleting(false);
-      startTransition(() => router.refresh());
+      // Keep modal open with spinner until the page refresh settles.
+      startTransition(() => {
+        router.refresh();
+        setConfirmId(null);
+        setDeleting(false);
+      });
     } else {
       const msg = await res.json().then((b) => b?.error).catch(() => null);
       setDeleteError(msg ?? `Delete failed (${res.status})`);
@@ -528,10 +531,13 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
               </button>
               <button
                 onClick={handleDelete}
-                disabled={deleting}
-                className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-white hover:bg-destructive/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                disabled={deleting || isPending}
+                className="flex items-center gap-2 rounded-md bg-destructive px-4 py-2 text-sm font-medium text-white hover:bg-destructive/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
               >
-                {deleting ? "Deleting…" : "Delete"}
+                {(deleting || isPending) && (
+                  <span className="h-3.5 w-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin shrink-0" />
+                )}
+                {deleting ? "Deleting…" : isPending ? "Removing…" : "Delete"}
               </button>
             </div>
           </div>
