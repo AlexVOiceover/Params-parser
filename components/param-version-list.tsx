@@ -65,19 +65,12 @@ async function downloadParamFile(path: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-function nextVersions(versions: ParamVersionRow[]): { major: string; minor: string | null } {
-  const parsed = versions
-    .map((v) => v.version_label.match(/^(\d+)\.(\d+)$/))
-    .filter(Boolean)
-    .map((m) => ({ maj: parseInt(m![1]), min: parseInt(m![2]) }));
-
-  if (parsed.length === 0) return { major: "1.0", minor: null };
-
-  const latest = parsed.reduce((a, b) => (a.maj > b.maj || (a.maj === b.maj && a.min > b.min) ? a : b));
-  return {
-    major: `${latest.maj + 1}.0`,
-    minor: `${latest.maj}.${latest.min + 1}`,
-  };
+function nextVersion(versions: ParamVersionRow[]): string {
+  const nums = versions
+    .map((v) => parseInt(v.version_label, 10))
+    .filter((n) => Number.isFinite(n));
+  if (nums.length === 0) return "1";
+  return String(Math.max(...nums) + 1);
 }
 
 export function ParamVersionList({
@@ -101,7 +94,6 @@ export function ParamVersionList({
 
   // ── Upload state ──────────────────────────────────────────
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [uploadVersionType, setUploadVersionType] = useState<"major" | "minor" | null>(null);
   const [uploadChangelog, setUploadChangelog] = useState("");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -170,11 +162,9 @@ export function ParamVersionList({
       });
   }, [cloneVariantId, cloneId]);
 
-  const { major: nextMajor, minor: nextMinor } = nextVersions(versions);
-  const uploadVersionLabel = uploadVersionType === "major" ? nextMajor : uploadVersionType === "minor" ? nextMinor! : "";
+  const uploadVersionLabel = nextVersion(versions);
 
   function openUpload() {
-    setUploadVersionType(nextMinor ? null : "major");
     setUploadChangelog("");
     setUploadFile(null);
     setUploadLog([]);
@@ -284,7 +274,7 @@ export function ParamVersionList({
     }
   }
 
-  const versionLabelValid = /^\d+\.\d+$/.test(cloneVersionLabel.trim());
+  const versionLabelValid = /^\d+$/.test(cloneVersionLabel.trim());
   const cloneDisabled =
     cloning ||
     !cloneVersionLabel.trim() ||
@@ -292,7 +282,7 @@ export function ParamVersionList({
     !cloneVariantId ||
     (isNewClientSet && (!newClientName.trim() || !newSerial.trim()));
 
-  const uploadDisabled = uploading || !uploadVersionType || !uploadFile;
+  const uploadDisabled = uploading || !uploadFile;
   const uploadHasError = uploadLog.some((l) => l.error);
 
   return (
@@ -310,40 +300,9 @@ export function ParamVersionList({
               </button>
             ) : (
               <div className="px-5 py-4 flex flex-col gap-3">
-                <p className="text-xs font-semibold text-foreground">Upload new version</p>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    disabled={uploading}
-                    onClick={() => setUploadVersionType("major")}
-                    className={`flex flex-col items-start gap-1 rounded-lg border px-4 py-3 text-left transition-colors cursor-pointer disabled:opacity-40 ${
-                      uploadVersionType === "major"
-                        ? "border-primary bg-primary/10"
-                        : "border-border bg-secondary/50 hover:border-primary/40"
-                    }`}
-                  >
-                    <span className="text-xs font-medium text-foreground">New version</span>
-                    <span className="font-mono text-lg font-bold text-foreground leading-none">{nextMajor}</span>
-                    <span className="text-[10px] text-muted-foreground leading-snug">Full config overhaul</span>
-                  </button>
-
-                  {nextMinor && (
-                    <button
-                      type="button"
-                      disabled={uploading}
-                      onClick={() => setUploadVersionType("minor")}
-                      className={`flex flex-col items-start gap-1 rounded-lg border px-4 py-3 text-left transition-colors cursor-pointer disabled:opacity-40 ${
-                        uploadVersionType === "minor"
-                          ? "border-primary bg-primary/10"
-                          : "border-border bg-secondary/50 hover:border-primary/40"
-                      }`}
-                    >
-                      <span className="text-xs font-medium text-foreground">Revision</span>
-                      <span className="font-mono text-lg font-bold text-foreground leading-none">{nextMinor}</span>
-                      <span className="text-[10px] text-muted-foreground leading-snug">Incremental update</span>
-                    </button>
-                  )}
+                <div className="flex items-center gap-3">
+                  <p className="text-xs font-semibold text-foreground">Upload new version</p>
+                  <span className="font-mono text-lg font-bold text-primary leading-none">{uploadVersionLabel}</span>
                 </div>
 
                 <label className="flex flex-col gap-1.5">
@@ -620,11 +579,11 @@ export function ParamVersionList({
                   value={cloneVersionLabel}
                   onChange={(e) => setCloneVersionLabel(e.target.value)}
                   disabled={cloning}
-                  placeholder="e.g. 1.0"
+                  placeholder="e.g. 1"
                   className="rounded-md border border-border bg-secondary px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
                 />
                 {cloneVersionLabel.trim() && !versionLabelValid && (
-                  <p className="text-xs text-destructive mt-0.5">Must be number.number (e.g. 1.0)</p>
+                  <p className="text-xs text-destructive mt-0.5">Must be a whole number (e.g. 1)</p>
                 )}
               </label>
 

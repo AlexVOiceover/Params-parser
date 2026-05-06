@@ -93,16 +93,14 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
     ) ?? null;
   }, [clientSets, selectedDrone]);
 
-  // Compute next major version for the selected drone's existing client_set.
-  const nextMajor = useMemo(() => {
+  // Compute next version for the selected drone's existing client_set.
+  const nextVersion = useMemo(() => {
     if (!existingClientSet) return 1;
     let max = 0;
     for (const v of versions) {
       if (v.client_set_id !== existingClientSet.id) continue;
-      const m = /^(\d+)\.\d+$/.exec(v.version_label);
-      if (!m) continue;
-      const major = parseInt(m[1], 10);
-      if (major > max) max = major;
+      const n = parseInt(v.version_label, 10);
+      if (Number.isFinite(n) && n > max) max = n;
     }
     return max + 1;
   }, [versions, existingClientSet]);
@@ -114,14 +112,14 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
       setVersionLabel("");
       return;
     }
-    setVersionLabel(`${nextMajor}.0`);
-  }, [selectedDrone, nextMajor, versionTouched]);
+    setVersionLabel(String(nextVersion));
+  }, [selectedDrone, nextVersion, versionTouched]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedDrone) return;
-    if (!/^\d+\.\d+$/.test(versionLabel.trim())) {
-      setError("Version must be in format number.number (e.g. 1.0)");
+    if (!/^\d+$/.test(versionLabel.trim())) {
+      setError("Version must be a whole number (e.g. 1)");
       return;
     }
     setSubmitting(true);
@@ -282,11 +280,11 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
                   required
                   value={versionLabel}
                   onChange={(e) => { setVersionLabel(e.target.value); setVersionTouched(true); }}
-                  placeholder="e.g. 1.0"
+                  placeholder="e.g. 1"
                   className={inputClass + " font-mono"}
                 />
-                {versionLabel.trim() && !/^\d+\.\d+$/.test(versionLabel.trim()) && (
-                  <p className="text-xs text-destructive mt-0.5">Must be number.number (e.g. 1.0)</p>
+                {versionLabel.trim() && !/^\d+$/.test(versionLabel.trim()) && (
+                  <p className="text-xs text-destructive mt-0.5">Must be a whole number (e.g. 1)</p>
                 )}
               </label>
             )}

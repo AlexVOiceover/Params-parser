@@ -6,6 +6,15 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.8.0",
+    date: "2026-05-06",
+    items: [
+      "Version labels are now plain integers (1, 2, 3…) — the .0 minor component was never used and has been removed throughout.",
+      "Every uploaded .param file now has SCR_USER2 set to the version number, so drones will self-report their current version when connected.",
+      "Middleware switched to Node.js runtime, fixing slow page loads on WSL.",
+    ],
+  },
+  {
     version: "0.7.0",
     date: "2026-05-05",
     items: [
