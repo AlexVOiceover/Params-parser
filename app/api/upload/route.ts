@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { createSessionClient, createAdminClient } from "@/lib/supabase/server";
-import { parseParamFile } from "@/lib/param-engine";
+import { parseParamFile, writeParamFile } from "@/lib/param-engine";
 
 export async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
@@ -72,8 +72,8 @@ export async function POST(request: NextRequest) {
           controller.close();
           return;
         }
-        if (!/^\d+\.\d+$/.test(versionLabel.trim())) {
-          controller.enqueue(msg("Invalid version format", true));
+        if (!/^\d+$/.test(versionLabel.trim())) {
+          controller.enqueue(msg("Invalid version format — must be a whole number (e.g. 1)", true));
           controller.close();
           return;
         }
@@ -133,12 +133,25 @@ export async function POST(request: NextRequest) {
           clientSetId = newCs.id;
         }
 
-        // 4. Upload file to storage
+        // 4. Parse params and inject SCR_USER2 so the drone can self-report
+        //    its current version after being flashed.
+        const fileText = Buffer.from(fileBuffer).toString("utf-8");
+        const parsedParams = parseParamFile(fileText);
+        const scrUser2Idx = parsedParams.findIndex((p) => p.name === "SCR_USER2");
+        if (scrUser2Idx >= 0) {
+          parsedParams[scrUser2Idx] = { ...parsedParams[scrUser2Idx], value: versionLabel };
+        } else {
+          parsedParams.push({ name: "SCR_USER2", value: versionLabel });
+        }
+        const updatedFileText = writeParamFile(parsedParams);
+        const updatedBuffer = Buffer.from(updatedFileText, "utf-8");
+
+        // 5. Upload (updated) file to storage
         const storagePath = `${clientSetId}/${versionLabel}.param`;
         controller.enqueue(msg(`Uploading to storage (${storagePath})…`));
         const { error: uploadError } = await admin.storage
           .from("param-files")
-          .upload(storagePath, fileBuffer, { contentType: "text/plain", upsert: true });
+          .upload(storagePath, updatedBuffer, { contentType: "text/plain", upsert: true });
 
         if (uploadError) {
           controller.enqueue(msg(`Storage upload failed: ${uploadError.message}`, true));
@@ -147,11 +160,11 @@ export async function POST(request: NextRequest) {
         }
         controller.enqueue(msg("File stored successfully"));
 
-        // 5. Mark previous versions of this client set as not latest
+        // 6. Mark previous versions of this client set as not latest
         controller.enqueue(msg("Updating version history…"));
         await admin.from("param_versions").update({ is_latest: false }).eq("client_set_id", clientSetId!);
 
-        // 6. Insert new version record
+        // 7. Insert new version record
         controller.enqueue(msg(`Creating version record (v${versionLabel})…`));
         const { data: pv, error: pvError } = await admin.from("param_versions").insert({
           client_set_id: clientSetId!,
@@ -168,9 +181,8 @@ export async function POST(request: NextRequest) {
           return;
         }
 
-        // 7. Parse and store param values
-        const fileText = Buffer.from(fileBuffer).toString("utf-8");
-        const paramValues = parseParamFile(fileText).map(({ name, value }) => ({
+        // 8. Store param values (from the updated parsed list)
+        const paramValues = parsedParams.map(({ name, value }) => ({
           param_version_id: pv.id,
           name,
           value,

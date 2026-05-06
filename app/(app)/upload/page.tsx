@@ -53,14 +53,13 @@ export default async function UploadPage() {
         .in("client_set_id", setIds)
     : { data: [] };
 
-  // Largest existing major version per client_set
+  // Largest existing version per client_set (integer labels)
   const maxMajorByClientSet = new Map<string, number>();
   for (const v of versionsData ?? []) {
-    const m = /^(\d+)\.\d+$/.exec(v.version_label);
-    if (!m) continue;
-    const major = parseInt(m[1], 10);
+    const n = parseInt(v.version_label, 10);
+    if (!Number.isFinite(n)) continue;
     const cur = maxMajorByClientSet.get(v.client_set_id) ?? 0;
-    if (major > cur) maxMajorByClientSet.set(v.client_set_id, major);
+    if (n > cur) maxMajorByClientSet.set(v.client_set_id, n);
   }
 
   // Default client_sets keyed by variant_id (one per variant). Used for "Default" upload mode.

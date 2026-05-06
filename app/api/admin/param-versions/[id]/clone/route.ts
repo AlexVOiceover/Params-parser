@@ -26,7 +26,7 @@ export async function POST(
 
   if (!variantId) return NextResponse.json({ error: "variantId required" }, { status: 400 });
   if (!versionLabel?.trim()) return NextResponse.json({ error: "versionLabel required" }, { status: 400 });
-  if (!/^\d+\.\d+$/.test(versionLabel.trim())) return NextResponse.json({ error: "Version label must be in format number.number (e.g. 1.0)" }, { status: 400 });
+  if (!/^\d+$/.test(versionLabel.trim())) return NextResponse.json({ error: "Version label must be a whole number (e.g. 1)" }, { status: 400 });
   if (!clientSetId && (!newClientSet?.clientName?.trim() || !newClientSet?.serial?.trim())) {
     return NextResponse.json({ error: "clientSetId or newClientSet.clientName + serial required" }, { status: 400 });
   }

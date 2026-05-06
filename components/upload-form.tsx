@@ -111,11 +111,11 @@ export function UploadForm({ data, role, userClientId }: Props) {
     if (kind === "default") {
       if (!variantId) { setVersionLabel(""); return; }
       const next = defaultClientSet?.nextMajor ?? 1;
-      setVersionLabel(`${next}.0`);
+      setVersionLabel(String(next));
     } else {
       if (!selectedDrone) { setVersionLabel(""); return; }
       const next = existingClientSet?.nextMajor ?? 1;
-      setVersionLabel(`${next}.0`);
+      setVersionLabel(String(next));
     }
   }, [kind, variantId, defaultClientSet, selectedDrone, existingClientSet, versionTouched]);
 
@@ -145,8 +145,8 @@ export function UploadForm({ data, role, userClientId }: Props) {
     if (!file) return;
     if (kind === "default" && !variantId) return;
     if (kind === "client" && !selectedDrone) return;
-    if (!/^\d+\.\d+$/.test(versionLabel.trim())) {
-      setError("Version must be in format number.number (e.g. 1.0)");
+    if (!/^\d+$/.test(versionLabel.trim())) {
+      setError("Version must be a whole number (e.g. 1)");
       return;
     }
     setSubmitting(true);
@@ -399,11 +399,11 @@ export function UploadForm({ data, role, userClientId }: Props) {
               required
               value={versionLabel}
               onChange={(e) => { setVersionLabel(e.target.value); setVersionTouched(true); }}
-              placeholder="e.g. 1.0"
+              placeholder="e.g. 1"
               className={inputClass + " font-mono"}
             />
-            {versionLabel.trim() && !/^\d+\.\d+$/.test(versionLabel.trim()) && (
-              <p className="text-xs text-destructive mt-0.5">Must be number.number (e.g. 1.0)</p>
+            {versionLabel.trim() && !/^\d+$/.test(versionLabel.trim()) && (
+              <p className="text-xs text-destructive mt-0.5">Must be a whole number (e.g. 1)</p>
             )}
           </label>
         )}
