@@ -8,15 +8,20 @@ import type { CompareVersion, CompareRow, ParamDefinition } from "@/lib/types";
 interface Props {
   versions: CompareVersion[];
   rows: CompareRow[];
-  /** Version id whose column is writable (e.g. the connected drone). */
   writableVersionId?: string;
   writeMode?: boolean;
   pendingEdits?: Map<string, number>;
-  onToggleWriteMode?: () => void;
+  /** Called with the version id to toggle edit mode on that column. */
+  onToggleWriteMode?: (versionId: string) => void;
   onEditParam?: (name: string, value: number) => void;
   onClearEdit?: (name: string) => void;
   onClearAllEdits?: () => void;
+  /** Present only when the writable column is the connected drone. */
   onWriteToDrone?: () => void;
+  /** Present only when the writable column is a catalog version. */
+  onSaveCatalog?: () => void;
+  savingCatalog?: boolean;
+  hasDroneVersion?: boolean;
 }
 
 const PARAM_COL_DEFAULT = 200;
@@ -34,6 +39,9 @@ export function CompareTable({
   onClearEdit,
   onClearAllEdits,
   onWriteToDrone,
+  onSaveCatalog,
+  savingCatalog = false,
+  hasDroneVersion = false,
 }: Props) {
   const [showDiffsOnly, setShowDiffsOnly] = useState(false);
   const [paramDefs, setParamDefs] = useState<Record<string, ParamDefinition> | null>(null);
@@ -223,20 +231,6 @@ export function CompareTable({
             {showDiffsOnly ? "Differences only" : "Show differences only"}
           </button>
         )}
-        {writableVersionId && onToggleWriteMode && (
-          <button
-            onClick={onToggleWriteMode}
-            className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-              writeMode
-                ? "border-amber-500/50 bg-amber-400/10 text-amber-700 dark:border-amber-400/50 dark:text-amber-300"
-                : "border-border text-foreground hover:bg-secondary"
-            }`}
-            title={writeMode ? "Exit write mode" : "Enable write mode (edit drone values)"}
-          >
-            <Pencil className="h-3.5 w-3.5" />
-            {writeMode ? "Editing" : "Write mode"}
-          </button>
-        )}
         {writeMode && pendingEdits && pendingEdits.size > 0 && (
           <>
             <button
@@ -247,13 +241,25 @@ export function CompareTable({
               <RotateCcw className="h-3.5 w-3.5" />
               Discard
             </button>
-            <button
-              onClick={onWriteToDrone}
-              className="flex items-center gap-1.5 rounded-md bg-amber-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600 transition-colors cursor-pointer whitespace-nowrap"
-            >
-              <Upload className="h-3.5 w-3.5" />
-              Write {pendingEdits.size} to drone
-            </button>
+            {onWriteToDrone && (
+              <button
+                onClick={onWriteToDrone}
+                className="flex items-center gap-1.5 rounded-md bg-amber-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Write {pendingEdits.size} to drone
+              </button>
+            )}
+            {onSaveCatalog && (
+              <button
+                onClick={onSaveCatalog}
+                disabled={savingCatalog}
+                className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                {savingCatalog ? "Saving…" : `Save ${pendingEdits.size} change${pendingEdits.size === 1 ? "" : "s"}`}
+              </button>
+            )}
           </>
         )}
       </div>
@@ -287,8 +293,23 @@ export function CompareTable({
                     <span className="opacity-60">/</span>
                     <span className="truncate">{v.variantName}</span>
                   </div>
-                  <div className="flex items-center mt-0.5">
+                  <div className="flex items-center gap-1.5 mt-0.5">
                     <span className="rounded bg-primary/20 border border-primary/40 px-1.5 py-px font-mono text-[10px] font-bold text-primary shrink-0">v{v.label}</span>
+                    {/* Edit button — only for catalog versions, not for the drone column */}
+                    {onToggleWriteMode && v.id !== "live" && (
+                      <button
+                        type="button"
+                        onClick={() => onToggleWriteMode(v.id)}
+                        title={writableVersionId === v.id && writeMode ? "Exit edit mode" : "Edit this version"}
+                        className={`rounded p-0.5 transition-colors cursor-pointer ${
+                          writableVersionId === v.id && writeMode
+                            ? "text-amber-500 hover:text-amber-600"
+                            : "text-muted-foreground/40 hover:text-muted-foreground"
+                        }`}
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                    )}
                   </div>
                   <ResizeHandle colIndex={i + 1} />
                 </th>
