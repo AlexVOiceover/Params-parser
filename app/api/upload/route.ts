@@ -200,8 +200,10 @@ export async function POST(request: NextRequest) {
           return;
         }
 
-        // 8. Store param values (from the updated parsed list)
-        const paramValues = parsedParams.map(({ name, value }) => ({
+        // 8. Store param values — deduplicate by name first (last occurrence wins)
+        //    so .param files with duplicate entries don't create duplicate DB rows.
+        const paramMap = new Map(parsedParams.map(({ name, value }) => [name, value]));
+        const paramValues = Array.from(paramMap.entries()).map(([name, value]) => ({
           param_version_id: pv.id,
           name,
           value,
