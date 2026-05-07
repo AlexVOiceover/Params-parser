@@ -105,8 +105,17 @@ export async function POST(
   }
 
   if (allParamValues.length) {
+    // Update SCR_USER2 to the new version label so the clone self-identifies
+    // correctly when flashed to a drone.
+    const newVersionInt = parseInt(versionLabel.trim(), 10);
     await admin.from("param_values").insert(
-      allParamValues.map((pv) => ({ param_version_id: newVersion.id, name: pv.name, value: pv.value }))
+      allParamValues.map((pv) => ({
+        param_version_id: newVersion.id,
+        name: pv.name,
+        value: pv.name === "SCR_USER2" && Number.isFinite(newVersionInt)
+          ? String(newVersionInt)
+          : pv.value,
+      }))
     );
   }
 
