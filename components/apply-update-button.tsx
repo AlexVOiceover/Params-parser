@@ -46,6 +46,8 @@ export function ApplyUpdateButton({ versionId, className, label = "Apply update"
   const [loading, setLoading] = useState(false);
   const [changes, setChanges] = useState<WriteChange[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Store the full target params so we can update droneParams fully on success.
+  const [targetParams, setTargetParams] = useState<Map<string, number>>(new Map());
 
   async function handleClick() {
     if (!droneParams || droneParams.length === 0) {
@@ -93,15 +95,18 @@ export function ApplyUpdateButton({ versionId, className, label = "Apply update"
     }
 
     setLoading(false);
+    setTargetParams(target);
     setChanges(diff);
   }
 
-  function handleSuccess(written: ParamWriteResult[]) {
+  function handleSuccess(_written: ParamWriteResult[]) {
     if (!droneParams) return;
-    const writtenMap = new Map(written.map((r) => [r.name, r.actual ?? r.requested]));
+    // Update droneParams to match the full target state so the match hook
+    // re-evaluates to up_to_date. Don't rely only on written[] because
+    // some writes may not be acknowledged even when successful.
     const updated = droneParams.map((p) => {
-      const v = writtenMap.get(p.name);
-      return v !== undefined ? { ...p, value: String(v) } : p;
+      const targetVal = targetParams.get(p.name);
+      return targetVal !== undefined ? { ...p, value: String(targetVal) } : p;
     });
     setDroneParams(updated);
     setChanges(null);
