@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Usb, X, Trash2, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { Usb, X, Trash2, CheckCircle, AlertCircle, AlertTriangle, Loader2 } from "lucide-react";
 import { openDroneConnection } from "@/lib/mavlink-serial";
 import { getStoredDroneParamsCount } from "@/lib/drone-params-context";
 import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
@@ -211,6 +211,24 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
                           </>
                         )}
                       </dl>
+                      {match.versionStatus === "up_to_date" && match.droneVersion !== null && (
+                        <p className="flex items-center gap-1.5 text-xs text-emerald-400">
+                          <CheckCircle className="h-3 w-3 shrink-0" />
+                          Version {match.droneVersion} — up to date
+                        </p>
+                      )}
+                      {match.versionStatus === "update_available" && (
+                        <p className="flex items-center gap-1.5 text-xs text-amber-400 bg-amber-400/10 border border-amber-400/30 rounded px-2 py-1">
+                          <AlertTriangle className="h-3 w-3 shrink-0" />
+                          Update available — catalog is v{match.catalogVersion}, drone has v{match.droneVersion}
+                        </p>
+                      )}
+                      {match.versionStatus === "drone_ahead" && (
+                        <p className="flex items-center gap-1.5 text-xs text-sky-400 bg-sky-400/10 border border-sky-400/30 rounded px-2 py-1">
+                          <AlertCircle className="h-3 w-3 shrink-0" />
+                          Drone has v{match.droneVersion}, catalog latest is v{match.catalogVersion}
+                        </p>
+                      )}
                     </>
                   )}
                   {match.status === "unmatched" && (
