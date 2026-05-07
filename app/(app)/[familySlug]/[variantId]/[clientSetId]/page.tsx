@@ -52,11 +52,54 @@ async function getData(familySlug: string, variantId: string, clientSetId: strin
     };
   }
 
+  // Compute diff-vs-previous-version for each version.
+  const versionList = (versions as ParamVersion[]) ?? [];
+  const diffVsPrev = new Map<string, number>();
+
+  if (versionList.length > 1) {
+    const versionIds = versionList.map((v) => v.id);
+    const PAGE_SIZE = 1000;
+    const allParamValues: { param_version_id: string; name: string; value: string }[] = [];
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data: page } = await supabase
+        .from("param_values")
+        .select("param_version_id, name, value")
+        .in("param_version_id", versionIds)
+        .range(from, from + PAGE_SIZE - 1);
+      if (!page || page.length === 0) break;
+      allParamValues.push(...page);
+      if (page.length < PAGE_SIZE) break;
+    }
+
+    // Pivot: versionId → paramName → value
+    const byVersion = new Map<string, Map<string, string>>();
+    for (const { param_version_id, name, value } of allParamValues) {
+      if (!byVersion.has(param_version_id)) byVersion.set(param_version_id, new Map());
+      byVersion.get(param_version_id)!.set(name, value);
+    }
+
+    // Sort oldest first, diff each against its predecessor
+    const sorted = [...versionList].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = byVersion.get(sorted[i - 1].id) ?? new Map<string, string>();
+      const curr = byVersion.get(sorted[i].id) ?? new Map<string, string>();
+      const allNames = new Set([...prev.keys(), ...curr.keys()]);
+      let diff = 0;
+      for (const name of allNames) {
+        if (prev.get(name) !== curr.get(name)) diff++;
+      }
+      diffVsPrev.set(sorted[i].id, diff);
+    }
+  }
+
   return {
     family: family as Family | null,
     variant: variant as Variant | null,
     clientSet: resolvedClientSet,
-    versions: (versions as ParamVersion[]) ?? [],
+    versions: versionList,
+    diffVsPrev: Object.fromEntries(diffVsPrev),
   };
 }
 
@@ -77,7 +120,7 @@ export default async function ClientSetPage({
 }) {
   const { familySlug, variantId, clientSetId } = await params;
   const isAdmin = await getIsAdmin();
-  const { family, variant, clientSet, versions } = await getData(familySlug, variantId, clientSetId);
+  const { family, variant, clientSet, versions, diffVsPrev } = await getData(familySlug, variantId, clientSetId);
 
   if (!family || !variant || !clientSet) notFound();
 
@@ -123,6 +166,7 @@ export default async function ClientSetPage({
         isAdmin={isAdmin}
         isDefault={clientSet?.is_default ?? false}
         droneId={(clientSet as ClientSet & { drone_id: string | null })?.drone_id ?? null}
+        diffVsPrev={diffVsPrev}
         familyName={family.name}
         variantName={variant.name}
         clientSetName={clientSet.serial ? `${clientSet.client_name} · ${clientSet.serial}` : clientSet.client_name}

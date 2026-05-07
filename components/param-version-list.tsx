@@ -43,6 +43,8 @@ interface Props {
   isDefault: boolean;
   /** FK drone_id on this client_set — used to match against the connected drone. */
   droneId: string | null;
+  /** Diff count vs the previous version (oldest-first ordering). Key = version id. */
+  diffVsPrev?: Record<string, number>;
   familyName: string;
   variantName: string;
   clientSetName: string;
@@ -88,6 +90,7 @@ export function ParamVersionList({
   isAdmin,
   isDefault,
   droneId,
+  diffVsPrev,
   familyName,
   variantName,
   clientSetName,
@@ -337,6 +340,14 @@ export function ParamVersionList({
                     </span>
                   )}
                   <span className="text-xs text-muted-foreground">{formatDate(v.created_at)}</span>
+                  {diffVsPrev && diffVsPrev[v.id] !== undefined && (
+                    <span className="text-[10px] text-muted-foreground">
+                      <span className={diffVsPrev[v.id] > 0 ? "font-semibold text-amber-600 dark:text-amber-400" : "text-muted-foreground"}>
+                        {diffVsPrev[v.id]}
+                      </span>
+                      {" param"}{diffVsPrev[v.id] !== 1 ? "s" : ""} changed
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   {hasUpdate && v.is_latest && droneVersion !== null && (
