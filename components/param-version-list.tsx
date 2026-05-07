@@ -424,7 +424,7 @@ export function ParamVersionList({
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-1.5 shrink-0">
                   {hasUpdate && v.is_latest && droneVersion !== null && (
                     <Link
                       href={`/compare?v=${v.id}`}
@@ -435,27 +435,30 @@ export function ParamVersionList({
                       Apply update
                     </Link>
                   )}
+                  {/* Icon-only secondary actions */}
                   <Link
                     href={`/compare?v=${v.id}`}
-                    className="flex items-center gap-1.5 rounded-md bg-secondary border border-border hover:bg-secondary/80 px-3 py-1.5 text-xs font-medium text-foreground transition-colors cursor-pointer whitespace-nowrap"
+                    title="View in Compare"
+                    className="rounded-md border border-border bg-secondary hover:bg-secondary/80 p-1.5 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                   >
                     <Eye className="h-3.5 w-3.5" />
-                    View
                   </Link>
                   <Link
                     href={`/filter?load=${encodeURIComponent(storageUrl(v.storage_path))}&family=${encodeURIComponent(familyName)}&variant=${encodeURIComponent(variantName)}&client=${encodeURIComponent(clientSetName)}&version=${encodeURIComponent(v.version_label)}`}
-                    className="flex items-center gap-1.5 rounded-md bg-secondary border border-border hover:bg-secondary/80 px-3 py-1.5 text-xs font-medium text-foreground transition-colors cursor-pointer whitespace-nowrap"
+                    title="Open in Filter"
+                    className="rounded-md border border-border bg-secondary hover:bg-secondary/80 p-1.5 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                   >
                     <Filter className="h-3.5 w-3.5" />
-                    Open in Filter
                   </Link>
+                  {/* Primary action with text */}
                   <button
                     type="button"
+                    title="Download .param file"
                     onClick={() => downloadParamFile(v.storage_path, `${clientSetName}-v${v.version_label}.param`.replace(/\s+/g, "_"))}
-                    className="flex items-center gap-1.5 rounded-md bg-primary/15 border border-primary/30 hover:bg-primary/25 px-3 py-1.5 text-xs font-medium text-primary transition-colors cursor-pointer whitespace-nowrap"
+                    className="flex items-center gap-1.5 rounded-md bg-primary/15 border border-primary/30 hover:bg-primary/25 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors cursor-pointer whitespace-nowrap"
                   >
                     <Download className="h-3.5 w-3.5" />
-                    Download .param
+                    Download
                   </button>
                 </div>
               </div>
