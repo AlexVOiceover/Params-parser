@@ -4,9 +4,6 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Trash2, Plus, X, Pencil } from "lucide-react";
-import { ConnectedDroneCard } from "@/components/connected-drone-card";
-import { DroneIdentityCard } from "@/components/drone-identity-card";
-import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
 
 interface FamilyRow {
   id: string;
@@ -28,8 +25,7 @@ function toSlug(name: string): string {
 export function FamilyGrid({ families, isAdmin }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  const match = useConnectedDroneMatch();
-  const droneIdentified = match.status === "matched" && match.drone !== null;
+
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
@@ -101,7 +97,6 @@ export function FamilyGrid({ families, isAdmin }: Props) {
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {droneIdentified ? <DroneIdentityCard /> : <ConnectedDroneCard />}
       {families.map((f) =>
         editingId === f.id ? (
           <form
