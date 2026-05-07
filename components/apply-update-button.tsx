@@ -46,6 +46,7 @@ export function ApplyUpdateButton({ versionId, className, label = "Apply update"
   const [loading, setLoading] = useState(false);
   const [changes, setChanges] = useState<WriteChange[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [updated, setUpdated] = useState(false);
   // Store the full target params so we can update droneParams fully on success.
   const [targetParams, setTargetParams] = useState<Map<string, number>>(new Map());
 
@@ -110,9 +111,14 @@ export function ApplyUpdateButton({ versionId, className, label = "Apply update"
     });
     setDroneParams(updated);
     setChanges(null);
+    setUpdated(true);
     clearDroneMatchCache();
     startTransition(() => router.refresh());
   }
+
+  // Hide immediately after a successful update — don't wait for the async
+  // hook re-fetch to settle.
+  if (updated) return null;
 
   return (
     <>

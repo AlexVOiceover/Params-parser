@@ -39,10 +39,19 @@ export async function PATCH(
     .single();
   if (!version) return NextResponse.json({ error: "Version not found" }, { status: 404 });
 
+  // Always inject SCR_USER2 = version_label so drones self-report correctly
+  // after being flashed. The user's edits override this if they explicitly
+  // changed SCR_USER2, otherwise we ensure it matches the version number.
+  const editsWithVersion = { ...body.edits };
+  if (!("SCR_USER2" in editsWithVersion)) {
+    const versionInt = parseInt(version.version_label, 10);
+    if (Number.isFinite(versionInt)) editsWithVersion["SCR_USER2"] = versionInt;
+  }
+
   // Apply edits — param_values has a composite PK (param_version_id, name),
   // no surrogate id column. Use upsert so existing rows are updated and
   // missing ones are created.
-  const upsertRows = Object.entries(body.edits).map(([name, value]) => ({
+  const upsertRows = Object.entries(editsWithVersion).map(([name, value]) => ({
     param_version_id: id,
     name,
     value: String(value),
