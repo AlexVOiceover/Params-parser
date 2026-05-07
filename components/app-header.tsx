@@ -7,6 +7,7 @@ import {
   Settings,
   Building2,
   Usb,
+  Eye,
   User as UserIcon,
   LogOut,
   LogIn,
@@ -73,20 +74,31 @@ export function AppHeader() {
       <div className="flex-1" />
 
       {hasWebSerial && (
-        <button
-          onClick={openImportDialog}
-          title="Import from drone"
-          aria-label="Import from drone"
-          className={`flex items-center gap-1.5 rounded-md border px-2 sm:px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-            hasParams
-              ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/25"
-              : "border-border text-foreground hover:bg-secondary"
-          }`}
-        >
-          <Usb className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">{hasParams ? `Drone (${droneParams.length} params)` : "Import from drone"}</span>
-          {hasParams && <span className="sm:hidden">{droneParams.length}</span>}
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={openImportDialog}
+            title="Import from drone"
+            aria-label="Import from drone"
+            className={`flex items-center gap-1.5 rounded-md border px-2 sm:px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              hasParams
+                ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/25"
+                : "border-border text-foreground hover:bg-secondary"
+            }`}
+          >
+            <Usb className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{hasParams ? `Drone (${droneParams.length} params)` : "Import from drone"}</span>
+            {hasParams && <span className="sm:hidden">{droneParams.length}</span>}
+          </button>
+          {hasParams && (
+            <Link
+              href="/compare?v=__drone__"
+              title="View drone params"
+              className="rounded-md border border-emerald-500/50 bg-emerald-500/15 hover:bg-emerald-500/25 p-1.5 text-emerald-700 dark:text-emerald-300 transition-colors cursor-pointer"
+            >
+              <Eye className="h-3.5 w-3.5" />
+            </Link>
+          )}
+        </div>
       )}
 
       <div className="w-px h-4 bg-border shrink-0 ml-1 hidden sm:block" />
