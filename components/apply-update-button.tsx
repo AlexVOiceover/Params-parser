@@ -7,6 +7,25 @@ import { useDroneParams } from "@/lib/drone-params-context";
 import { WriteDroneDialog, type WriteChange } from "@/components/write-drone-dialog";
 import type { ParamWriteResult } from "@/lib/mavlink-serial";
 
+// ArduPilot runtime/read-only params that change automatically and must
+// never be written back to a drone during a param update.
+const RUNTIME_PARAMS = new Set([
+  "STAT_BOOTCNT",
+  "STAT_FLTTIME",
+  "STAT_RUNTIME",
+  "STAT_RESET",
+  "SYS_NUM_RESETS",
+  "BATT_AMP_TOTAL",
+  "BATT2_AMP_TOTAL",
+  "INS_ACC_ID",
+  "INS_ACC2_ID",
+  "INS_ACC3_ID",
+  "INS_GYR_ID",
+  "INS_GYR2_ID",
+  "INS_GYR3_ID",
+  "INS_GYR_CAL",
+]);
+
 interface Props {
   /** The param_version id to apply. */
   versionId: string;
@@ -51,10 +70,12 @@ export function ApplyUpdateButton({ versionId, className, label = "Apply update"
 
     if (target.size === 0) { setError("Target version has no params."); setLoading(false); return; }
 
-    // Diff: only params that differ between drone and target
+    // Diff: only params that differ between drone and target,
+    // excluding runtime/read-only params that change automatically.
     const droneMap = new Map(droneParams.map((p) => [p.name, parseFloat(p.value)]));
     const diff: WriteChange[] = [];
     for (const [name, targetVal] of target.entries()) {
+      if (RUNTIME_PARAMS.has(name)) continue;
       const droneVal = droneMap.get(name);
       if (droneVal === undefined || droneVal !== targetVal) {
         diff.push({ name, value: targetVal });
