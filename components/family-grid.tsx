@@ -3,8 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Trash2, Plus, X, Pencil, Usb } from "lucide-react";
+import { Trash2, Plus, X, Pencil } from "lucide-react";
 import { ConnectedDroneCard } from "@/components/connected-drone-card";
+import { DroneIdentityCard } from "@/components/drone-identity-card";
 import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
 
 interface FamilyRow {
@@ -28,8 +29,7 @@ export function FamilyGrid({ families, isAdmin }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const match = useConnectedDroneMatch();
-  const connectedFamilySlug = match.status === "matched" ? match.drone?.family_slug ?? null : null;
-  const updateAvailableForFamily = connectedFamilySlug !== null && match.versionStatus === "update_available";
+  const droneIdentified = match.status === "matched" && match.drone !== null;
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
@@ -101,7 +101,7 @@ export function FamilyGrid({ families, isAdmin }: Props) {
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      <ConnectedDroneCard />
+      {droneIdentified ? <DroneIdentityCard /> : <ConnectedDroneCard />}
       {families.map((f) =>
         editingId === f.id ? (
           <form
@@ -141,27 +141,12 @@ export function FamilyGrid({ families, isAdmin }: Props) {
           <div key={f.id} className="relative group/card flex flex-col gap-1">
             <Link
               href={`/${f.slug}`}
-              className={`flex flex-col gap-2 rounded-lg border bg-card p-5 hover:border-primary/50 hover:bg-card/80 transition-colors cursor-pointer ${
-                connectedFamilySlug === f.slug
-                  ? "border-emerald-500/60 bg-emerald-500/10 ring-1 ring-emerald-500/40"
-                  : "border-border"
-              }${isAdmin ? " pr-10" : ""}`}
+              className={`flex flex-col gap-2 rounded-lg border border-border bg-card p-5 hover:border-primary/50 hover:bg-card/80 transition-colors cursor-pointer${isAdmin ? " pr-10" : ""}`}
             >
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-semibold text-foreground group-hover/card:text-primary transition-colors">
                   {f.name}
                 </span>
-                {connectedFamilySlug === f.slug && (
-                  <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 leading-none whitespace-nowrap">
-                    <Usb className="h-2.5 w-2.5" />
-                    your drone
-                  </span>
-                )}
-                {connectedFamilySlug === f.slug && updateAvailableForFamily && (
-                  <span className="flex items-center gap-1 animate-pulse rounded-full bg-amber-500/15 border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400 leading-none whitespace-nowrap">
-                    Update available
-                  </span>
-                )}
               </div>
               {f.description && (
                 <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
