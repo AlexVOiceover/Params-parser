@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Usb, ArrowRight } from "lucide-react";
+import { Usb } from "lucide-react";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
+import { ApplyUpdateButton } from "@/components/apply-update-button";
 
 /**
  * Compact status strip shown above the catalog when a drone is connected.
@@ -44,14 +45,15 @@ export function DroneStatusBanner() {
           {versionStatus === "up_to_date" && droneVersion !== null && (
             <span className="text-xs text-emerald-600 dark:text-emerald-400">v{droneVersion} — up to date</span>
           )}
-          {versionStatus === "update_available" && droneVersion !== null && catalogVersion !== null && drone.family_slug && (
-            <Link
-              href={`/${drone.family_slug}/${drone.variant_id}`}
-              className="flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline"
-            >
-              Update available: v{droneVersion} → v{catalogVersion}
-              <ArrowRight className="h-3 w-3" />
-            </Link>
+          {versionStatus === "update_available" && droneVersion !== null && catalogVersion !== null && drone.latest_version_id && (
+            <>
+              <span className="text-xs text-amber-600 dark:text-amber-400">v{droneVersion} → v{catalogVersion}</span>
+              <ApplyUpdateButton
+                versionId={drone.latest_version_id}
+                label="Apply update"
+                className="flex items-center gap-1.5 rounded-md bg-amber-500 hover:bg-amber-600 px-2.5 py-1 text-xs font-medium text-white transition-colors cursor-pointer whitespace-nowrap"
+              />
+            </>
           )}
           {versionStatus === "drone_ahead" && droneVersion !== null && catalogVersion !== null && (
             <span className="text-xs text-sky-600 dark:text-sky-400">

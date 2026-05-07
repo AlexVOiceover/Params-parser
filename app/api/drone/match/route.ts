@@ -64,16 +64,18 @@ export async function GET(request: NextRequest) {
   }
 
   let catalogVersion: number | null = null;
+  let latestVersionId: string | null = null;
   if (clientSet) {
     const { data: latestVersion } = await supabase
       .from("param_versions")
-      .select("version_label")
+      .select("id, version_label")
       .eq("client_set_id", clientSet.id)
       .eq("is_latest", true)
       .maybeSingle();
     if (latestVersion) {
       const n = parseInt(latestVersion.version_label, 10);
       if (Number.isFinite(n)) catalogVersion = n;
+      latestVersionId = latestVersion.id;
     }
   }
 
@@ -88,6 +90,7 @@ export async function GET(request: NextRequest) {
       family_name: familyName,
       variant_name: variant?.name ?? null,
       catalog_version: catalogVersion,
+      latest_version_id: latestVersionId,
       drone_version: droneVersionOut,
     },
   });

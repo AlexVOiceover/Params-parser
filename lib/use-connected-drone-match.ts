@@ -13,6 +13,7 @@ export interface MatchedDrone {
   family_name: string | null;
   variant_name: string | null;
   catalog_version: number | null;
+  latest_version_id: string | null;
   drone_version: number | null;
 }
 
