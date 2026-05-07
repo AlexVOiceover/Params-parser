@@ -99,6 +99,7 @@ export function ParamVersionList({
 
   // ── Upload state ──────────────────────────────────────────
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadSource, setUploadSource] = useState<"file" | "drone">("file");
   const [uploadChangelog, setUploadChangelog] = useState("");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -172,13 +173,19 @@ export function ParamVersionList({
   function openUpload() {
     setUploadChangelog("");
     setUploadFile(null);
+    setUploadSource("file");
     setUploadLog([]);
     setUploadOpen(true);
   }
 
-
   async function handleUpload() {
-    if (!uploadFile || !uploadVersionLabel) return;
+    let file = uploadFile;
+    if (uploadSource === "drone") {
+      if (!droneParams || droneParams.length === 0) return;
+      const content = writeParamFile(droneParams.map((p) => ({ name: p.name, value: p.value })));
+      file = new File([content], `${clientSetName.replace(/\s+/g, "_")}_from_drone.param`, { type: "text/plain" });
+    }
+    if (!file || !uploadVersionLabel) return;
     setUploading(true);
     setUploadLog([]);
 
@@ -186,7 +193,7 @@ export function ParamVersionList({
     fd.set("clientSetId", clientSetId);
     fd.set("versionLabel", uploadVersionLabel);
     if (uploadChangelog) fd.set("changelog", uploadChangelog);
-    fd.set("file", uploadFile);
+    fd.set("file", file);
 
     const res = await fetch("/api/upload", { method: "POST", body: fd });
     const reader = res.body?.getReader();
@@ -288,7 +295,7 @@ export function ParamVersionList({
     !cloneVariantId ||
     (isNewClientSet && (!newClientName.trim() || !newSerial.trim()));
 
-  const uploadDisabled = uploading || !uploadFile;
+  const uploadDisabled = uploading || (uploadSource === "file" ? !uploadFile : !droneParams?.length);
   const uploadHasError = uploadLog.some((l) => l.error);
 
   return (
@@ -397,33 +404,65 @@ export function ParamVersionList({
                   />
                 </label>
 
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted-foreground">.param file <span className="text-destructive">*</span></span>
-                    {isDefault && droneParams && droneParams.length > 0 && !uploading && (
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Source <span className="text-destructive">*</span>
+                  </span>
+
+                  {/* Source toggle — only shown when a drone is connected on a Default */}
+                  {isDefault && droneParams && droneParams.length > 0 && (
+                    <div className="grid grid-cols-2 gap-1.5">
                       <button
                         type="button"
-                        onClick={() => {
-                          const content = writeParamFile(droneParams.map((p) => ({ name: p.name, value: p.value })));
-                          const filename = `${clientSetName.replace(/\s+/g, "_")}_from_drone.param`;
-                          setUploadFile(new File([content], filename, { type: "text/plain" }));
-                        }}
-                        className="flex items-center gap-1 text-[10px] text-primary hover:underline cursor-pointer"
+                        disabled={uploading}
+                        onClick={() => setUploadSource("file")}
+                        className={`flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs transition-colors cursor-pointer disabled:opacity-40 ${
+                          uploadSource === "file"
+                            ? "border-primary bg-primary/10 text-primary font-medium"
+                            : "border-border bg-secondary text-muted-foreground hover:text-foreground"
+                        }`}
                       >
-                        <Usb className="h-3 w-3" />
-                        Use connected drone
+                        <Upload className="h-3.5 w-3.5 shrink-0" />
+                        From file
                       </button>
-                    )}
-                  </div>
-                  <input
-                    type="file"
-                    accept=".param"
-                    disabled={uploading}
-                    onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-                    className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground file:mr-3 file:rounded file:border-0 file:bg-primary/20 file:px-2 file:py-1 file:text-xs file:text-primary file:cursor-pointer cursor-pointer disabled:opacity-40"
-                  />
-                  {uploadFile && (
-                    <span className="text-xs text-muted-foreground">{uploadFile.name} ({(uploadFile.size / 1024).toFixed(1)} KB)</span>
+                      <button
+                        type="button"
+                        disabled={uploading}
+                        onClick={() => setUploadSource("drone")}
+                        className={`flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs transition-colors cursor-pointer disabled:opacity-40 ${
+                          uploadSource === "drone"
+                            ? "border-primary bg-primary/10 text-primary font-medium"
+                            : "border-border bg-secondary text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <Usb className="h-3.5 w-3.5 shrink-0" />
+                        From drone
+                      </button>
+                    </div>
+                  )}
+
+                  {/* File picker — only when source is file */}
+                  {uploadSource === "file" && (
+                    <div className="flex flex-col gap-1">
+                      <input
+                        type="file"
+                        accept=".param"
+                        disabled={uploading}
+                        onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+                        className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground file:mr-3 file:rounded file:border-0 file:bg-primary/20 file:px-2 file:py-1 file:text-xs file:text-primary file:cursor-pointer cursor-pointer disabled:opacity-40"
+                      />
+                      {uploadFile && (
+                        <span className="text-xs text-muted-foreground">{uploadFile.name} ({(uploadFile.size / 1024).toFixed(1)} KB)</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Drone source confirmation */}
+                  {uploadSource === "drone" && droneParams && (
+                    <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
+                      <Usb className="h-3.5 w-3.5 text-primary shrink-0" />
+                      <span className="text-xs text-foreground">{droneParams.length} params from connected drone</span>
+                    </div>
                   )}
                 </div>
 
