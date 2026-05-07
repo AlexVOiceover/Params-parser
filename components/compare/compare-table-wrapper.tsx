@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { useDroneParams, DRONE_VERSION_ID } from "@/lib/drone-params-context";
 import { CompareTable } from "@/components/compare/compare-table";
 import { WriteDroneDialog, type WriteChange } from "@/components/write-drone-dialog";
@@ -14,6 +15,8 @@ interface Props {
 }
 
 export function CompareTableWrapper({ versions, rows, hasDroneVersion }: Props) {
+  const router = useRouter();
+  const [, startTransition] = useTransition();
   const { droneParams, setDroneParams } = useDroneParams();
   const [writeMode, setWriteMode] = useState(false);
   const [pendingEdits, setPendingEdits] = useState<Map<string, number>>(new Map());
@@ -132,6 +135,7 @@ export function CompareTableWrapper({ versions, rows, hasDroneVersion }: Props) 
       setPendingEdits(new Map());
       setWriteMode(false);
       setWritableVersionId(undefined);
+      startTransition(() => router.refresh());
     } else {
       const body = await res.json().catch(() => ({}));
       setSaveError(body?.error ?? "Save failed");
