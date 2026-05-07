@@ -237,7 +237,7 @@ export function ParamVersionList({
     setCloneFamilyId(familyId);
     setCloneVariantId(variantId);
     setCloneClientSetId(clientSetId);
-    setCloneVersionLabel(v.version_label);
+    setCloneVersionLabel(nextVersion(versions));
     setCloneChangelog(v.changelog ?? "");
     setNewClientName("");
     setNewSerial("");
