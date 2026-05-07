@@ -83,6 +83,12 @@ export function useConnectedDroneMatch(): DroneMatchResult {
     if (lastKeyRef.current === cacheKey) return;
     lastKeyRef.current = cacheKey;
 
+    // When the key changes (e.g. after SCR_USER2 is written), always
+    // clear the old cache entry so we re-fetch with the new version value.
+    if (lastKeyRef.current !== null && lastKeyRef.current !== cacheKey) {
+      cache.delete(lastKeyRef.current);
+    }
+
     if (cache.has(cacheKey)) {
       const cached = cache.get(cacheKey) ?? null;
       setResult({
