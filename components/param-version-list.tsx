@@ -3,7 +3,7 @@
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Filter, Download, Trash2, Copy, X, AlertTriangle, Upload, Eye, Usb, ArrowUpCircle, GitCompareArrows, CheckSquare } from "lucide-react";
+import { Filter, Download, Trash2, Copy, X, AlertTriangle, Upload, Eye, Usb, ArrowUpCircle, GitCompareArrows, CheckSquare, Square } from "lucide-react";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
 import { writeParamFile } from "@/lib/param-engine";
@@ -392,7 +392,9 @@ export function ParamVersionList({
                 }`}
                 aria-label={compareSelected.has(v.id) ? "Deselect" : "Select for compare"}
               >
-                <CheckSquare className="h-4 w-4" />
+                {compareSelected.has(v.id)
+                  ? <CheckSquare className="h-4 w-4" />
+                  : <Square className="h-4 w-4" />}
               </button>
             )}
             <div className={`flex-1 rounded-lg border border-border bg-card px-5 py-4${isAdmin ? " pr-20" : ""}${compareMode && compareSelected.has(v.id) ? " border-primary/50 bg-primary/5" : ""}`}>
