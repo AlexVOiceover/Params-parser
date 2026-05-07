@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Columns2, Filter, Upload } from "lucide-react";
 import { createSessionClient } from "@/lib/supabase/server";
 import { FamilyGrid } from "@/components/family-grid";
+import { DroneStatusBanner } from "@/components/drone-status-banner";
 
 export const dynamic = "force-dynamic";
 
@@ -111,6 +112,7 @@ export default async function CatalogPage() {
           )}
         </div>
       </div>
+      <DroneStatusBanner />
       {families.length === 0 && !isAdmin ? (
         <p className="text-sm text-muted-foreground">No families found.</p>
       ) : (
