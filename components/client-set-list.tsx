@@ -222,7 +222,7 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
               : c.isDefault
               ? "border-primary/40 bg-primary/5"
               : "border-border"
-          }${isAdmin ? " pr-28" : showCompare || hasUpdate ? " pr-14" : ""}`}
+          }${isAdmin ? " pr-28" : showCompare ? " pr-14" : ""}`}
         >
           <div className="flex flex-col gap-1 min-w-0">
             <div className="flex items-baseline gap-2 min-w-0 flex-wrap">
@@ -276,17 +276,6 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
             )}
           </div>
         </Link>
-
-        {/* Apply update button — sits outside the Link so the click doesn't navigate */}
-        {hasUpdate && c.latestVersionId && (
-          <Link
-            href={`/compare?v=${c.latestVersionId}`}
-            onClick={(e) => e.stopPropagation()}
-            className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-md bg-amber-500 hover:bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors cursor-pointer whitespace-nowrap"
-          >
-            Apply update
-          </Link>
-        )}
 
         {showCompare && (
           <Link

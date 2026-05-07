@@ -336,14 +336,19 @@ export function ParamVersionList({
                       on drone
                     </span>
                   )}
-                  {hasUpdate && v.is_latest && (
-                    <span className="animate-pulse rounded-full bg-amber-500/15 border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400 leading-none whitespace-nowrap">
-                      Update available
-                    </span>
-                  )}
                   <span className="text-xs text-muted-foreground">{formatDate(v.created_at)}</span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  {hasUpdate && v.is_latest && droneVersion !== null && (
+                    <Link
+                      href={`/compare?v=${v.id}`}
+                      className="flex items-center gap-1.5 rounded-md bg-amber-500 hover:bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors cursor-pointer whitespace-nowrap"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <ArrowUpCircle className="h-3.5 w-3.5" />
+                      Apply update
+                    </Link>
+                  )}
                   <Link
                     href={`/compare?v=${v.id}`}
                     className="flex items-center gap-1.5 rounded-md bg-secondary border border-border hover:bg-secondary/80 px-3 py-1.5 text-xs font-medium text-foreground transition-colors cursor-pointer whitespace-nowrap"
@@ -366,16 +371,6 @@ export function ParamVersionList({
                     <Download className="h-3.5 w-3.5" />
                     Download .param
                   </button>
-                  {hasUpdate && v.is_latest && droneVersion !== null && (
-                    <Link
-                      href={`/compare?v=${v.id}`}
-                      className="flex items-center gap-1.5 rounded-md bg-amber-500 hover:bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors cursor-pointer whitespace-nowrap"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <ArrowUpCircle className="h-3.5 w-3.5" />
-                      Apply update
-                    </Link>
-                  )}
                 </div>
               </div>
               {v.changelog && (
