@@ -31,6 +31,9 @@ interface DroneMatchResult {
 // Cache key: "<scr_user1>_<scr_user2>" — busts when either changes.
 const cache = new Map<string, MatchedDrone | null>();
 
+/** Clear the entire match cache — call after catalog changes (delete, edit). */
+export function clearDroneMatchCache() { cache.clear(); }
+
 function computeVersionStatus(drone: MatchedDrone | null): VersionStatus {
   if (!drone) return "unknown";
   const { drone_version, catalog_version } = drone;

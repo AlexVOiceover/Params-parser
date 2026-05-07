@@ -6,6 +6,7 @@ import { ArrowUpCircle, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { WriteDroneDialog, type WriteChange } from "@/components/write-drone-dialog";
+import { clearDroneMatchCache } from "@/lib/use-connected-drone-match";
 import type { ParamWriteResult } from "@/lib/mavlink-serial";
 
 // ArduPilot runtime/read-only params that change automatically and must
@@ -104,8 +105,7 @@ export function ApplyUpdateButton({ versionId, className, label = "Apply update"
     });
     setDroneParams(updated);
     setChanges(null);
-    // Refresh page so version badges, diff counts, and "on drone" indicators
-    // re-evaluate against the new drone state.
+    clearDroneMatchCache();
     startTransition(() => router.refresh());
   }
 
