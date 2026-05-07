@@ -88,6 +88,7 @@ async function getData(familySlug: string, variantId: string, clientSetId: strin
       const allNames = new Set([...prev.keys(), ...curr.keys()]);
       let diff = 0;
       for (const name of allNames) {
+        if (name === "SCR_USER2") continue; // version marker, not a config change
         if (prev.get(name) !== curr.get(name)) diff++;
       }
       diffVsPrev.set(sorted[i].id, diff);
