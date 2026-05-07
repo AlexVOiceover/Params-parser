@@ -3,7 +3,8 @@
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Filter, Download, Trash2, Copy, X, AlertTriangle, Upload, Eye, Usb, ArrowUpCircle, GitCompareArrows, CheckSquare, Square } from "lucide-react";
+import { Filter, Download, Trash2, Copy, X, AlertTriangle, Upload, Eye, Usb, GitCompareArrows, CheckSquare, Square } from "lucide-react";
+import { ApplyUpdateButton } from "@/components/apply-update-button";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
 import { writeParamFile } from "@/lib/param-engine";
@@ -426,14 +427,7 @@ export function ParamVersionList({
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   {hasUpdate && v.is_latest && droneVersion !== null && (
-                    <Link
-                      href={`/compare?v=${v.id}`}
-                      className="flex items-center gap-1.5 rounded-md bg-amber-500 hover:bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors cursor-pointer whitespace-nowrap"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <ArrowUpCircle className="h-3.5 w-3.5" />
-                      Apply update
-                    </Link>
+                    <ApplyUpdateButton versionId={v.id} />
                   )}
                   {/* Icon-only secondary actions */}
                   <Link
