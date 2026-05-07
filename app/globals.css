@@ -177,3 +177,26 @@ input[type="checkbox"]:indeterminate {
   from { left: -50px; }
   to   { left: 110%; }
 }
+
+@keyframes stripes-move {
+  from { background-position: 0 0; }
+  to   { background-position: 40px 0; }
+}
+
+.btn-apply-update {
+  position: relative;
+  overflow: hidden;
+  background-color: #f59e0b;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 8px,
+    rgba(255,255,255,0.15) 8px,
+    rgba(255,255,255,0.15) 16px
+  );
+  background-size: 40px 40px;
+  animation: stripes-move 0.8s linear infinite;
+}
+.btn-apply-update:hover {
+  background-color: #d97706;
+}

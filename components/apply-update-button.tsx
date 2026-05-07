@@ -126,7 +126,7 @@ export function ApplyUpdateButton({ versionId, className, label = "Apply update"
         type="button"
         onClick={handleClick}
         disabled={loading || !droneParams?.length}
-        className={className ?? "flex items-center gap-1.5 rounded-md bg-amber-500 hover:bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"}
+        className={className ?? "btn-apply-update flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"}
       >
         {loading
           ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
