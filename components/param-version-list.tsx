@@ -3,7 +3,7 @@
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Filter, Download, Trash2, Copy, X, AlertTriangle, Upload, Eye, Usb, ArrowUpCircle } from "lucide-react";
+import { Filter, Download, Trash2, Copy, X, AlertTriangle, Upload, Eye, Usb, ArrowUpCircle, GitCompareArrows, CheckSquare } from "lucide-react";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
 import { writeParamFile } from "@/lib/param-engine";
@@ -104,6 +104,29 @@ export function ParamVersionList({
   const droneMatchesThisSet = match.status === "matched" && droneId !== null && match.drone?.id === droneId;
   const hasUpdate = droneMatchesThisSet && match.versionStatus === "update_available";
   const droneVersion = droneMatchesThisSet ? match.droneVersion : null;
+
+  // ── Compare mode ──────────────────────────────────────────
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareSelected, setCompareSelected] = useState<Set<string>>(new Set());
+
+  function toggleCompareMode() {
+    setCompareMode((v) => !v);
+    setCompareSelected(new Set());
+  }
+
+  function toggleCompareSelect(id: string) {
+    setCompareSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function goToCompare() {
+    const ids = [...compareSelected];
+    if (ids.length < 2) return;
+    router.push(`/compare?${ids.map((id) => `v=${id}`).join("&")}`);
+  }
 
   // ── Delete state ──────────────────────────────────────────
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -313,6 +336,42 @@ export function ParamVersionList({
 
   return (
     <>
+      {versions.length > 1 && (
+        <div className="flex items-center gap-2 mb-2">
+          <button
+            type="button"
+            onClick={toggleCompareMode}
+            className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              compareMode
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border text-foreground hover:bg-secondary"
+            }`}
+          >
+            <GitCompareArrows className="h-3.5 w-3.5" />
+            {compareMode ? "Cancel" : "Compare versions"}
+          </button>
+          {compareMode && (
+            <>
+              <span className="text-xs text-muted-foreground">
+                {compareSelected.size === 0
+                  ? "Select versions to compare"
+                  : `${compareSelected.size} selected`}
+              </span>
+              {compareSelected.size >= 2 && (
+                <button
+                  type="button"
+                  onClick={goToCompare}
+                  className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  <GitCompareArrows className="h-3.5 w-3.5" />
+                  Compare {compareSelected.size}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       <div className="flex flex-col gap-3">
         {versions.length === 0 && !isAdmin && (
           <div className="rounded-lg border border-border bg-card px-6 py-10 text-center">
@@ -321,8 +380,22 @@ export function ParamVersionList({
         )}
 
         {versions.map((v) => (
-          <div key={v.id} className="relative group/row">
-            <div className={`rounded-lg border border-border bg-card px-5 py-4${isAdmin ? " pr-20" : ""}`}>
+          <div key={v.id} className={`relative group/row flex items-stretch gap-2`}>
+            {compareMode && (
+              <button
+                type="button"
+                onClick={() => toggleCompareSelect(v.id)}
+                className={`shrink-0 flex items-center justify-center w-10 rounded-lg border transition-colors cursor-pointer ${
+                  compareSelected.has(v.id)
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-primary"
+                }`}
+                aria-label={compareSelected.has(v.id) ? "Deselect" : "Select for compare"}
+              >
+                <CheckSquare className="h-4 w-4" />
+              </button>
+            )}
+            <div className={`flex-1 rounded-lg border border-border bg-card px-5 py-4${isAdmin ? " pr-20" : ""}${compareMode && compareSelected.has(v.id) ? " border-primary/50 bg-primary/5" : ""}`}>
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <span className="text-sm text-foreground">
