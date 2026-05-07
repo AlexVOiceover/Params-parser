@@ -105,18 +105,23 @@ export async function POST(
   }
 
   if (allParamValues.length) {
-    // Update SCR_USER2 to the new version label so the clone self-identifies
-    // correctly when flashed to a drone.
+    // Deduplicate by name (last-write wins) then update SCR_USER2 to the
+    // new version label. Deduplication is essential — source versions may
+    // have duplicate name rows from old uploads, which would cause a unique
+    // constraint violation and silently drop the entire insert.
     const newVersionInt = parseInt(versionLabel.trim(), 10);
-    await admin.from("param_values").insert(
-      allParamValues.map((pv) => ({
+    const paramMap = new Map<string, string>();
+    for (const pv of allParamValues) paramMap.set(pv.name, pv.value);
+    if (Number.isFinite(newVersionInt)) paramMap.set("SCR_USER2", String(newVersionInt));
+
+    const { error: insertError } = await admin.from("param_values").insert(
+      Array.from(paramMap.entries()).map(([name, value]) => ({
         param_version_id: newVersion.id,
-        name: pv.name,
-        value: pv.name === "SCR_USER2" && Number.isFinite(newVersionInt)
-          ? String(newVersionInt)
-          : pv.value,
+        name,
+        value,
       }))
     );
+    if (insertError) return NextResponse.json({ error: `Clone succeeded but param copy failed: ${insertError.message}` }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, versionId: newVersion.id, clientSetId: targetClientSetId });
