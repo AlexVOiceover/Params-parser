@@ -3,7 +3,9 @@
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Filter, Download, Trash2, Copy, X, AlertTriangle, Upload, Eye } from "lucide-react";
+import { Filter, Download, Trash2, Copy, X, AlertTriangle, Upload, Eye, Usb } from "lucide-react";
+import { useDroneParams } from "@/lib/drone-params-context";
+import { writeParamFile } from "@/lib/param-engine";
 
 interface ParamVersionRow {
   id: string;
@@ -37,6 +39,7 @@ interface Props {
   variantId: string;
   clientSetId: string;
   isAdmin: boolean;
+  isDefault: boolean;
   familyName: string;
   variantName: string;
   clientSetName: string;
@@ -80,12 +83,14 @@ export function ParamVersionList({
   variantId,
   clientSetId,
   isAdmin,
+  isDefault,
   familyName,
   variantName,
   clientSetName,
 }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
+  const { droneParams } = useDroneParams();
 
   // ── Delete state ──────────────────────────────────────────
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -167,6 +172,17 @@ export function ParamVersionList({
   function openUpload() {
     setUploadChangelog("");
     setUploadFile(null);
+    setUploadLog([]);
+    setUploadOpen(true);
+  }
+
+  function loadFromDrone() {
+    if (!droneParams || droneParams.length === 0) return;
+    const content = writeParamFile(droneParams.map((p) => ({ name: p.name, value: p.value })));
+    const filename = `${clientSetName.replace(/\s+/g, "_")}_from_drone.param`;
+    const file = new File([content], filename, { type: "text/plain" });
+    setUploadFile(file);
+    setUploadChangelog("");
     setUploadLog([]);
     setUploadOpen(true);
   }
@@ -365,13 +381,24 @@ export function ParamVersionList({
         {isAdmin && (
           <div className="rounded-lg border border-dashed border-border bg-card overflow-hidden">
             {!uploadOpen ? (
-              <button
-                onClick={openUpload}
-                className="flex w-full items-center gap-2 px-5 py-4 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors cursor-pointer"
-              >
-                <Upload className="h-4 w-4 shrink-0" />
-                Upload new version…
-              </button>
+              <div className="flex flex-col divide-y divide-border">
+                <button
+                  onClick={openUpload}
+                  className="flex w-full items-center gap-2 px-5 py-4 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors cursor-pointer"
+                >
+                  <Upload className="h-4 w-4 shrink-0" />
+                  Upload new version…
+                </button>
+                {isDefault && droneParams && droneParams.length > 0 && (
+                  <button
+                    onClick={loadFromDrone}
+                    className="flex w-full items-center gap-2 px-5 py-4 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors cursor-pointer"
+                  >
+                    <Usb className="h-4 w-4 shrink-0" />
+                    Load from connected drone ({droneParams.length} params)
+                  </button>
+                )}
+              </div>
             ) : (
               <div className="px-5 py-4 flex flex-col gap-3">
                 <div className="flex items-center gap-3">
