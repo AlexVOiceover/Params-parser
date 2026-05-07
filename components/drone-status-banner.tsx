@@ -63,7 +63,7 @@ export function DroneStatusBanner() {
               <ApplyUpdateButton
                 versionId={drone.latest_version_id}
                 label="Apply update"
-                className="flex items-center gap-1.5 rounded-md bg-amber-500 hover:bg-amber-600 px-2.5 py-1 text-xs font-medium text-white transition-colors cursor-pointer whitespace-nowrap"
+                className="btn-apply-update flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-white cursor-pointer whitespace-nowrap"
               />
             </>
           )}
