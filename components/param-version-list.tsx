@@ -3,8 +3,9 @@
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Filter, Download, Trash2, Copy, X, AlertTriangle, Upload, Eye, Usb } from "lucide-react";
+import { Filter, Download, Trash2, Copy, X, AlertTriangle, Upload, Eye, Usb, ArrowUpCircle } from "lucide-react";
 import { useDroneParams } from "@/lib/drone-params-context";
+import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
 import { writeParamFile } from "@/lib/param-engine";
 
 interface ParamVersionRow {
@@ -40,6 +41,8 @@ interface Props {
   clientSetId: string;
   isAdmin: boolean;
   isDefault: boolean;
+  /** FK drone_id on this client_set — used to match against the connected drone. */
+  droneId: string | null;
   familyName: string;
   variantName: string;
   clientSetName: string;
@@ -84,6 +87,7 @@ export function ParamVersionList({
   clientSetId,
   isAdmin,
   isDefault,
+  droneId,
   familyName,
   variantName,
   clientSetName,
@@ -91,6 +95,12 @@ export function ParamVersionList({
   const router = useRouter();
   const [, startTransition] = useTransition();
   const { droneParams } = useDroneParams();
+  const match = useConnectedDroneMatch();
+  // This page belongs to a specific client_set. The drone matches this set
+  // when the connected drone's id equals the FK stored on the client_set.
+  const droneMatchesThisSet = match.status === "matched" && droneId !== null && match.drone?.id === droneId;
+  const hasUpdate = droneMatchesThisSet && match.versionStatus === "update_available";
+  const droneVersion = droneMatchesThisSet ? match.droneVersion : null;
 
   // ── Delete state ──────────────────────────────────────────
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -320,6 +330,17 @@ export function ParamVersionList({
                       latest
                     </span>
                   )}
+                  {droneMatchesThisSet && droneVersion !== null && parseInt(v.version_label, 10) === droneVersion && (
+                    <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 leading-none whitespace-nowrap">
+                      <Usb className="h-2.5 w-2.5" />
+                      on drone
+                    </span>
+                  )}
+                  {hasUpdate && v.is_latest && (
+                    <span className="animate-pulse rounded-full bg-amber-500/15 border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400 leading-none whitespace-nowrap">
+                      Update available
+                    </span>
+                  )}
                   <span className="text-xs text-muted-foreground">{formatDate(v.created_at)}</span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -345,6 +366,16 @@ export function ParamVersionList({
                     <Download className="h-3.5 w-3.5" />
                     Download .param
                   </button>
+                  {hasUpdate && v.is_latest && droneVersion !== null && (
+                    <Link
+                      href={`/compare?v=${v.id}`}
+                      className="flex items-center gap-1.5 rounded-md bg-amber-500 hover:bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors cursor-pointer whitespace-nowrap"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <ArrowUpCircle className="h-3.5 w-3.5" />
+                      Apply update
+                    </Link>
+                  )}
                 </div>
               </div>
               {v.changelog && (
