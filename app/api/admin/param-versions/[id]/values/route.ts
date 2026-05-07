@@ -39,21 +39,19 @@ export async function PATCH(
     .single();
   if (!version) return NextResponse.json({ error: "Version not found" }, { status: 404 });
 
-  // Apply edits to param_values rows
-  for (const [name, value] of Object.entries(body.edits)) {
-    const strValue = String(value);
-    const { data: existing } = await admin
-      .from("param_values")
-      .select("id")
-      .eq("param_version_id", id)
-      .eq("name", name)
-      .maybeSingle();
-
-    if (existing) {
-      await admin.from("param_values").update({ value: strValue }).eq("id", existing.id);
-    } else {
-      await admin.from("param_values").insert({ param_version_id: id, name, value: strValue });
-    }
+  // Apply edits — param_values has a composite PK (param_version_id, name),
+  // no surrogate id column. Use upsert so existing rows are updated and
+  // missing ones are created.
+  const upsertRows = Object.entries(body.edits).map(([name, value]) => ({
+    param_version_id: id,
+    name,
+    value: String(value),
+  }));
+  const { error: upsertError } = await admin
+    .from("param_values")
+    .upsert(upsertRows, { onConflict: "param_version_id,name" });
+  if (upsertError) {
+    return NextResponse.json({ error: upsertError.message }, { status: 500 });
   }
 
   // Re-fetch all param_values and regenerate the stored .param file
