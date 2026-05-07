@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowUpCircle, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useDroneParams } from "@/lib/drone-params-context";
@@ -38,6 +39,8 @@ interface Props {
  * current params, and opens WriteDroneDialog with only the changed params.
  */
 export function ApplyUpdateButton({ versionId, className, label = "Apply update" }: Props) {
+  const router = useRouter();
+  const [, startTransition] = useTransition();
   const { droneParams, setDroneParams } = useDroneParams();
   const [loading, setLoading] = useState(false);
   const [changes, setChanges] = useState<WriteChange[] | null>(null);
@@ -101,6 +104,9 @@ export function ApplyUpdateButton({ versionId, className, label = "Apply update"
     });
     setDroneParams(updated);
     setChanges(null);
+    // Refresh page so version badges, diff counts, and "on drone" indicators
+    // re-evaluate against the new drone state.
+    startTransition(() => router.refresh());
   }
 
   return (
