@@ -75,6 +75,10 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
   const [submitting, setSubmitting] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
+  // ── Create Default state ──────────────────────────────────
+  const [creatingDefault, setCreatingDefault] = useState(false);
+  const [createDefaultError, setCreateDefaultError] = useState<string | null>(null);
+
   const dronesForNewClient = useMemo(
     () => availableDrones.filter((d) => d.client_id === newClientId),
     [availableDrones, newClientId]
@@ -119,6 +123,28 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
     } else {
       const msg = await res.json().then((b) => b?.error).catch(() => null);
       setCreateError(msg ?? "Create failed");
+    }
+  }
+
+  async function handleCreateDefault() {
+    setCreatingDefault(true);
+    setCreateDefaultError(null);
+    const res = await fetch("/api/admin/client-sets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        variantId,
+        clientName: "Default",
+        serial: "",
+        isDefault: true,
+      }),
+    });
+    setCreatingDefault(false);
+    if (res.ok) {
+      startTransition(() => router.refresh());
+    } else {
+      const msg = await res.json().then((b) => b?.error).catch(() => null);
+      setCreateDefaultError(msg ?? "Failed to create Default");
     }
   }
 
@@ -184,6 +210,7 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
       c.latestVersionId !== null &&
       defaultLatestVersionId !== null;
     const isConnected = connectedDroneId !== null && c.droneId === connectedDroneId;
+    const hasUpdate = isConnected && match.versionStatus === "update_available";
 
     return (
       <div className="relative group/row">
@@ -209,6 +236,11 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
                 <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 leading-none whitespace-nowrap">
                   <Usb className="h-2.5 w-2.5" />
                   this drone
+                </span>
+              )}
+              {hasUpdate && (
+                <span className="flex items-center gap-1 animate-pulse rounded-full bg-amber-500/15 border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400 leading-none whitespace-nowrap">
+                  Update available
                 </span>
               )}
               {c.isDefault ? (
@@ -299,13 +331,31 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
         ))}
 
         {canCreate && !showAdd && (
-          <button
-            onClick={() => setShowAdd(true)}
-            className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-card/30 px-5 py-4 text-sm text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors cursor-pointer"
-          >
-            <Plus className="h-4 w-4" />
-            Add client + drone
-          </button>
+          <div className="flex flex-col gap-2">
+            {/* Warn when there's no Default and offer to create one */}
+            {!defaultSet && (
+              <div className="flex flex-col gap-1.5">
+                <button
+                  onClick={handleCreateDefault}
+                  disabled={creatingDefault || isPending}
+                  className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-amber-500/50 bg-amber-500/5 px-5 py-3 text-sm text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 hover:border-amber-500/70 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Plus className="h-4 w-4" />
+                  {creatingDefault || isPending ? "Creating…" : "Create Default param set"}
+                </button>
+                {createDefaultError && (
+                  <p className="text-xs text-destructive bg-destructive/15 border border-destructive/40 rounded-md px-3 py-2">{createDefaultError}</p>
+                )}
+              </div>
+            )}
+            <button
+              onClick={() => setShowAdd(true)}
+              className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-card/30 px-5 py-4 text-sm text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors cursor-pointer"
+            >
+              <Plus className="h-4 w-4" />
+              Add client param set
+            </button>
+          </div>
         )}
 
         {canCreate && showAdd && (
@@ -314,7 +364,7 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
             className="flex flex-col gap-3 rounded-lg border border-primary/40 bg-card px-5 py-4"
           >
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-foreground">New client + drone</span>
+              <span className="text-sm font-medium text-foreground">Add client param set</span>
               <button
                 type="button"
                 onClick={resetAdd}
@@ -404,7 +454,7 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
               <div className="flex items-center gap-2">
                 <Pencil className="h-4 w-4 text-primary" />
                 <h2 className="text-sm font-bold text-foreground">
-                  {editTarget.isDefault ? "Edit Default" : "Edit client + drone"}
+                  {editTarget.isDefault ? "Edit Default" : "Edit client param set"}
                 </h2>
               </div>
               <button

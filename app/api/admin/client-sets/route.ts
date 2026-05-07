@@ -36,28 +36,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const { variantId, clientId, droneId, clientName, serial, description } = await request.json() as {
+  const { variantId, clientId, droneId, clientName, serial, description, isDefault } = await request.json() as {
     variantId: string;
     clientId?: string;
     droneId?: string;
     clientName: string;
     serial: string;
     description?: string;
+    isDefault?: boolean;
   };
   if (!variantId) return NextResponse.json({ error: "variantId required" }, { status: 400 });
   if (!clientName?.trim()) return NextResponse.json({ error: "Client name required" }, { status: 400 });
-  if (!serial?.trim()) return NextResponse.json({ error: "Serial required" }, { status: 400 });
+  // Serial is empty for Default rows; required for client rows.
+  if (!isDefault && !serial?.trim()) return NextResponse.json({ error: "Serial required" }, { status: 400 });
 
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("client_sets")
     .insert({
       client_name: clientName.trim(),
-      serial: serial.trim(),
+      serial: isDefault ? "" : serial.trim(),
       description: description?.trim() || null,
       variant_id: variantId,
       client_id: clientId ?? null,
       drone_id: droneId ?? null,
+      is_default: isDefault ?? false,
       created_by: user.id,
     })
     .select("id")
