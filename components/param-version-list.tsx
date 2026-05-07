@@ -176,16 +176,6 @@ export function ParamVersionList({
     setUploadOpen(true);
   }
 
-  function loadFromDrone() {
-    if (!droneParams || droneParams.length === 0) return;
-    const content = writeParamFile(droneParams.map((p) => ({ name: p.name, value: p.value })));
-    const filename = `${clientSetName.replace(/\s+/g, "_")}_from_drone.param`;
-    const file = new File([content], filename, { type: "text/plain" });
-    setUploadFile(file);
-    setUploadChangelog("");
-    setUploadLog([]);
-    setUploadOpen(true);
-  }
 
   async function handleUpload() {
     if (!uploadFile || !uploadVersionLabel) return;
@@ -381,24 +371,13 @@ export function ParamVersionList({
         {isAdmin && (
           <div className="rounded-lg border border-dashed border-border bg-card overflow-hidden">
             {!uploadOpen ? (
-              <div className="flex flex-col divide-y divide-border">
-                <button
-                  onClick={openUpload}
-                  className="flex w-full items-center gap-2 px-5 py-4 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors cursor-pointer"
-                >
-                  <Upload className="h-4 w-4 shrink-0" />
-                  Upload new version…
-                </button>
-                {isDefault && droneParams && droneParams.length > 0 && (
-                  <button
-                    onClick={loadFromDrone}
-                    className="flex w-full items-center gap-2 px-5 py-4 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors cursor-pointer"
-                  >
-                    <Usb className="h-4 w-4 shrink-0" />
-                    Load from connected drone ({droneParams.length} params)
-                  </button>
-                )}
-              </div>
+              <button
+                onClick={openUpload}
+                className="flex w-full items-center gap-2 px-5 py-4 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors cursor-pointer"
+              >
+                <Upload className="h-4 w-4 shrink-0" />
+                Upload new version…
+              </button>
             ) : (
               <div className="px-5 py-4 flex flex-col gap-3">
                 <div className="flex items-center gap-3">
@@ -418,8 +397,24 @@ export function ParamVersionList({
                   />
                 </label>
 
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-xs font-medium text-muted-foreground">.param file <span className="text-destructive">*</span></span>
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground">.param file <span className="text-destructive">*</span></span>
+                    {isDefault && droneParams && droneParams.length > 0 && !uploading && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const content = writeParamFile(droneParams.map((p) => ({ name: p.name, value: p.value })));
+                          const filename = `${clientSetName.replace(/\s+/g, "_")}_from_drone.param`;
+                          setUploadFile(new File([content], filename, { type: "text/plain" }));
+                        }}
+                        className="flex items-center gap-1 text-[10px] text-primary hover:underline cursor-pointer"
+                      >
+                        <Usb className="h-3 w-3" />
+                        Use connected drone
+                      </button>
+                    )}
+                  </div>
                   <input
                     type="file"
                     accept=".param"
@@ -430,7 +425,7 @@ export function ParamVersionList({
                   {uploadFile && (
                     <span className="text-xs text-muted-foreground">{uploadFile.name} ({(uploadFile.size / 1024).toFixed(1)} KB)</span>
                   )}
-                </label>
+                </div>
 
                 {uploadLog.length > 0 && (
                   <div className="rounded-md border border-border bg-black/30 px-3 py-2 flex flex-col gap-0.5">
