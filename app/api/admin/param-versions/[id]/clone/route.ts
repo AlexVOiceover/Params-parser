@@ -72,6 +72,9 @@ export async function POST(
   const { error: uploadError } = await admin.storage.from("param-files").upload(newPath, fileData);
   if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 });
 
+  // Mark all existing versions for this client_set as not latest
+  await admin.from("param_versions").update({ is_latest: false }).eq("client_set_id", targetClientSetId!);
+
   // Insert new version row
   const { data: newVersion, error: versionError } = await admin
     .from("param_versions")
@@ -81,6 +84,7 @@ export async function POST(
       storage_path: newPath,
       changelog: changelog?.trim() || null,
       created_by: user.id,
+      is_latest: true,
     })
     .select("id")
     .single();
