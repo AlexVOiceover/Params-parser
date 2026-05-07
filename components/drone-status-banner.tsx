@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Usb } from "lucide-react";
+import { Usb, Eye } from "lucide-react";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
 import { ApplyUpdateButton } from "@/components/apply-update-button";
@@ -27,6 +27,18 @@ export function DroneStatusBanner() {
         : "border-border bg-secondary/40"
     }`}>
       <Usb className={`h-4 w-4 shrink-0 ${identified ? "text-emerald-500" : "text-muted-foreground"}`} />
+      {/* Always show View link when drone is connected */}
+      <Link
+        href="/compare?v=__drone__"
+        title="View drone params"
+        className={`rounded-md border p-1 transition-colors cursor-pointer shrink-0 ${
+          identified
+            ? "border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/15"
+            : "border-border text-muted-foreground hover:bg-secondary"
+        }`}
+      >
+        <Eye className="h-3.5 w-3.5" />
+      </Link>
 
       {identified && drone ? (
         <>
