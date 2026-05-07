@@ -96,17 +96,24 @@ export function WriteDroneDialog({ changes, onClose, onSuccess }: Props) {
               <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
                 <AlertTriangle className="h-4 w-4 text-amber-500 dark:text-amber-400 shrink-0 mt-0.5" />
                 <p className="text-xs text-foreground leading-relaxed">
-                  About to write <span className="font-semibold">{changes.length}</span> param{changes.length === 1 ? "" : "s"} to the drone.
+                  About to write <span className="font-semibold">{changes.filter(c => c.name !== "SCR_USER2").length}</span> param{changes.filter(c => c.name !== "SCR_USER2").length === 1 ? "" : "s"} to the drone.
                   This modifies live configuration. Make sure the drone is safe (disarmed, no props).
                 </p>
               </div>
               <div className="max-h-48 overflow-y-auto rounded-md border border-border bg-secondary/30 divide-y divide-border">
-                {changes.map((c) => (
+                {changes.filter((c) => c.name !== "SCR_USER2").map((c) => (
                   <div key={c.name} className="flex items-center justify-between px-3 py-1.5">
                     <span className="font-mono text-xs text-foreground truncate">{c.name}</span>
                     <span className="font-mono text-xs text-amber-700 dark:text-amber-300">{c.value}</span>
                   </div>
                 ))}
+                {/* SCR_USER2 is the version marker — shown separately so it's not confused with a config change */}
+                {changes.some((c) => c.name === "SCR_USER2") && (
+                  <div className="flex items-center justify-between px-3 py-1.5 opacity-50">
+                    <span className="font-mono text-xs text-muted-foreground">SCR_USER2 (version marker)</span>
+                    <span className="font-mono text-xs text-muted-foreground">{changes.find((c) => c.name === "SCR_USER2")?.value}</span>
+                  </div>
+                )}
               </div>
             </>
           )}
