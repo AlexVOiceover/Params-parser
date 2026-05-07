@@ -12,77 +12,115 @@ export interface MatchedDrone {
   family_slug: string | null;
   family_name: string | null;
   variant_name: string | null;
+  catalog_version: number | null;
+  drone_version: number | null;
 }
 
 export type DroneMatchStatus = "idle" | "loading" | "matched" | "unmatched";
+export type VersionStatus = "up_to_date" | "update_available" | "drone_ahead" | "unknown";
 
 interface DroneMatchResult {
   status: DroneMatchStatus;
   drone: MatchedDrone | null;
+  versionStatus: VersionStatus;
+  droneVersion: number | null;
+  catalogVersion: number | null;
 }
 
-const cache = new Map<number, MatchedDrone | null>();
+// Cache key: "<scr_user1>_<scr_user2>" — busts when either changes.
+const cache = new Map<string, MatchedDrone | null>();
+
+function computeVersionStatus(drone: MatchedDrone | null): VersionStatus {
+  if (!drone) return "unknown";
+  const { drone_version, catalog_version } = drone;
+  if (drone_version === null || catalog_version === null) return "unknown";
+  // 0 is ArduPilot's factory default for SCR_USER2 — means "never flashed",
+  // not "version 0". Treat it the same as missing.
+  if (drone_version === 0) return "unknown";
+  if (drone_version < catalog_version) return "update_available";
+  if (drone_version === catalog_version) return "up_to_date";
+  return "drone_ahead";
+}
 
 /**
- * Reads `SCR_USER1` from the connected drone params and resolves it against
- * the user's accessible drones via /api/drone/match.
- *
- * Returns `idle` when no drone is connected or no SCR_USER1 is present.
- * Returns `loading` while a fetch is in flight, `matched` / `unmatched` after.
+ * Reads `SCR_USER1` (drone identity) and `SCR_USER2` (drone version) from the
+ * connected drone params, resolves against the catalog via /api/drone/match,
+ * and computes a version status comparison.
  */
 export function useConnectedDroneMatch(): DroneMatchResult {
   const { droneParams } = useDroneParams();
-  const [result, setResult] = useState<DroneMatchResult>({ status: "idle", drone: null });
-  const lastIdRef = useRef<number | null>(null);
+  const idle: DroneMatchResult = { status: "idle", drone: null, versionStatus: "unknown", droneVersion: null, catalogVersion: null };
+  const [result, setResult] = useState<DroneMatchResult>(idle);
+  const lastKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!droneParams || droneParams.length === 0) {
-      lastIdRef.current = null;
-      setResult({ status: "idle", drone: null });
+      lastKeyRef.current = null;
+      setResult(idle);
       return;
     }
 
     const scrUser1 = droneParams.find((p) => p.name === "SCR_USER1");
     if (!scrUser1) {
-      lastIdRef.current = null;
-      setResult({ status: "idle", drone: null });
+      lastKeyRef.current = null;
+      setResult(idle);
       return;
     }
 
     const wanted = parseInt(scrUser1.value, 10);
     if (!Number.isFinite(wanted)) {
-      lastIdRef.current = null;
-      setResult({ status: "idle", drone: null });
+      lastKeyRef.current = null;
+      setResult(idle);
       return;
     }
 
-    if (lastIdRef.current === wanted) return;
-    lastIdRef.current = wanted;
+    const scrUser2 = droneParams.find((p) => p.name === "SCR_USER2");
+    const droneVersion = scrUser2 ? parseInt(scrUser2.value, 10) : null;
+    const droneVersionOut = (droneVersion !== null && Number.isFinite(droneVersion)) ? droneVersion : null;
 
-    if (cache.has(wanted)) {
-      const cached = cache.get(wanted) ?? null;
-      setResult({ status: cached ? "matched" : "unmatched", drone: cached });
+    const cacheKey = `${wanted}_${droneVersionOut ?? "null"}`;
+    if (lastKeyRef.current === cacheKey) return;
+    lastKeyRef.current = cacheKey;
+
+    if (cache.has(cacheKey)) {
+      const cached = cache.get(cacheKey) ?? null;
+      setResult({
+        status: cached ? "matched" : "unmatched",
+        drone: cached,
+        versionStatus: computeVersionStatus(cached),
+        droneVersion: cached?.drone_version ?? null,
+        catalogVersion: cached?.catalog_version ?? null,
+      });
       return;
     }
 
-    setResult({ status: "loading", drone: null });
+    setResult({ status: "loading", drone: null, versionStatus: "unknown", droneVersion: droneVersionOut, catalogVersion: null });
     let cancelled = false;
-    fetch(`/api/drone/match?id=${wanted}`)
+
+    const url = droneVersionOut !== null
+      ? `/api/drone/match?id=${wanted}&scr_user2=${droneVersionOut}`
+      : `/api/drone/match?id=${wanted}`;
+
+    fetch(url)
       .then((r) => r.json())
       .then((body: { drone: MatchedDrone | null }) => {
         if (cancelled) return;
-        cache.set(wanted, body.drone);
-        setResult({ status: body.drone ? "matched" : "unmatched", drone: body.drone });
+        cache.set(cacheKey, body.drone);
+        setResult({
+          status: body.drone ? "matched" : "unmatched",
+          drone: body.drone,
+          versionStatus: computeVersionStatus(body.drone),
+          droneVersion: body.drone?.drone_version ?? droneVersionOut,
+          catalogVersion: body.drone?.catalog_version ?? null,
+        });
       })
       .catch(() => {
         if (cancelled) return;
-        setResult({ status: "unmatched", drone: null });
+        setResult({ status: "unmatched", drone: null, versionStatus: "unknown", droneVersion: droneVersionOut, catalogVersion: null });
       });
 
-    return () => {
-      cancelled = true;
-    };
-  }, [droneParams]);
+    return () => { cancelled = true; };
+  }, [droneParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return result;
 }

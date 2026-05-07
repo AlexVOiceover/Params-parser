@@ -6,6 +6,19 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.9.0",
+    date: "2026-05-07",
+    items: [
+      "Connected drones now show version status in the import modal: up to date, update available, or drone ahead of catalog.",
+      "Variant page highlights the matching client set with a pulsing amber 'Update available' badge when the drone is behind.",
+      "Catalog version columns in Compare now have an edit pencil — click to edit params inline, then save directly to the catalog.",
+      "Upload form now has a 'From file / From drone' source toggle on any param set when a drone is connected.",
+      "Default param sets always write SCR_USER1=0 (no serial) and SCR_USER2=version on upload.",
+      "Clone dialog pre-fills the next version number automatically.",
+      "Fix: cloned versions now correctly set the latest flag.",
+    ],
+  },
+  {
     version: "0.8.0",
     date: "2026-05-06",
     items: [

@@ -23,7 +23,7 @@ async function getData(familySlug: string, variantId: string, clientSetId: strin
       .maybeSingle(),
     supabase
       .from("client_sets")
-      .select("id, client_name, serial, description, created_at, updated_at, created_by, variant_id, client_id, drone_id")
+      .select("id, client_name, serial, description, created_at, updated_at, created_by, variant_id, client_id, drone_id, is_default")
       .eq("id", clientSetId)
       .maybeSingle(),
     supabase
@@ -121,6 +121,7 @@ export default async function ClientSetPage({
         variantId={variantId}
         clientSetId={clientSetId}
         isAdmin={isAdmin}
+        isDefault={clientSet?.is_default ?? false}
         familyName={family.name}
         variantName={variant.name}
         clientSetName={clientSet.serial ? `${clientSet.client_name} · ${clientSet.serial}` : clientSet.client_name}

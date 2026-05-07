@@ -19,6 +19,13 @@ export function CompareTableWrapper({ versions, rows, hasDroneVersion }: Props) 
   const [pendingEdits, setPendingEdits] = useState<Map<string, number>>(new Map());
   const [writeDialogOpen, setWriteDialogOpen] = useState(false);
 
+  // Which version id is currently editable.
+  // Drone column: DRONE_VERSION_ID (write to physical drone via MAVLink).
+  // Catalog column: the version's DB id (save edits to DB + storage).
+  const [writableVersionId, setWritableVersionId] = useState<string | undefined>(undefined);
+  const [savingCatalog, setSavingCatalog] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const merged = useMemo(() => {
     if (!hasDroneVersion || !droneParams) return { versions, rows };
 
@@ -48,36 +55,42 @@ export function CompareTableWrapper({ versions, rows, hasDroneVersion }: Props) 
   const handleEditParam = useCallback((name: string, value: number) => {
     setPendingEdits((prev) => {
       const next = new Map(prev);
-      // If the edit equals the current live value, drop it (no-op edit)
-      const current = droneParams?.find((p) => p.name === name)?.value;
-      if (current !== undefined && parseFloat(current) === value) {
-        next.delete(name);
-      } else {
-        next.set(name, value);
+      if (writableVersionId === DRONE_VERSION_ID) {
+        // For drone edits: drop if unchanged
+        const current = droneParams?.find((p) => p.name === name)?.value;
+        if (current !== undefined && parseFloat(current) === value) {
+          next.delete(name);
+          return next;
+        }
       }
+      next.set(name, value);
       return next;
     });
-  }, [droneParams]);
+  }, [droneParams, writableVersionId]);
 
   const handleClearEdit = useCallback((name: string) => {
-    setPendingEdits((prev) => {
-      const next = new Map(prev);
-      next.delete(name);
-      return next;
-    });
+    setPendingEdits((prev) => { const next = new Map(prev); next.delete(name); return next; });
   }, []);
 
-  const handleClearAllEdits = useCallback(() => {
-    setPendingEdits(new Map());
-  }, []);
+  const handleClearAllEdits = useCallback(() => setPendingEdits(new Map()), []);
 
-  const handleToggleWriteMode = useCallback(() => {
+  const handleToggleWriteMode = useCallback((versionId: string) => {
     setWriteMode((prev) => {
-      if (prev) setPendingEdits(new Map());
-      return !prev;
+      const turningOff = prev && writableVersionId === versionId;
+      if (turningOff) {
+        setPendingEdits(new Map());
+        setWritableVersionId(undefined);
+        setSaveError(null);
+        return false;
+      }
+      setPendingEdits(new Map());
+      setWritableVersionId(versionId);
+      setSaveError(null);
+      return true;
     });
-  }, []);
+  }, [writableVersionId]);
 
+  // Drone write path
   const handleWriteToDrone = useCallback(() => {
     if (pendingEdits.size === 0) return;
     setWriteDialogOpen(true);
@@ -101,10 +114,36 @@ export function CompareTableWrapper({ versions, rows, hasDroneVersion }: Props) 
     [droneParams, setDroneParams]
   );
 
+  // Catalog save path
+  const handleSaveCatalog = useCallback(async () => {
+    if (!writableVersionId || writableVersionId === DRONE_VERSION_ID) return;
+    if (pendingEdits.size === 0) return;
+    setSavingCatalog(true);
+    setSaveError(null);
+    const edits: Record<string, number> = {};
+    pendingEdits.forEach((v, k) => { edits[k] = v; });
+    const res = await fetch(`/api/admin/param-versions/${writableVersionId}/values`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ edits }),
+    });
+    setSavingCatalog(false);
+    if (res.ok) {
+      setPendingEdits(new Map());
+      setWriteMode(false);
+      setWritableVersionId(undefined);
+    } else {
+      const body = await res.json().catch(() => ({}));
+      setSaveError(body?.error ?? "Save failed");
+    }
+  }, [writableVersionId, pendingEdits]);
+
   const writeChanges: WriteChange[] = useMemo(
     () => Array.from(pendingEdits.entries()).map(([name, value]) => ({ name, value })),
     [pendingEdits]
   );
+
+  const isCatalogEditMode = writeMode && writableVersionId && writableVersionId !== DRONE_VERSION_ID;
 
   if (hasDroneVersion && !droneParams) {
     return (
@@ -118,17 +157,25 @@ export function CompareTableWrapper({ versions, rows, hasDroneVersion }: Props) 
 
   return (
     <>
+      {saveError && (
+        <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-2 text-xs text-destructive">
+          {saveError}
+        </div>
+      )}
       <CompareTable
         versions={merged.versions}
         rows={merged.rows}
-        writableVersionId={hasDroneVersion ? DRONE_VERSION_ID : undefined}
+        writableVersionId={writableVersionId}
         writeMode={writeMode}
         pendingEdits={pendingEdits}
         onToggleWriteMode={handleToggleWriteMode}
         onEditParam={handleEditParam}
         onClearEdit={handleClearEdit}
         onClearAllEdits={handleClearAllEdits}
-        onWriteToDrone={handleWriteToDrone}
+        onWriteToDrone={writableVersionId === DRONE_VERSION_ID ? handleWriteToDrone : undefined}
+        onSaveCatalog={isCatalogEditMode ? handleSaveCatalog : undefined}
+        savingCatalog={savingCatalog}
+        hasDroneVersion={hasDroneVersion}
       />
       {writeDialogOpen && (
         <WriteDroneDialog
