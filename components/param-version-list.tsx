@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Filter, Download, Trash2, Copy, X, AlertTriangle, Upload, Eye, Usb, GitCompareArrows, CheckSquare, Square } from "lucide-react";
 import { ApplyUpdateButton } from "@/components/apply-update-button";
 import { useDroneParams } from "@/lib/drone-params-context";
-import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
+import { useConnectedDroneMatch, clearDroneMatchCache } from "@/lib/use-connected-drone-match";
 import { writeParamFile } from "@/lib/param-engine";
 
 interface ParamVersionRow {
@@ -290,6 +290,7 @@ export function ParamVersionList({
     if (res.ok) {
       setDeleteId(null);
       setDeleting(false);
+      clearDroneMatchCache();
       startTransition(() => router.refresh());
     } else {
       const msg = await res.json().then((b) => b?.error).catch(() => null);
