@@ -30,6 +30,7 @@ export function VariantList({ familySlug, familyId, variants, isAdmin }: Props) 
   const [, startTransition] = useTransition();
   const match = useConnectedDroneMatch();
   const connectedVariantId = match.status === "matched" ? match.drone?.variant_id ?? null : null;
+  const updateAvailableForVariant = connectedVariantId !== null && match.versionStatus === "update_available";
 
   // ── Delete state ──────────────────────────────────────────
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -147,6 +148,11 @@ export function VariantList({ familySlug, familyId, variants, isAdmin }: Props) 
                     <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 leading-none whitespace-nowrap">
                       <Usb className="h-2.5 w-2.5" />
                       your drone
+                    </span>
+                  )}
+                  {isConnected && updateAvailableForVariant && (
+                    <span className="flex items-center gap-1 animate-pulse rounded-full bg-amber-500/15 border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400 leading-none whitespace-nowrap">
+                      Update available
                     </span>
                   )}
                 </div>

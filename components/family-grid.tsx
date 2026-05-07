@@ -29,6 +29,7 @@ export function FamilyGrid({ families, isAdmin }: Props) {
   const [, startTransition] = useTransition();
   const match = useConnectedDroneMatch();
   const connectedFamilySlug = match.status === "matched" ? match.drone?.family_slug ?? null : null;
+  const updateAvailableForFamily = connectedFamilySlug !== null && match.versionStatus === "update_available";
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
@@ -154,6 +155,11 @@ export function FamilyGrid({ families, isAdmin }: Props) {
                   <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 leading-none whitespace-nowrap">
                     <Usb className="h-2.5 w-2.5" />
                     your drone
+                  </span>
+                )}
+                {connectedFamilySlug === f.slug && updateAvailableForFamily && (
+                  <span className="flex items-center gap-1 animate-pulse rounded-full bg-amber-500/15 border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400 leading-none whitespace-nowrap">
+                    Update available
                   </span>
                 )}
               </div>
