@@ -3,6 +3,7 @@
 import { useMemo, useState, useCallback, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useDroneParams, DRONE_VERSION_ID } from "@/lib/drone-params-context";
+import { clearDroneMatchCache } from "@/lib/use-connected-drone-match";
 import { CompareTable } from "@/components/compare/compare-table";
 import { WriteDroneDialog, type WriteChange } from "@/components/write-drone-dialog";
 import type { CompareVersion, CompareRow } from "@/lib/types";
@@ -135,6 +136,7 @@ export function CompareTableWrapper({ versions, rows, hasDroneVersion }: Props) 
       setPendingEdits(new Map());
       setWriteMode(false);
       setWritableVersionId(undefined);
+      clearDroneMatchCache();
       startTransition(() => router.refresh());
     } else {
       const body = await res.json().catch(() => ({}));

@@ -257,6 +257,7 @@ export function ParamVersionList({
             setUploading(false);
             setTimeout(() => {
               setUploadOpen(false);
+              clearDroneMatchCache();
               startTransition(() => router.refresh());
             }, 800);
             return;
@@ -317,6 +318,7 @@ export function ParamVersionList({
     if (res.ok) {
       setCloneId(null);
       setCloning(false);
+      clearDroneMatchCache();
       startTransition(() => router.refresh());
     } else {
       const msg = await res.json().then((b) => b?.error).catch(() => null);
