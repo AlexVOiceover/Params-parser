@@ -409,8 +409,8 @@ export function ParamVersionList({
                     Source <span className="text-destructive">*</span>
                   </span>
 
-                  {/* Source toggle — only shown when a drone is connected on a Default */}
-                  {isDefault && droneParams && droneParams.length > 0 && (
+                  {/* Source toggle — shown whenever a drone is connected */}
+                  {droneParams && droneParams.length > 0 && (
                     <div className="grid grid-cols-2 gap-1.5">
                       <button
                         type="button"
@@ -458,7 +458,7 @@ export function ParamVersionList({
                   )}
 
                   {/* Drone source confirmation */}
-                  {uploadSource === "drone" && droneParams && (
+                  {uploadSource === "drone" && droneParams && droneParams.length > 0 && (
                     <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
                       <Usb className="h-3.5 w-3.5 text-primary shrink-0" />
                       <span className="text-xs text-foreground">{droneParams.length} params from connected drone</span>

@@ -133,15 +133,34 @@ export async function POST(request: NextRequest) {
           clientSetId = newCs.id;
         }
 
-        // 4. Parse params and inject SCR_USER2 so the drone can self-report
-        //    its current version after being flashed.
+        // 4. Parse params and inject version markers.
+        //    SCR_USER2 = version label (always — so flashed drones self-report).
+        //    SCR_USER1 = 0 for Default param sets — the Default is a catalog
+        //    reference, not tied to a physical drone serial.
+        const { data: csRow } = await admin
+          .from("client_sets")
+          .select("is_default")
+          .eq("id", clientSetId!)
+          .maybeSingle();
+        const isDefaultSet = csRow?.is_default === true;
+
         const fileText = Buffer.from(fileBuffer).toString("utf-8");
         const parsedParams = parseParamFile(fileText);
+
         const scrUser2Idx = parsedParams.findIndex((p) => p.name === "SCR_USER2");
         if (scrUser2Idx >= 0) {
           parsedParams[scrUser2Idx] = { ...parsedParams[scrUser2Idx], value: versionLabel };
         } else {
           parsedParams.push({ name: "SCR_USER2", value: versionLabel });
+        }
+
+        if (isDefaultSet) {
+          const scrUser1Idx = parsedParams.findIndex((p) => p.name === "SCR_USER1");
+          if (scrUser1Idx >= 0) {
+            parsedParams[scrUser1Idx] = { ...parsedParams[scrUser1Idx], value: "0" };
+          } else {
+            parsedParams.push({ name: "SCR_USER1", value: "0" });
+          }
         }
         const updatedFileText = writeParamFile(parsedParams);
         const updatedBuffer = Buffer.from(updatedFileText, "utf-8");
