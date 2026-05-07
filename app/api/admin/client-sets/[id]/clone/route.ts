@@ -75,14 +75,20 @@ export async function POST(
       .single();
     if (!newVersion) continue;
 
-    const { data: paramValues } = await admin
-      .from("param_values")
-      .select("name, value")
-      .eq("param_version_id", v.id);
-
-    if (paramValues?.length) {
+    const pvRows: { name: string; value: string }[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data: page } = await admin
+        .from("param_values")
+        .select("name, value")
+        .eq("param_version_id", v.id)
+        .range(from, from + 999);
+      if (!page || page.length === 0) break;
+      pvRows.push(...page);
+      if (page.length < 1000) break;
+    }
+    if (pvRows.length) {
       await admin.from("param_values").insert(
-        paramValues.map((pv) => ({ param_version_id: newVersion.id, name: pv.name, value: pv.value }))
+        pvRows.map((pv) => ({ param_version_id: newVersion.id, name: pv.name, value: pv.value }))
       );
     }
   }

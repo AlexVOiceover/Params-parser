@@ -90,15 +90,23 @@ export async function POST(
     .single();
   if (versionError || !newVersion) return NextResponse.json({ error: versionError?.message ?? "Version insert failed" }, { status: 500 });
 
-  // Copy param_values
-  const { data: paramValues } = await admin
-    .from("param_values")
-    .select("name, value")
-    .eq("param_version_id", id);
+  // Copy param_values — paginate to avoid the 1000-row PostgREST cap.
+  const PAGE_SIZE = 1000;
+  const allParamValues: { name: string; value: string }[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data: page } = await admin
+      .from("param_values")
+      .select("name, value")
+      .eq("param_version_id", id)
+      .range(from, from + PAGE_SIZE - 1);
+    if (!page || page.length === 0) break;
+    allParamValues.push(...page);
+    if (page.length < PAGE_SIZE) break;
+  }
 
-  if (paramValues?.length) {
+  if (allParamValues.length) {
     await admin.from("param_values").insert(
-      paramValues.map((pv) => ({ param_version_id: newVersion.id, name: pv.name, value: pv.value }))
+      allParamValues.map((pv) => ({ param_version_id: newVersion.id, name: pv.name, value: pv.value }))
     );
   }
 
