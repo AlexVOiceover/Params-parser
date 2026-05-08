@@ -36,7 +36,73 @@ Out of scope: reading SCR_USER2 from a connected drone (that's Stage 08).
 
 ---
 
-## Stage 09 — "Needs review" and admin capture of field versions
+## Stage 09 — Orphan drone Default tracking
+
+**Scope**: drones with no `client_set` ("orphan drones") should track the Default param set for their variant and receive "Update available" notifications when the Default advances. Currently the match endpoint returns `versionStatus=unknown` for orphans because `catalog_version` comes from the drone's `client_set`, which doesn't exist.
+
+- **Extend `/api/drone/match`**: if `clientSet` is null (no `client_set` for this drone + variant combo), fall back to looking up the Default `client_set` for the variant (`is_default=true`). Use that Default's latest version as `catalog_version`. Mark the response with a new field `is_orphan: true` so the UI can differentiate.
+- **`useConnectedDroneMatch` hook**: surface `isOrphan: boolean` so components can branch on it.
+- **Import modal recap**: orphan drones show "No client assigned" in place of the Client row. Version status line still works (up to date / update available against the Default).
+- **Catalog home banner**: orphan drones with an update available show the amber "Update available: v1 → v2" strip and Apply update button (flashes the Default).
+- **Variant page**: no client_set card is highlighted (no match) — just the Default card gets the "your drone" emerald styling. The "Apply update" button appears on the Default card when the drone is behind.
+- **Changelog + version**: v0.10.0.
+
+---
+
+## Stage 10 — Register drone wizard
+
+**Scope**: unified "Register this drone" flow triggered when `SCR_USER2=0` (unversioned drone). Handles all cases: blank drone, drone with serial not in DB, drone with serial already in DB.
+
+### Trigger
+- Show a "Register this drone" panel in the import modal and the catalog home banner when `SCR_USER2=0`.
+- Do not show for `SCR_USER2 > 0` (already registered) — those go through normal update flow.
+
+### Case detection (step 1)
+- **`SCR_USER1=0`**: fully blank drone → go to full registration form.
+- **`SCR_USER1=N`, not in `drones` table**: serial not registered → pre-fill serial, ask family/variant/client.
+- **`SCR_USER1=N`, found in `drones` table**: drone known but unversioned → pre-fill everything from DB record, only ask for confirmation + optional client assignment.
+
+### Registration form (step 2)
+Fields shown depend on case:
+- **Serial** (required if `SCR_USER1=0`; pre-filled and locked if `SCR_USER1>0`)
+- **Family** (required; dropdown of existing families)
+- **Variant** (required; filtered by family)
+- **Client** (optional; dropdown of existing clients)
+  - If left blank: drone is registered as an orphan (no `client_set`). The Default is its param set.
+  - If selected: a `client_set` is created for this drone + client linking them.
+
+### Confirmation screen (step 3)
+Before any writes, show a summary card:
+- Serial that will be written to drone (as `SCR_USER1`)
+- Family / Variant
+- Client (or "No client — will track Default")
+- Default version that will be flashed (`v1`)
+- "Register & Flash" CTA
+
+### On confirm (step 4)
+1. **Create `drone` row** in DB if it doesn't exist (`serial`, `client_id` if any, `variant_id`).
+2. **Create `client_set` row** only if a client was selected (clone Default v1 as the initial version).
+3. **Write to drone via MAVLink** (reuse existing write dialog):
+   - `SCR_USER1 = serial trailing-int` (if not already correct)
+   - Flash Default param set for the variant (differential write)
+   - `SCR_USER2 = 1` is already in the Default file (injected at upload time)
+4. **On success**: show confirmation. Drone is now registered, version = 1.
+5. **On failure**: best-effort revert (same pattern as Apply update). Surface unresolved params.
+
+### DB / API
+- Reuse existing `POST /api/admin/clients/[id]/drones` to create the drone row.
+- Reuse existing `POST /api/admin/client-sets` to create the client_set (with `isDefault=false`, linked to new drone).
+- The flash itself uses the existing `ApplyUpdateButton` / write dialog infrastructure.
+
+### UI notes
+- The wizard is a modal (same style as the import dialog).
+- Client field shows a "No client (orphan)" option at the top — selected by default.
+- If the drone was already in the DB (case 3), the family/variant fields are shown but locked (greyed out, not editable) to avoid accidentally re-assigning a drone to a different variant.
+- **Changelog + version**: v0.11.0.
+
+---
+
+## Stage 12 — "Needs review" and admin capture of field versions
 
 **Scope**: when a connected drone has `SCR_USER2 > catalog_latest`, an admin can capture the drone's current params as a new version flagged `needs_review`. Admins see a global alert and can accept or discard these versions.
 
@@ -48,11 +114,11 @@ Out of scope: reading SCR_USER2 from a connected drone (that's Stage 08).
 - **Admin alert badge**: on the AppHeader (admin only), fetch count of `param_versions WHERE needs_review = true`. Show a numbered red dot. Link to a new page `/admin/review`.
 - **`/admin/review` page**: lists all needs-review versions with: client, drone serial, version, date. Each row has two buttons — "Accept" (sets `needs_review = false`) and "Discard" (deletes the version row). Admin can also open/view the param set before deciding.
 - **Variant page**: `needs_review = true` versions show a distinct amber "Pending review" label in the versions list.
-- **Changelog + version**: v0.10.0.
+- **Changelog + version**: v0.12.0.
 
 ---
 
-## Stage 10 — Differential write engine (flash params to drone)
+## Stage 13 — Differential write engine (flash params to drone)
 
 **Scope**: write a target param set to a connected drone using a diff-then-write-then-verify loop. No UI yet — the engine goes in `lib/`, covered by the existing web-serial infrastructure.
 
@@ -67,12 +133,12 @@ Out of scope: reading SCR_USER2 from a connected drone (that's Stage 08).
   8. If passes exceeded and still different: **revert**. Send a write pass with the original `current` snapshot from step 1. This is a best-effort revert — if the revert itself fails, surface the list of params that are in an unknown state.
   9. Resolve `FlashResult`: `{ ok, passes, unresolved: Param[], reverted: boolean }`.
 - **Investigation note on MAVLink writes**: before coding, check `lib/mavlink-serial.ts` and `lib/mavlink-serial-shim.ts` for any existing `PARAM_SET` or `PARAM_VALUE` send path. The connected-drone card already has a "save back to drone" flow — confirm if it uses MAVLink PARAM_SET or if it just triggers a file download. Use whatever is already there rather than reinventing.
-- No UI changes in this stage. The function is called by Stage 11.
-- **Changelog + version**: v0.11.0.
+- No UI changes in this stage. The function is called by Stage 14.
+- **Changelog + version**: v0.13.0.
 
 ---
 
-## Stage 11 — Fleet bring-up: flash defaults and create client param sets
+## Stage 14 — Fleet bring-up: flash defaults and create client param sets
 
 **Scope**: the complete "new drone" workflow. Admin connects a drone, picks family/variant (and optionally a client), and the app flashes the Default params + creates the client_set starting at v1.
 
@@ -87,7 +153,7 @@ Out of scope: reading SCR_USER2 from a connected drone (that's Stage 08).
     2. Then starts the flash flow above targeting the new client_set v1.
     3. Drone ends up with: the right params + `SCR_USER1 = serial trailing-int` (already there) + `SCR_USER2 = 1`.
 - **`SCR_USER1` write**: at bring-up time, if the drone's `SCR_USER1` doesn't match the expected trailing serial int, write it as part of the flash (include it in the diff target). This ensures every drone self-identifies from the first flash onward.
-- **Changelog + version**: v0.12.0.
+- **Changelog + version**: v0.14.0.
 
 ---
 
@@ -106,6 +172,11 @@ Out of scope: reading SCR_USER2 from a connected drone (that's Stage 08).
 | Revert on failed flash | Yes — best-effort write of original snapshot. Surface unresolved params if revert also fails. |
 | SCR_USER1 at bring-up | Written to drone if not already correct. Included in the diff target. |
 | "Drone ahead" on client connect | Client sees the version status in the modal (update available / up to date / unknown). They cannot capture. Admin is notified via the review queue. |
+| Orphan drones (no client_set) | Track Default as their param set. Version comparisons use Default's latest version. No client_set created unless a client is explicitly assigned. |
+| `client_sets` table rename | Keep DB name as-is. Rename display strings to "param set" / "drone set" in UI only. Full DB rename deferred to a cleanup sprint. |
+| Register wizard trigger | `SCR_USER2=0` = unversioned drone → show register flow. `SCR_USER2>0` = already registered → normal update flow. |
+| Client optional at registration | If no client selected, drone is registered as orphan. No `client_set` created. Drone tracks Default. |
+| Family/variant locked if drone known | If `SCR_USER1` matches an existing `drones` row, family/variant are shown but not editable — cannot accidentally re-assign. |
 
 ---
 
