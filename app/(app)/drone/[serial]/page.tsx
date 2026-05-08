@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +12,10 @@ export default async function DroneDeepLinkPage({
   const { serial } = await params;
   const decodedSerial = decodeURIComponent(serial);
 
-  const supabase = createClient();
+  // Use service role so this page works even when not logged in —
+  // the visitor just tapped a physical NFC sticker and may not have a session.
+  // We only expose a redirect to a public family/variant page, nothing sensitive.
+  const supabase = createAdminClient();
 
   // Case-insensitive lookup of the serial in drones
   const { data: drone } = await supabase
