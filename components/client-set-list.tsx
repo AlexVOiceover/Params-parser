@@ -44,6 +44,8 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
   const [isPending, startTransition] = useTransition();
   const match = useConnectedDroneMatch();
   const connectedDroneId = match.status === "matched" ? match.drone?.id ?? null : null;
+  // Orphan drones have no client_set — they track the Default instead.
+  const isOrphanDrone = match.isOrphan && match.status === "matched";
 
   // Only list clients that actually have an unused drone on this variant.
   const clientsWithDrones = useMemo(() => {
@@ -210,14 +212,16 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
       c.latestVersionId !== null &&
       defaultLatestVersionId !== null;
     const isConnected = connectedDroneId !== null && c.droneId === connectedDroneId;
-    const hasUpdate = isConnected && match.versionStatus === "update_available";
+    // Orphan drones show on the Default card since they track the Default.
+    const isOrphanOnDefault = isOrphanDrone && c.isDefault;
+    const hasUpdate = (isConnected || isOrphanOnDefault) && match.versionStatus === "update_available";
 
     return (
       <div className="relative group/row">
         <Link
           href={`/${familySlug}/${variantId}/${c.id}`}
           className={`group flex items-start justify-between gap-4 rounded-lg border bg-card px-5 py-4 hover:border-primary/50 transition-colors cursor-pointer ${
-            isConnected
+            isConnected || isOrphanOnDefault
               ? "border-emerald-500/60 bg-emerald-500/10 ring-1 ring-emerald-500/40"
               : c.isDefault
               ? "border-primary/40 bg-primary/5"
@@ -232,10 +236,10 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
               {!c.isDefault && c.serial && (
                 <span className="font-mono text-xs text-muted-foreground truncate">· {c.serial}</span>
               )}
-              {isConnected && (
+              {(isConnected || isOrphanOnDefault) && (
                 <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 leading-none whitespace-nowrap">
                   <Usb className="h-2.5 w-2.5" />
-                  this drone
+                  {isOrphanOnDefault ? "your drone (no client)" : "this drone"}
                 </span>
               )}
               {hasUpdate && (
