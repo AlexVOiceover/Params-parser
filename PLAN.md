@@ -102,6 +102,47 @@ Before any writes, show a summary card:
 
 ---
 
+## Stage 11 — NFC tag writing (Android)
+
+**Scope**: let admins write a drone's serial number to an NFC sticker directly from the app on an Android phone, replacing the third-party NFC app currently used. Uses the Web NFC API (`NDEFReader`), which is available in Android Chrome only.
+
+### What gets written
+Each tag carries two NDEF records:
+1. **URL record** — `https://air6params.vercel.app/drone/<serial>` — tapping the sticker on a phone with the app opens directly to that drone's info.
+2. **Text record** — plain serial string (e.g. `AIR4-0426-0023`) — readable by any NFC reader app as a fallback.
+
+### Deep-link route
+- New page `app/(app)/drone/[serial]/page.tsx`. Looks up the serial in `drones`, redirects to the variant page if found, shows a "drone not registered" message if not. This makes the URL on the tag useful immediately.
+
+### `useNFC` hook (`lib/use-nfc.ts`)
+Wraps `NDEFReader`:
+- `isSupported: boolean` — false on iOS, desktop, non-Chrome Android.
+- `write(records: NDEFRecord[]): Promise<void>` — requests permission, prompts user to tap tag, resolves on success.
+- Error states: `permission_denied`, `write_failed`, `not_supported`.
+
+### `WriteNFCButton` component (`components/write-nfc-button.tsx`)
+- Shown only when `isSupported` is true (silently hidden on unsupported platforms).
+- Props: `serial: string` — the drone serial to encode.
+- States: idle → waiting (tap phone to tag, animated) → success → error.
+- Reusable anywhere a drone serial is visible.
+
+### Integration points
+1. **`/admin/clients` drone row** — "Write NFC" icon button next to each drone's serial (admin only).
+2. **Register drone wizard** (Stage 10) — final step offers "Write NFC tag" button after successful registration.
+3. **Drone info deep-link page** `/drone/[serial]` — shows basic drone info (family, variant, client if any) when someone taps the sticker.
+
+### Platform handling
+- iOS: `WriteNFCButton` renders nothing. No error, no placeholder.
+- Desktop: same — hidden silently.
+- Android non-Chrome: show a small "NFC not available in this browser" tooltip on the hidden button if the user somehow triggers it.
+
+### DB / API
+No new DB schema. The drone serial is already in `drones.serial`. The deep-link page reuses existing session-scoped queries.
+
+### Changelog + version: v0.11.0.
+
+---
+
 ## Stage 12 — "Needs review" and admin capture of field versions
 
 **Scope**: when a connected drone has `SCR_USER2 > catalog_latest`, an admin can capture the drone's current params as a new version flagged `needs_review`. Admins see a global alert and can accept or discard these versions.
@@ -177,6 +218,8 @@ Before any writes, show a summary card:
 | Register wizard trigger | `SCR_USER2=0` = unversioned drone → show register flow. `SCR_USER2>0` = already registered → normal update flow. |
 | Client optional at registration | If no client selected, drone is registered as orphan. No `client_set` created. Drone tracks Default. |
 | Family/variant locked if drone known | If `SCR_USER1` matches an existing `drones` row, family/variant are shown but not editable — cannot accidentally re-assign. |
+| NFC platform support | Android Chrome only (Web NFC API). iOS not supported — `WriteNFCButton` renders nothing on unsupported platforms, no error shown. |
+| NFC tag content | URL record (`/drone/<serial>`) + Text record (plain serial). URL opens the deep-link page; text is universal fallback. |
 
 ---
 
