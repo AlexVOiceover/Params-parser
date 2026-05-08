@@ -30,7 +30,7 @@ export function WriteNFCButton({ serial, iconOnly = false, label = "Write NFC ta
     // shows while the phone looks for a tag. A minimum display of 1.2s ensures
     // the animation is visible even when the tag responds instantly.
     const minWait = new Promise<void>((r) => setTimeout(r, 1200));
-    Promise.all([write(serial), minWait]);
+    void Promise.all([write(serial), minWait]);
   }
 
   function handleClose() {
@@ -38,10 +38,10 @@ export function WriteNFCButton({ serial, iconOnly = false, label = "Write NFC ta
     setModalOpen(false);
   }
 
-  async function handleRetry() {
+  function handleRetry() {
     reset();
     const minWait = new Promise<void>((r) => setTimeout(r, 1200));
-    Promise.all([write(serial), minWait]);
+    void Promise.all([write(serial), minWait]);
   }
 
   const errorMsg = errorType === "permission_denied"
