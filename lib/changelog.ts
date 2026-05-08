@@ -6,6 +6,14 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.12.0",
+    date: "2026-05-08",
+    items: [
+      "NFC tag writing on Android Chrome — write a drone's serial number to an NFC sticker directly from the app. Available on drone rows in Clients & Drones and after the Register drone wizard.",
+      "Tapping an NFC sticker opens the app at the drone's variant page via a new /drone/[serial] deep-link route.",
+    ],
+  },
+  {
     version: "0.11.0",
     date: "2026-05-08",
     items: [

@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { clearDroneMatchCache } from "@/lib/use-connected-drone-match";
 import { WriteDroneDialog, type WriteChange } from "@/components/write-drone-dialog";
+import { WriteNFCButton } from "@/components/write-nfc-button";
 import { parseSerialId } from "@/lib/param-engine";
 import type { ParamWriteResult } from "@/lib/mavlink-serial";
 
@@ -460,7 +461,15 @@ export function RegisterDroneModal({ onClose }: Props) {
                 <p className="text-xs text-muted-foreground">
                   <span className="font-mono">{serial}</span> is now registered and flashed with the Default param set (v1).
                 </p>
-                <button onClick={onClose} className="mt-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer whitespace-nowrap">Done</button>
+                <div className="flex flex-col items-center gap-1.5 mt-1">
+                  <WriteNFCButton
+                    serial={serial}
+                    label="Write NFC tag"
+                    className="w-full justify-center"
+                  />
+                  <p className="text-[10px] text-muted-foreground">Write the serial to the NFC sticker on the drone</p>
+                </div>
+                <button onClick={onClose} className="mt-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer whitespace-nowrap">Done</button>
               </div>
             )}
 

@@ -3,6 +3,7 @@
 import { Fragment, useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight, Trash2, Plus, X, Pencil, Check } from "lucide-react";
+import { WriteNFCButton } from "@/components/write-nfc-button";
 
 export interface ClientWithDrones {
   id: string;
@@ -416,6 +417,7 @@ export function ClientsTable({ clients, families, variants }: Props) {
                               <td className="px-3 py-1.5"></td>
                               <td className="px-3 py-1.5 text-right">
                                 <div className="flex items-center justify-end gap-1 opacity-0 group-hover/drone:opacity-100 transition-opacity">
+                                  <WriteNFCButton serial={d.serial} iconOnly />
                                   <button
                                     onClick={() => startEditDrone(d.id, d.serial, d.variant_id)}
                                     title={`Edit drone ${d.serial}`}
