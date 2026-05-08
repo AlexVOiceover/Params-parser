@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { Usb, Eye } from "lucide-react";
+import { Usb, Eye, ClipboardList } from "lucide-react";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
 import { ApplyUpdateButton } from "@/components/apply-update-button";
+import { RegisterDroneModal } from "@/components/register-drone-modal";
 
 /**
  * Compact status strip shown above the catalog when a drone is connected.
@@ -14,13 +16,18 @@ import { ApplyUpdateButton } from "@/components/apply-update-button";
 export function DroneStatusBanner() {
   const { droneParams } = useDroneParams();
   const match = useConnectedDroneMatch();
+  const [showRegister, setShowRegister] = useState(false);
 
   if (!droneParams || droneParams.length === 0) return null;
 
   const identified = match.status === "matched" && match.drone !== null;
   const { drone, versionStatus, droneVersion, catalogVersion } = match;
+  // Show register prompt when drone is unversioned (SCR_USER2=0)
+  const needsRegistration = match.droneVersion === null &&
+    (match.status === "unmatched" || (match.status === "matched" && match.drone !== null));
 
   return (
+    <>
     <div className={`rounded-lg border px-4 py-3 mb-6 flex items-center gap-3 flex-wrap ${
       identified
         ? "border-emerald-500/40 bg-emerald-500/8"
@@ -81,6 +88,18 @@ export function DroneStatusBanner() {
           <span className="text-xs text-muted-foreground">· {droneParams.length} params · not registered in catalog</span>
         </>
       )}
+      {needsRegistration && (
+        <button
+          type="button"
+          onClick={() => setShowRegister(true)}
+          className="flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 hover:bg-primary/20 px-2.5 py-1 text-xs font-medium text-primary transition-colors cursor-pointer whitespace-nowrap shrink-0 ml-auto"
+        >
+          <ClipboardList className="h-3.5 w-3.5" />
+          Register drone
+        </button>
+      )}
     </div>
+    {showRegister && <RegisterDroneModal onClose={() => setShowRegister(false)} />}
+    </>
   );
 }

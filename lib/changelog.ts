@@ -6,6 +6,16 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.11.0",
+    date: "2026-05-08",
+    items: [
+      "New 'Register drone' wizard — connects to a blank or unregistered drone (SCR_USER2=0), collects serial/family/variant/client, then creates the DB record and flashes the Default param set in one flow.",
+      "'Register drone' button appears in the import modal and the catalog home banner when an unversioned drone is connected.",
+      "Drone registration supports orphan mode (no client) — the drone tracks the Default param set without needing a client assignment.",
+      "New POST /api/admin/drones endpoint supports creating drones without a client (for orphan bring-up).",
+    ],
+  },
+  {
     version: "0.10.0",
     date: "2026-05-08",
     items: [
