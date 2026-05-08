@@ -1,36 +1,42 @@
-# 08 Update notifications
+# 09 Orphan Drone Default Tracking
 
-> When a connected drone has SCR_USER2 set, compare it against the catalog's latest version for that drone's client_set and surface the result in the import modal and on the variant page card. No drone writes; pure read-only notification.
+> Make drones without a client_set ("orphans") track the Default param set for version comparisons and update notifications. Also ship the compare page back-navigation that was already coded in the previous session.
 
 ## Tasks
 
-1. [x] **Extend /api/drone/match to return version info**
-   - [ ] 1.1 Accept an optional `?scr_user2=<int>` query param and echo it back as `drone_version: number | null` in the response.
-   - [ ] 1.2 After matching the drone, find its `client_set` via `drone_id = matched_drone.id` + `variant_id = matched_drone.variant_id`. Fetch the `param_versions` row where `is_latest = true` for that client_set and return its version label as `catalog_version: number | null`. If no client_set or no versions exist, return `null`.
-   - [ ] 1.3 Add `catalog_version` and `drone_version` to the `MatchedDrone` interface in `lib/use-connected-drone-match.ts`.
+1. [ ] **Compare page back-navigation (already coded, commit it)**
+   - [ ] 1.1 `lib/types.ts`: `CompareVersion` already has `familySlug`, `variantId`, `clientSetId` added — verify and commit.
+   - [ ] 1.2 `app/(app)/compare/page.tsx`: breadcrumb back-link already coded — verify it builds, then commit.
 
-2. [x] **Extend useConnectedDroneMatch hook**
-   - [ ] 2.1 Read `SCR_USER2` from `droneParams` alongside `SCR_USER1`. Parse it as an integer (`droneVersion`).
-   - [ ] 2.2 Pass `scr_user2=<droneVersion>` as a query param when calling `/api/drone/match` (only when SCR_USER2 is a valid integer).
-   - [ ] 2.3 Compute `versionStatus: 'up_to_date' | 'update_available' | 'drone_ahead' | 'unknown'` from `catalog_version` and `drone_version`: `unknown` when either is null; `update_available` when drone < catalog; `up_to_date` when equal; `drone_ahead` when drone > catalog.
-   - [ ] 2.4 Expose `versionStatus`, `droneVersion`, and `catalogVersion` on the `DroneMatchResult` type.
-   - [ ] 2.5 Bust the in-memory cache when SCR_USER2 changes (include `droneVersion` in the cache key alongside the SCR_USER1 integer).
+2. [ ] **Extend /api/drone/match — orphan fallback**
+   - [ ] 2.1 In `app/api/drone/match/route.ts`, when `clientSet` is null, look up the Default `client_set` for the drone's variant (`is_default=true`). Use it to fetch `catalog_version` and `latest_version_id` the same way as for registered drones.
+   - [ ] 2.2 Add `is_orphan: boolean` to the response payload — `true` when the client_set lookup was null and we fell back to the Default.
 
-3. [x] **Import modal: version status in the recap block**
-   - [ ] 3.1 In `components/connect-drone-dialog.tsx`, in the "Drone identified" recap block, add a version status line after the Catalog row. Use `useConnectedDroneMatch()` which is already called in the component.
-   - [ ] 3.2 Render per status: `up_to_date` → small green text "Version N — up to date"; `update_available` → amber callout "Update available — catalog is vN, drone has vN"; `drone_ahead` → blue callout "Drone has vN, catalog latest is vN"; `unknown` or `loading` → nothing extra.
+3. [ ] **Extend hook and types**
+   - [ ] 3.1 Add `is_orphan: boolean` to `MatchedDrone` interface in `lib/use-connected-drone-match.ts`.
+   - [ ] 3.2 Expose `isOrphan: boolean` on `DroneMatchResult` (derive from `drone.is_orphan ?? false`).
 
-4. [x] **Variant page: Update available badge on matching card**
-   - [ ] 4.1 In `components/client-set-list.tsx`, in `renderCard`, after the existing "this drone" badge, add a pulsing amber "Update available" badge when `isConnected && versionStatus === 'update_available'`. Use `animate-pulse` on the badge span. Match the existing badge style but in amber.
+4. [ ] **Import modal recap — orphan display**
+   - [ ] 4.1 In `components/connect-drone-dialog.tsx`, when `match.isOrphan`, replace the "Client" row with "No client assigned" (muted text). Version status still shows normally.
 
-5. [x] **Smoke test (manual)** — verified by user throughout implementation.
+5. [ ] **Variant page — Default card highlighted for orphan drones**
+   - [ ] 5.1 In `components/client-set-list.tsx`, add an `isOrphanDrone` computed value: `match.isOrphan && connectedDroneId !== null`. When true, apply the emerald "your drone" highlight + badge to the Default card instead of a client card.
+   - [ ] 5.2 Also apply the amber "Update available" badge to the Default card when `isOrphanDrone && match.versionStatus === "update_available"`.
+   - [ ] 5.3 Ensure the "Apply update" button on the Default card's version list page works for orphan drones (it should already since `ApplyUpdateButton` just needs a `versionId`).
 
-6. [x] **Changelog + version bump**
-   - [x] 6.1 v0.9.0 added.
+6. [ ] **Catalog home banner — orphan drones**
+   - [ ] 6.1 In `components/drone-status-banner.tsx`, `isOrphan` drones should show "No client assigned" in the Client position. The version status strip and Apply update button already work through `match.versionStatus` and `drone.latest_version_id`, so no structural change needed — just verify the banner renders correctly for orphans.
+
+7. [ ] **Typecheck + build**
+   - [ ] 7.1 Run `npx tsc --noEmit` — fix any type errors.
+   - [ ] 7.2 Run `npm run build` — confirm clean build.
+
+8. [ ] **Changelog + version bump**
+   - [ ] 8.1 Add v0.10.0 entry to `lib/changelog.ts`.
 
 ## Notes
 
-- `catalog_version` lookup: `SELECT client_set_id, version_label FROM param_versions WHERE is_latest = true AND client_set_id IN (SELECT id FROM client_sets WHERE drone_id = <matched_drone_id> AND variant_id = <matched_drone_variant_id>)`. There should be at most one result since a drone can only have one client_set per variant.
-- If the drone has no client_set yet (brand new, no uploads), `catalog_version = null` → status `unknown`. No badge, no callout.
-- The cache map key was `SCR_USER1 integer`. Change it to a composite string `"${scr1}_${scr2}"` so a version change on the same drone busts the cache.
-- No DB schema changes in this stage.
+- Default `client_set` lookup: `SELECT id FROM client_sets WHERE variant_id = <drone.variant_id> AND is_default = true LIMIT 1`. At most one per variant (partial unique index from feature 04).
+- No RLS changes needed — the Default `client_set` is readable by all authenticated users via the existing `is_default` branch of `client_sets_select`.
+- `connectedDroneId` in `client-set-list.tsx` is `match.drone?.id`. For orphans this won't match any card's `droneId`, so the Default card won't be highlighted by the existing path. The `isOrphan` flag adds a separate highlight path for the Default card specifically.
+- The compare page back-link work was done in the last session (uncommitted). Task 1 just validates and commits it.

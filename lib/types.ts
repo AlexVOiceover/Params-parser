@@ -110,6 +110,10 @@ export interface CompareVersion {
   clientName: string;
   variantName: string;
   familyName: string;
+  /** Navigation back-links — present when resolved from the DB. */
+  familySlug?: string;
+  variantId?: string;
+  clientSetId?: string;
 }
 
 export interface CompareRow {
