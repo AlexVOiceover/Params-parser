@@ -143,7 +143,48 @@ No new DB schema. The drone serial is already in `drones.serial`. The deep-link 
 
 ---
 
-## Stage 12 — "Needs review" and admin capture of field versions
+## Stage 12 — Param sanity check (version matches but values differ)
+
+**Scope**: when a connected drone's `SCR_USER2` matches the catalog's latest version (`versionStatus = "up_to_date"`), perform a background comparison of the drone's actual param values against the catalog version's stored `param_values`. If they differ, surface a new status so the user knows something changed on the drone outside of the catalog system.
+
+### Why
+
+`SCR_USER2` only tells you which version was last flashed. It doesn't detect params changed via Mission Planner, GCS, or any other tool after the flash. A drone could be "on v2" but running a modified config that nobody approved. This is a safety and traceability concern.
+
+### New `versionStatus` value
+
+Extend `VersionStatus` type to include `"up_to_date_modified"`. Meaning: version number matches catalog, but ≥1 param value differs.
+
+### Implementation
+
+- **`/api/drone/match` extension**: when `droneVersion === catalogVersion` (i.e. the match would return `up_to_date`), the endpoint also fetches `param_values` for the latest version and computes a diff against the `scr_params` sent in a new optional query param `&params=<base64-encoded-name-value-pairs>`. Returns `{ drift_count: number | null }` alongside the existing fields. If no params sent (e.g. during non-drone sessions), `drift_count` is null.
+  - Use string comparison (no float tolerance). A few float-formatting false positives are acceptable — they prompt a harmless review.
+  - Exclude `STAT_*`, `SCR_USER1`, `SCR_USER2`, and the existing `RUNTIME_PARAMS` set.
+  - The response is computed server-side so the hook doesn't need a second fetch.
+
+- **`useConnectedDroneMatch` hook**: when `droneParams` is available, encode a condensed `name=value` map and send it with the match request. Expose `driftCount: number | null` on `DroneMatchResult`. Compute `versionStatus = "up_to_date_modified"` when `driftCount > 0`.
+
+- **Import modal recap**: new amber row "N params differ from catalog v2" with a Compare link when `up_to_date_modified`. Version line reads "v2 — modified" instead of "v2 — up to date".
+
+- **Variant page client_set card**: when `isConnected && versionStatus === "up_to_date_modified"`, show an amber "Modified" badge (pulsing, distinct from "Update available"). Add a "Review" link to `/compare?v=__drone__&v=<latestVersionId>` so the admin can see the exact diff.
+
+- **Catalog home banner**: "v2 — N params modified" amber strip with Review link for `up_to_date_modified` orphans or matched drones.
+
+- **No auto-action**: the feature is read-only notification only. The admin decides whether to restore (Apply update → re-flash same version) or capture (Stage 13).
+
+### Performance note
+
+The `param_values` fetch for the comparison is the same paginated query already done in `ApplyUpdateButton`. The serialised param payload sent to `/api/drone/match` will be ~15–20KB for 1000+ params — acceptable for a background request. The fetch is triggered only when `droneParams` is non-null and the match resolves.
+
+### Encoding
+
+Encode drone params as a compact JSON object `{"PARAM_NAME": "value", ...}`, base64 it, send as `&params=<base64>`. Server decodes and diffs against `param_values` rows. Only send when `droneParams` is available (skip for non-USB sessions).
+
+### Changelog + version: v0.13.0.
+
+---
+
+## Stage 13 — "Needs review" and admin capture of field versions (formerly 12)
 
 **Scope**: when a connected drone has `SCR_USER2 > catalog_latest`, an admin can capture the drone's current params as a new version flagged `needs_review`. Admins see a global alert and can accept or discard these versions.
 
@@ -159,7 +200,7 @@ No new DB schema. The drone serial is already in `drones.serial`. The deep-link 
 
 ---
 
-## Stage 13 — Differential write engine (flash params to drone)
+## Stage 14 — Differential write engine (flash params to drone)
 
 **Scope**: write a target param set to a connected drone using a diff-then-write-then-verify loop. No UI yet — the engine goes in `lib/`, covered by the existing web-serial infrastructure.
 
@@ -174,12 +215,12 @@ No new DB schema. The drone serial is already in `drones.serial`. The deep-link 
   8. If passes exceeded and still different: **revert**. Send a write pass with the original `current` snapshot from step 1. This is a best-effort revert — if the revert itself fails, surface the list of params that are in an unknown state.
   9. Resolve `FlashResult`: `{ ok, passes, unresolved: Param[], reverted: boolean }`.
 - **Investigation note on MAVLink writes**: before coding, check `lib/mavlink-serial.ts` and `lib/mavlink-serial-shim.ts` for any existing `PARAM_SET` or `PARAM_VALUE` send path. The connected-drone card already has a "save back to drone" flow — confirm if it uses MAVLink PARAM_SET or if it just triggers a file download. Use whatever is already there rather than reinventing.
-- No UI changes in this stage. The function is called by Stage 14.
+- No UI changes in this stage. The function is called by Stage 15.
 - **Changelog + version**: v0.13.0.
 
 ---
 
-## Stage 14 — Fleet bring-up: flash defaults and create client param sets
+## Stage 15 — Fleet bring-up: flash defaults and create client param sets
 
 **Scope**: the complete "new drone" workflow. Admin connects a drone, picks family/variant (and optionally a client), and the app flashes the Default params + creates the client_set starting at v1.
 
@@ -220,6 +261,8 @@ No new DB schema. The drone serial is already in `drones.serial`. The deep-link 
 | Family/variant locked if drone known | If `SCR_USER1` matches an existing `drones` row, family/variant are shown but not editable — cannot accidentally re-assign. |
 | NFC platform support | Android Chrome only (Web NFC API). iOS not supported — `WriteNFCButton` renders nothing on unsupported platforms, no error shown. |
 | NFC tag content | URL record (`/drone/<serial>`) + Text record (plain serial). URL opens the deep-link page; text is universal fallback. |
+| Param sanity check | Done server-side at match time. Drone params sent as base64 JSON in the match request. String comparison (no float tolerance). Exclude STAT_* and other runtime params. Read-only — no auto-action. |
+| "up_to_date_modified" | New versionStatus value: version number matches but ≥1 param value differs. Shows amber "Modified" badge + Review link. Distinct from "update_available" (which means a newer catalog version exists). |
 
 ---
 
