@@ -221,7 +221,7 @@ async function fetchCompareData(
     ),
   ];
   const { data: familiesData } = familyIds.length
-    ? await supabase.from("families").select("id, name").in("id", familyIds)
+    ? await supabase.from("families").select("id, slug, name").in("id", familyIds)
     : { data: [] };
 
   const clientSetMap = new Map((clientSetsData ?? []).map((c) => [c.id, c]));
@@ -248,6 +248,9 @@ async function fetchCompareData(
       clientName,
       variantName: variant?.name ?? "?",
       familyName: family?.name ?? "?",
+      familySlug: (family as { slug?: string } | undefined)?.slug,
+      variantId: clientSet?.variant_id,
+      clientSetId: v?.client_set_id,
     };
   });
 
@@ -310,13 +313,30 @@ export default async function ComparePage({
             Catalog
           </Link>
           <ChevronRight className="h-3 w-3" />
-          <Link
-            href="/compare"
-            className="hover:text-foreground transition-colors cursor-pointer"
-          >
-            Compare
-          </Link>
-          <ChevronRight className="h-3 w-3" />
+          {/* Back link: if all versions share the same client_set, show the path back */}
+          {(() => {
+            const dbV = versions.filter((v) => v.clientSetId && v.familySlug && v.variantId);
+            const uniqueClientSets = new Set(dbV.map((v) => v.clientSetId));
+            if (uniqueClientSets.size === 1 && dbV[0]?.familySlug && dbV[0]?.variantId && dbV[0]?.clientSetId) {
+              const v = dbV[0];
+              return (
+                <>
+                  <Link href={`/${v.familySlug}`} className="hover:text-foreground transition-colors cursor-pointer">{v.familyName}</Link>
+                  <ChevronRight className="h-3 w-3" />
+                  <Link href={`/${v.familySlug}/${v.variantId}`} className="hover:text-foreground transition-colors cursor-pointer">{v.variantName}</Link>
+                  <ChevronRight className="h-3 w-3" />
+                  <Link href={`/${v.familySlug}/${v.variantId}/${v.clientSetId}`} className="hover:text-foreground transition-colors cursor-pointer">{v.clientName}</Link>
+                  <ChevronRight className="h-3 w-3" />
+                </>
+              );
+            }
+            return (
+              <>
+                <Link href="/compare" className="hover:text-foreground transition-colors cursor-pointer">Compare</Link>
+                <ChevronRight className="h-3 w-3" />
+              </>
+            );
+          })()}
           <span className="text-foreground">
             {totalCount} version{totalCount !== 1 ? "s" : ""}
           </span>

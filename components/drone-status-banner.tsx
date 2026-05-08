@@ -43,9 +43,11 @@ export function DroneStatusBanner() {
       {identified && drone ? (
         <>
           <span className="text-sm font-medium text-foreground">{drone.serial}</span>
-          {drone.client_name && (
+          {match.isOrphan ? (
+            <span className="text-xs text-muted-foreground italic">no client</span>
+          ) : drone.client_name ? (
             <span className="text-sm text-muted-foreground">· {drone.client_name}</span>
-          )}
+          ) : null}
           {drone.family_name && drone.variant_name && drone.family_slug && (
             <Link
               href={`/${drone.family_slug}/${drone.variant_id}`}

@@ -196,12 +196,17 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
                       <dl className="grid grid-cols-[auto,1fr] gap-x-3 gap-y-0.5 text-xs">
                         <dt className="text-muted-foreground">Drone</dt>
                         <dd className="font-mono text-foreground">{match.drone.serial}</dd>
-                        {match.drone.client_name && (
+                        {match.isOrphan ? (
+                          <>
+                            <dt className="text-muted-foreground">Client</dt>
+                            <dd className="text-muted-foreground italic">No client assigned</dd>
+                          </>
+                        ) : match.drone.client_name ? (
                           <>
                             <dt className="text-muted-foreground">Client</dt>
                             <dd className="text-foreground">{match.drone.client_name}</dd>
                           </>
-                        )}
+                        ) : null}
                         {match.drone.family_name && match.drone.variant_name && (
                           <>
                             <dt className="text-muted-foreground">Catalog</dt>

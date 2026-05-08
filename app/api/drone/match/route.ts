@@ -65,11 +65,24 @@ export async function GET(request: NextRequest) {
 
   let catalogVersion: number | null = null;
   let latestVersionId: string | null = null;
-  if (clientSet) {
+  // isOrphan: drone has no client_set on this variant — fall back to the
+  // variant's Default client_set so orphan drones still get version tracking.
+  const isOrphan = !clientSet;
+  const resolvedClientSet = clientSet ?? await (async () => {
+    const { data } = await supabase
+      .from("client_sets")
+      .select("id")
+      .eq("variant_id", drone.variant_id)
+      .eq("is_default", true)
+      .maybeSingle();
+    return data;
+  })();
+
+  if (resolvedClientSet) {
     const { data: latestVersion } = await supabase
       .from("param_versions")
       .select("id, version_label")
-      .eq("client_set_id", clientSet.id)
+      .eq("client_set_id", resolvedClientSet.id)
       .eq("is_latest", true)
       .maybeSingle();
     if (latestVersion) {
@@ -92,6 +105,7 @@ export async function GET(request: NextRequest) {
       catalog_version: catalogVersion,
       latest_version_id: latestVersionId,
       drone_version: droneVersionOut,
+      is_orphan: isOrphan,
     },
   });
 }

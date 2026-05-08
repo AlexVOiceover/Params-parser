@@ -15,6 +15,7 @@ export interface MatchedDrone {
   catalog_version: number | null;
   latest_version_id: string | null;
   drone_version: number | null;
+  is_orphan: boolean;
 }
 
 export type DroneMatchStatus = "idle" | "loading" | "matched" | "unmatched";
@@ -26,6 +27,7 @@ interface DroneMatchResult {
   versionStatus: VersionStatus;
   droneVersion: number | null;
   catalogVersion: number | null;
+  isOrphan: boolean;
 }
 
 // Cache key: "<scr_user1>_<scr_user2>" — busts when either changes.
@@ -53,7 +55,7 @@ function computeVersionStatus(drone: MatchedDrone | null): VersionStatus {
  */
 export function useConnectedDroneMatch(): DroneMatchResult {
   const { droneParams } = useDroneParams();
-  const idle: DroneMatchResult = { status: "idle", drone: null, versionStatus: "unknown", droneVersion: null, catalogVersion: null };
+  const idle: DroneMatchResult = { status: "idle", drone: null, versionStatus: "unknown", droneVersion: null, catalogVersion: null, isOrphan: false };
   const [result, setResult] = useState<DroneMatchResult>(idle);
   const lastKeyRef = useRef<string | null>(null);
 
@@ -100,11 +102,12 @@ export function useConnectedDroneMatch(): DroneMatchResult {
         versionStatus: computeVersionStatus(cached),
         droneVersion: cached?.drone_version ?? null,
         catalogVersion: cached?.catalog_version ?? null,
+        isOrphan: cached?.is_orphan ?? false,
       });
       return;
     }
 
-    setResult({ status: "loading", drone: null, versionStatus: "unknown", droneVersion: droneVersionOut, catalogVersion: null });
+    setResult({ status: "loading", drone: null, versionStatus: "unknown", droneVersion: droneVersionOut, catalogVersion: null, isOrphan: false });
     let cancelled = false;
 
     const url = droneVersionOut !== null
@@ -122,11 +125,12 @@ export function useConnectedDroneMatch(): DroneMatchResult {
           versionStatus: computeVersionStatus(body.drone),
           droneVersion: body.drone?.drone_version ?? droneVersionOut,
           catalogVersion: body.drone?.catalog_version ?? null,
+          isOrphan: body.drone?.is_orphan ?? false,
         });
       })
       .catch(() => {
         if (cancelled) return;
-        setResult({ status: "unmatched", drone: null, versionStatus: "unknown", droneVersion: droneVersionOut, catalogVersion: null });
+        setResult({ status: "unmatched", drone: null, versionStatus: "unknown", droneVersion: droneVersionOut, catalogVersion: null, isOrphan: false });
       });
 
     return () => { cancelled = true; };

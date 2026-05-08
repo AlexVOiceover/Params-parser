@@ -6,6 +6,16 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.10.0",
+    date: "2026-05-08",
+    items: [
+      "Orphan drones (no client assigned) now track the Default param set — they show version status and 'Update available' just like registered drones.",
+      "The Default card on a variant page highlights as 'your drone (no client)' when an orphan drone is connected.",
+      "The drone status banner and import modal show 'no client' for orphan drones instead of showing nothing.",
+      "The Compare page now shows a full breadcrumb back-link (Family > Variant > Client set) when comparing versions from the same client set.",
+    ],
+  },
+  {
     version: "0.9.0",
     date: "2026-05-07",
     items: [
