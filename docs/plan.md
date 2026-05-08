@@ -1,42 +1,50 @@
-# 09 Orphan Drone Default Tracking
+# 10 Register Drone Wizard
 
-> Make drones without a client_set ("orphans") track the Default param set for version comparisons and update notifications. Also ship the compare page back-navigation that was already coded in the previous session.
+> A multi-step modal triggered when `SCR_USER2=0` (unversioned drone). Walks the user through serial/family/variant/client, confirms, then creates DB records and flashes the Default param set to the drone.
 
 ## Tasks
 
-1. [x] **Compare page back-navigation (already coded, commit it)**
-   - [x] 1.1 `lib/types.ts`: `CompareVersion` already has `familySlug`, `variantId`, `clientSetId` added — verify and commit.
-   - [x] 1.2 `app/(app)/compare/page.tsx`: breadcrumb back-link already coded — verify it builds, then commit.
+1. [x] **New API: POST /api/admin/drones**
+   - [ ] 1.1 Create `app/api/admin/drones/route.ts` with a POST handler. Accepts `{ serial, variantId, clientId? }`. Validates role (admin/contributor). Creates a `drones` row with `client_id=null` if no client. Returns `{ ok: true, id }`. Reuse the existing client check pattern from `app/api/admin/clients/[id]/drones/route.ts`.
+   - [ ] 1.2 Guard against duplicate serials per client (or globally if no client) — return a 409 with a friendly message if the serial already exists for that client.
 
-2. [x] **Extend /api/drone/match — orphan fallback**
-   - [ ] 2.1 In `app/api/drone/match/route.ts`, when `clientSet` is null, look up the Default `client_set` for the drone's variant (`is_default=true`). Use it to fetch `catalog_version` and `latest_version_id` the same way as for registered drones.
-   - [ ] 2.2 Add `is_orphan: boolean` to the response payload — `true` when the client_set lookup was null and we fell back to the Default.
+2. [x] **RegisterDroneModal component**
+   - [ ] 2.1 Create `components/register-drone-modal.tsx`. Props: `onClose: () => void`. Internal stages: `"form" | "confirm" | "flashing" | "done" | "error"`. Style matches `ConnectDroneDialog`.
+   - [ ] 2.2 **Form step**: derive initial values from `droneParams` context (`SCR_USER1` for serial, `SCR_USER2` to confirm it's 0). Fetch families + variants + clients on mount. Show serial (locked if `SCR_USER1>0`), family dropdown, variant dropdown (filtered), client dropdown ("No client (orphan)" as default first option).
+   - [ ] 2.3 **Case detection** inside the form: if `SCR_USER1>0`, call `/api/drone/match?id=<serial>` to check if drone is already in DB. If found → lock family/variant fields and show "already registered" info. If not found → allow family/variant selection.
+   - [ ] 2.4 **Confirm step**: summary card showing serial, family/variant, client (or "Orphan — will track Default"), Default version to flash. "Register & Flash" CTA + Back button.
+   - [ ] 2.5 **Flash step**: sequentially: (a) create drone row via `POST /api/admin/drones`, (b) create `client_set` via `POST /api/admin/client-sets` only if client selected, (c) fetch Default latest `param_version` for the variant, (d) open `WriteDroneDialog` with diff params (Default params vs current drone params). Show a progress log.
+   - [ ] 2.6 **Done/error step**: success shows "Drone registered as [serial] — v1 flashed". Error shows what failed with a retry option.
 
-3. [x] **Extend hook and types**
-   - [ ] 3.1 Add `is_orphan: boolean` to `MatchedDrone` interface in `lib/use-connected-drone-match.ts`.
-   - [ ] 3.2 Expose `isOrphan: boolean` on `DroneMatchResult` (derive from `drone.is_orphan ?? false`).
+3. [x] **Trigger: connect-drone-dialog**
+   - [ ] 3.1 In `components/connect-drone-dialog.tsx`, after stage `"done"`, check if `SCR_USER2=0` in the imported params. If so, show a "Register this drone" button in the recap block (above the version status line).
+   - [ ] 3.2 Clicking opens `RegisterDroneModal` over the connect dialog (z-index stacked). Closing the register modal returns to the connect dialog done state.
 
-4. [x] **Import modal recap — orphan display**
-   - [ ] 4.1 In `components/connect-drone-dialog.tsx`, when `match.isOrphan`, replace the "Client" row with "No client assigned" (muted text). Version status still shows normally.
+4. [x] **Trigger: drone-status-banner**
+   - [ ] 4.1 In `components/drone-status-banner.tsx`, when `match.status === "unmatched"` (drone not in DB at all) OR (`match.isOrphan && match.versionStatus === "unknown"` meaning no Default either), show a "Register" amber button alongside the existing content.
+   - [ ] 4.2 When `SCR_USER2=0` and matched as orphan with a Default, show "Register" button (the drone is in the DB but unversioned — still needs the flash).
 
-5. [x] **Variant page — Default card highlighted for orphan drones**
-   - [ ] 5.1 In `components/client-set-list.tsx`, add an `isOrphanDrone` computed value: `match.isOrphan && connectedDroneId !== null`. When true, apply the emerald "your drone" highlight + badge to the Default card instead of a client card.
-   - [ ] 5.2 Also apply the amber "Update available" badge to the Default card when `isOrphanDrone && match.versionStatus === "update_available"`.
-   - [ ] 5.3 Ensure the "Apply update" button on the Default card's version list page works for orphan drones (it should already since `ApplyUpdateButton` just needs a `versionId`).
+5. [x] **Default param lookup helper**
+   - [ ] 5.1 Add a small helper function (or inline in the modal) that fetches the Default `param_version` for a given `variantId`: query `client_sets WHERE variant_id=X AND is_default=true`, then `param_versions WHERE client_set_id=Y AND is_latest=true`. Returns `{ versionId, versionLabel } | null`. Used in the flash step to know what to write.
 
-6. [x] **Catalog home banner — orphan drones**
-   - [ ] 6.1 In `components/drone-status-banner.tsx`, `isOrphan` drones should show "No client assigned" in the Client position. The version status strip and Apply update button already work through `match.versionStatus` and `drone.latest_version_id`, so no structural change needed — just verify the banner renders correctly for orphans.
+6. [x] **Locked field UX**
+   - [ ] 6.1 When family/variant are locked (drone already in DB), render them as greyed-out text with a `title="Cannot change — edit in Clients & Drones"` tooltip rather than as disabled selects, to make the locked state visually clear.
 
-7. [x] **Typecheck + build**
-   - [ ] 7.1 Run `npx tsc --noEmit` — fix any type errors.
-   - [ ] 7.2 Run `npm run build` — confirm clean build.
+7. [x] **WriteDroneDialog integration**
+   - [ ] 7.1 The flash step (2.5c-d) fetches the Default's `param_values` (paginated) and diffs against current `droneParams`. Pass the diff to `WriteDroneDialog`. On success from the dialog, update `droneParams` context with the written values (same pattern as `ApplyUpdateButton.handleSuccess`). Call `clearDroneMatchCache()` afterward.
 
-8. [x] **Changelog + version bump**
-   - [ ] 8.1 Add v0.10.0 entry to `lib/changelog.ts`.
+8. [x] **Typecheck + build**
+   - [ ] 8.1 `npx tsc --noEmit` — fix any errors.
+   - [ ] 8.2 `npm run build` — confirm clean.
+
+9. [x] **Changelog + version bump**
+   - [ ] 9.1 Add v0.11.0 entry to `lib/changelog.ts`.
 
 ## Notes
 
-- Default `client_set` lookup: `SELECT id FROM client_sets WHERE variant_id = <drone.variant_id> AND is_default = true LIMIT 1`. At most one per variant (partial unique index from feature 04).
-- No RLS changes needed — the Default `client_set` is readable by all authenticated users via the existing `is_default` branch of `client_sets_select`.
-- `connectedDroneId` in `client-set-list.tsx` is `match.drone?.id`. For orphans this won't match any card's `droneId`, so the Default card won't be highlighted by the existing path. The `isOrphan` flag adds a separate highlight path for the Default card specifically.
-- The compare page back-link work was done in the last session (uncommitted). Task 1 just validates and commits it.
+- No new DB tables. Uses existing `drones`, `client_sets`, `param_versions`.
+- The existing `POST /api/admin/clients/[clientId]/drones` requires a clientId in the URL. For orphan registration (no client), we need the new `POST /api/admin/drones` route that makes `clientId` optional.
+- `WriteDroneDialog` needs `changes: WriteChange[]` — derive from diff of Default param_values vs current droneParams. Same logic as `ApplyUpdateButton`.
+- `clearDroneMatchCache()` and `router.refresh()` after successful registration ensure the UI re-evaluates the drone state.
+- If no Default exists for the selected variant, the flash step should surface an error: "No Default param set found — upload one first." before trying to flash.
+- The `SCR_USER1` write is included in the diff if the drone's current `SCR_USER1` doesn't match the trailing int of the chosen serial.

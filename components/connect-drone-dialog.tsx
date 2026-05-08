@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Usb, X, Trash2, CheckCircle, AlertCircle, AlertTriangle, Loader2 } from "lucide-react";
+import { Usb, X, Trash2, CheckCircle, AlertCircle, AlertTriangle, Loader2, ClipboardList } from "lucide-react";
 import { openDroneConnection } from "@/lib/mavlink-serial";
 import { getStoredDroneParamsCount } from "@/lib/drone-params-context";
 import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
 import { useSerialMode } from "@/lib/use-serial-mode";
+import { RegisterDroneModal } from "@/components/register-drone-modal";
 import type { Param } from "@/lib/types";
 
 function isIOS(): boolean {
@@ -44,6 +45,7 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
   const logEndRef = useRef<HTMLDivElement>(null);
   const serialMode = useSerialMode();
   const match = useConnectedDroneMatch();
+  const [showRegister, setShowRegister] = useState(false);
 
   useEffect(() => {
     setStoredCount(getStoredDroneParamsCount());
@@ -103,7 +105,9 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
   const busy = stage === "running";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <>
+    {showRegister && <RegisterDroneModal onClose={() => setShowRegister(false)} />}
+    <div className="fixed inset-0 z-40 flex items-center justify-center">
       <div
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
         onClick={!busy ? handleClose : undefined}
@@ -244,6 +248,18 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
                   )}
                 </div>
               )}
+              {/* Register prompt when SCR_USER2=0 (unversioned drone) */}
+              {(match.status === "matched" || match.status === "unmatched") &&
+                match.droneVersion === null && (
+                <button
+                  type="button"
+                  onClick={() => setShowRegister(true)}
+                  className="flex items-center gap-2 rounded-md border border-primary/40 bg-primary/10 hover:bg-primary/20 px-3 py-2 text-xs font-medium text-primary transition-colors cursor-pointer w-full"
+                >
+                  <ClipboardList className="h-3.5 w-3.5 shrink-0" />
+                  Register this drone &amp; flash defaults
+                </button>
+              )}
             </>
           )}
 
@@ -315,5 +331,6 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
         </div>
       </div>
     </div>
+    </>
   );
 }
