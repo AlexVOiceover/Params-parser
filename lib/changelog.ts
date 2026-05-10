@@ -6,6 +6,15 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.13.0",
+    date: "2026-05-10",
+    items: [
+      "Param sanity check: when a drone's version matches the catalog, the app now also compares actual param values. If they differ (e.g. someone changed params in Mission Planner), an amber 'Modified' badge appears with a Review link.",
+      "Import modal shows 'N params differ from catalog' when version matches but values don't.",
+      "Drone status banner shows 'N params modified' with a Review link for modified drones.",
+    ],
+  },
+  {
     version: "0.12.0",
     date: "2026-05-08",
     items: [

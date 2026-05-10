@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSessionClient } from "@/lib/supabase/server";
-import { parseSerialId } from "@/lib/param-engine";
+import { parseSerialId, RUNTIME_PARAMS } from "@/lib/param-engine";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +20,14 @@ export async function GET(request: NextRequest) {
   if (!idParam) return NextResponse.json({ drone: null });
   const wanted = parseInt(idParam, 10);
   if (!Number.isFinite(wanted)) return NextResponse.json({ drone: null });
+
+  const paramsB64 = request.nextUrl.searchParams.get("params");
+  let droneParamMap: Record<string, string> | null = null;
+  if (paramsB64) {
+    try {
+      droneParamMap = JSON.parse(Buffer.from(paramsB64, "base64").toString("utf-8"));
+    } catch { /* malformed — ignore */ }
+  }
 
   const scrUser2Param = request.nextUrl.searchParams.get("scr_user2");
   const droneVersion = scrUser2Param !== null ? parseInt(scrUser2Param, 10) : null;
@@ -92,6 +100,37 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // Drift detection: compare drone's actual params against catalog version.
+  // Only runs when droneParamMap is present AND versions match (otherwise
+  // the existing update_available / drone_ahead logic already handles it).
+  let driftCount: number | null = null;
+  if (
+    droneParamMap &&
+    latestVersionId &&
+    droneVersionOut !== null &&
+    catalogVersion !== null &&
+    droneVersionOut === catalogVersion
+  ) {
+    const catalogParams = new Map<string, string>();
+    for (let from = 0; ; from += 1000) {
+      const { data: page } = await supabase
+        .from("param_values")
+        .select("name, value")
+        .eq("param_version_id", latestVersionId)
+        .range(from, from + 999);
+      if (!page || page.length === 0) break;
+      for (const { name, value } of page) catalogParams.set(name, value);
+      if (page.length < 1000) break;
+    }
+    let diff = 0;
+    for (const [name, catalogVal] of catalogParams.entries()) {
+      if (RUNTIME_PARAMS.has(name) || name === "SCR_USER1" || name === "SCR_USER2") continue;
+      const droneVal = droneParamMap[name];
+      if (droneVal !== undefined && droneVal !== catalogVal) diff++;
+    }
+    driftCount = diff;
+  }
+
   return NextResponse.json({
     drone: {
       id: drone.id,
@@ -106,6 +145,7 @@ export async function GET(request: NextRequest) {
       latest_version_id: latestVersionId,
       drone_version: droneVersionOut,
       is_orphan: isOrphan,
+      drift_count: driftCount,
     },
   });
 }
