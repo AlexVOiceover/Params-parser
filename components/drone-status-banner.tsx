@@ -66,6 +66,19 @@ export function DroneStatusBanner() {
           {versionStatus === "up_to_date" && droneVersion !== null && (
             <span className="text-xs text-emerald-600 dark:text-emerald-400">v{droneVersion} — up to date</span>
           )}
+          {versionStatus === "up_to_date_modified" && droneVersion !== null && match.driftCount !== null && drone.latest_version_id && (
+            <>
+              <span className="text-xs text-amber-600 dark:text-amber-400">
+                v{droneVersion} — {match.driftCount} param{match.driftCount === 1 ? "" : "s"} modified
+              </span>
+              <Link
+                href={`/compare?v=__drone__&v=${drone.latest_version_id}`}
+                className="flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline whitespace-nowrap"
+              >
+                Review
+              </Link>
+            </>
+          )}
           {versionStatus === "update_available" && droneVersion !== null && catalogVersion !== null && drone.latest_version_id && (
             <>
               <span className="text-xs text-amber-600 dark:text-amber-400">v{droneVersion} → v{catalogVersion}</span>

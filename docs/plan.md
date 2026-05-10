@@ -1,51 +1,48 @@
-# 11 NFC Tag Writing (Android)
+# 12 Param Sanity Check
 
-> Write a drone's serial number to an NFC sticker from an Android Chrome browser, encoding a deep-link URL + plain text serial as an NDEF message. Silently hidden on iOS and desktop.
+> When a drone's version matches the catalog, compare actual param values in the background. Surface "up_to_date_modified" if values differ — catching post-flash changes made via Mission Planner or any other GCS.
 
 ## Tasks
 
-1. [x] **TypeScript NDEFReader declaration**
-   - [ ] 1.1 Add a minimal `lib/nfc-types.d.ts` declaring the Web NFC API globals (`NDEFReader`, `NDEFWriteOptions`, etc.) so TypeScript doesn't complain. Use a local declaration rather than adding a new npm dependency.
+1. [x] **Extract RUNTIME_PARAMS to shared lib**
+   - [ ] 1.1 Move the `RUNTIME_PARAMS` set from `components/apply-update-button.tsx` to `lib/param-engine.ts` as a named export. Update the import in `apply-update-button.tsx`.
 
-2. [x] **`lib/use-nfc.ts` hook**
-   - [ ] 2.1 Detect support: `isSupported` is true only when `typeof NDEFReader !== "undefined"` (Android Chrome). Return false on all other platforms.
-   - [ ] 2.2 Implement `write(serial: string): Promise<void>`. Builds the NDEF message with two records: (a) URL record → `https://air6params.vercel.app/drone/<serial>`, (b) text record → the serial string. Calls `new NDEFReader().write(message)`.
-   - [ ] 2.3 Expose `status: 'idle' | 'waiting' | 'success' | 'error'` and `errorType: 'permission_denied' | 'write_failed' | 'not_supported' | null`. Update status before/after the write call. Catch `NotAllowedError` → `permission_denied`; other errors → `write_failed`.
-   - [ ] 2.4 Auto-reset `status` back to `'idle'` after 3 seconds on `'success'`.
+2. [x] **Extend /api/drone/match — drift detection**
+   - [ ] 2.1 Accept an optional `&params=<base64>` query param. Decode it as `JSON.parse(Buffer.from(params, "base64").toString("utf-8"))` → `Record<string, string>`. Return `drone.drift_count = null` when no params sent.
+   - [ ] 2.2 When `droneVersion === catalogVersion` AND decoded params are present, fetch `param_values` for `resolvedClientSet.id` (paginated). Diff decoded params vs fetched values: for each name in the catalog version, skip names in `RUNTIME_PARAMS`, skip `SCR_USER1`/`SCR_USER2`; count names where string values differ. Set `drift_count = diffCount`.
+   - [ ] 2.3 Add `drift_count: number | null` to the JSON response and to the `MatchedDrone` interface in `lib/use-connected-drone-match.ts`.
 
-3. [x] **`components/write-nfc-button.tsx` component**
-   - [ ] 3.1 Renders `null` when `isSupported` is false (silent on iOS/desktop).
-   - [ ] 3.2 Props: `serial: string`, optional `className?: string`, optional `label?: string` (default "Write NFC tag").
-   - [ ] 3.3 Idle state: icon button or labelled button showing NFC icon + label.
-   - [ ] 3.4 Waiting state: pulsing amber style + "Tap phone to tag…" text.
-   - [ ] 3.5 Success state: green "Tag written ✓" for 3s then resets.
-   - [ ] 3.6 Error state: amber error message ("Permission denied" / "Write failed") with a "Retry" link that resets to idle.
+3. [x] **Extend useConnectedDroneMatch hook**
+   - [ ] 3.1 Add `"up_to_date_modified"` to the `VersionStatus` type.
+   - [ ] 3.2 When `droneParams` is available and non-empty, build the base64 param payload: `btoa(unescape(encodeURIComponent(JSON.stringify(Object.fromEntries(droneParams.map(p => [p.name, p.value]))))))`. Append `&params=<encoded>` to the fetch URL.
+   - [ ] 3.3 Update `computeVersionStatus` to return `"up_to_date_modified"` when `drone.drift_count !== null && drone.drift_count > 0` and the existing status would be `"up_to_date"`.
+   - [ ] 3.4 Expose `driftCount: number | null` on `DroneMatchResult` (from `drone.drift_count ?? null`).
+   - [ ] 3.5 **Cache**: always bypass the cache when `droneParams` is present — never return a stale cached result when the drone's actual params may have changed between imports. Do this by appending the param payload to the cache key, or simply skipping cache lookup when `droneParams` is non-null.
 
-4. [x] **`/drone/[serial]` deep-link page**
-   - [ ] 4.1 Create `app/(app)/drone/[serial]/page.tsx`. Public page (no auth gate — the destination page gates it). Uses `createClient()` (anon) to look up `drones` by serial (case-insensitive `ilike`).
-   - [ ] 4.2 If drone found: look up its `variant_id` → variant's `family_id` → family's `slug`. Redirect to `/{familySlug}/{variantId}` with `redirect()`.
-   - [ ] 4.3 If not found: render a simple "Drone not registered" page with a link to the catalog home.
-   - [ ] 4.4 Add `export const dynamic = "force-dynamic"` since the serial lookup must be fresh.
+4. [x] **Import modal recap**
+   - [ ] 4.1 In `components/connect-drone-dialog.tsx`, replace the green "up to date" line with amber "v{N} — {driftCount} params differ from catalog" when `versionStatus === "up_to_date_modified"`. Include a Compare link: `/compare?v=__drone__&v=<match.drone.latest_version_id>`.
+   - [ ] 4.2 Keep the existing "up to date" green line for `versionStatus === "up_to_date"` (no drift).
 
-5. [x] **Integration point 1 — `/admin/clients` drone row**
-   - [ ] 5.1 In `components/clients-table.tsx`, in the expanded drone row where the serial is displayed, add a `WriteNFCButton` with `serial={d.serial}` after the serial text. Show only when the user is admin.
-   - [ ] 5.2 Keep it compact — use a small icon-only variant without a text label in the row to avoid crowding. A tooltip on the button is sufficient.
+5. [x] **Variant page client_set card**
+   - [ ] 5.1 In `components/client-set-list.tsx`, in `renderCard`, add an `isModified` computed value: `isConnected && match.versionStatus === "up_to_date_modified"`.
+   - [ ] 5.2 Show an amber pulsing "Modified" badge next to the version info when `isModified`. Style matches the existing "Update available" badge but uses "Modified" label.
+   - [ ] 5.3 Add a small "Review" link to `/compare?v=__drone__&v=<c.latestVersionId>` when `isModified` — same position as other action links (before the icons).
 
-6. [x] **Integration point 2 — Register drone wizard done step**
-   - [ ] 6.1 In `components/register-drone-modal.tsx`, in the `stage === "done"` section, render a `WriteNFCButton` with the registered serial below the success message.
-   - [ ] 6.2 Add a short explanatory line: "Write the serial to the NFC sticker on the drone" (only shown when `isSupported`).
+6. [x] **Drone status banner**
+   - [ ] 6.1 In `components/drone-status-banner.tsx`, add a case for `versionStatus === "up_to_date_modified"`: show amber text "v{N} — {driftCount} params modified" and a Review link to `/compare?v=__drone__&v=<drone.latest_version_id>`.
 
 7. [x] **Typecheck + build**
-   - [ ] 7.1 `npx tsc --noEmit` — fix any type errors.
+   - [ ] 7.1 `npx tsc --noEmit` — fix any errors.
    - [ ] 7.2 `npm run build` — confirm clean.
 
 8. [x] **Changelog + version bump**
-   - [ ] 8.1 Add v0.12.0 entry to `lib/changelog.ts`.
+   - [ ] 8.1 Add v0.13.0 entry to `lib/changelog.ts`.
 
 ## Notes
 
-- `NDEFReader.write()` triggers the OS permission prompt automatically on first call — no separate permission-request step needed.
-- The URL record value should be the full URL string (e.g. `"https://air6params.vercel.app/drone/AIR4-0426-0023"`). Set `recordType: "url"` in the NDEF record.
-- The `/drone/[serial]` page lives inside the `(app)` route group so it inherits the app layout, but the serial lookup itself uses the anon client so unauthenticated users can land there from a tag tap.
-- `clients-table.tsx` already imports drone data including `serial` — no additional fetching needed for integration point 1.
-- The `WriteNFCButton` in the register wizard should be independent of the wizard's close flow — the user might want to write the tag and then close, or close without writing.
+- `RUNTIME_PARAMS` must be available in the API route — move to `lib/param-engine.ts` in task 1.
+- The base64 encoding in the browser: `btoa(unescape(encodeURIComponent(json)))` handles Unicode safely. Server decoding: `Buffer.from(b64, "base64").toString("utf-8")`.
+- Cache bypass in task 3.5: simplest approach is to add the param payload length (not the full encoded string) to the cache key, e.g. `"${scr1}_${scr2}_${droneParams?.length ?? 0}"`. This busts when the param count changes (e.g. after a flash) without encoding the full 20KB in the key. Full re-fetch on every import is also acceptable — the match request is cheap.
+- The drift diff only runs when `droneVersion === catalogVersion`. For `update_available` and `drone_ahead` cases, the existing logic is unchanged.
+- `latest_version_id` is already on `match.drone` (added in feature 08) — use it for the Compare link.
+- The `resolvedClientSet` variable in the match route already handles both registered and orphan drones — the drift check reuses the same variable.

@@ -2,6 +2,27 @@ import type { Param, Rule, ProtectionList, ParamGroup, ParamDefinition } from ".
 import defaultListsJson from "@/data/protection-lists.json";
 
 /**
+ * ArduPilot runtime/volatile params that change automatically and must
+ * never be written back to a drone or used in version diffs.
+ */
+export const RUNTIME_PARAMS = new Set([
+  "STAT_BOOTCNT",
+  "STAT_FLTTIME",
+  "STAT_RUNTIME",
+  "STAT_RESET",
+  "SYS_NUM_RESETS",
+  "BATT_AMP_TOTAL",
+  "BATT2_AMP_TOTAL",
+  "INS_ACC_ID",
+  "INS_ACC2_ID",
+  "INS_ACC3_ID",
+  "INS_GYR_ID",
+  "INS_GYR2_ID",
+  "INS_GYR3_ID",
+  "INS_GYR_CAL",
+]);
+
+/**
  * Extract the trailing integer from a drone serial string, used to match the
  * `SCR_USER1` parameter the firmware writes to identify itself. Examples:
  *   AIR4-0426-0023 → 23

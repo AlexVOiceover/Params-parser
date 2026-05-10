@@ -226,6 +226,13 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
                           Version {match.droneVersion} — up to date
                         </p>
                       )}
+                      {match.versionStatus === "up_to_date_modified" && match.droneVersion !== null && match.drone?.latest_version_id && (
+                        <p className="flex items-center gap-1.5 text-xs text-amber-400 bg-amber-400/10 border border-amber-400/30 rounded px-2 py-1">
+                          <AlertTriangle className="h-3 w-3 shrink-0" />
+                          v{match.droneVersion} — {match.driftCount} param{match.driftCount === 1 ? "" : "s"} differ from catalog{" "}
+                          <a href={`/compare?v=__drone__&v=${match.drone.latest_version_id}`} className="underline cursor-pointer ml-1">Review</a>
+                        </p>
+                      )}
                       {match.versionStatus === "update_available" && (
                         <p className="flex items-center gap-1.5 text-xs text-amber-400 bg-amber-400/10 border border-amber-400/30 rounded px-2 py-1">
                           <AlertTriangle className="h-3 w-3 shrink-0" />

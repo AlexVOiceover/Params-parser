@@ -8,15 +8,9 @@ import { useDroneParams } from "@/lib/drone-params-context";
 import { clearDroneMatchCache } from "@/lib/use-connected-drone-match";
 import { WriteDroneDialog, type WriteChange } from "@/components/write-drone-dialog";
 import { WriteNFCButton } from "@/components/write-nfc-button";
-import { parseSerialId } from "@/lib/param-engine";
+import { parseSerialId, RUNTIME_PARAMS } from "@/lib/param-engine";
 import type { ParamWriteResult } from "@/lib/mavlink-serial";
 
-const RUNTIME_PARAMS = new Set([
-  "STAT_BOOTCNT","STAT_FLTTIME","STAT_RUNTIME","STAT_RESET",
-  "SYS_NUM_RESETS","BATT_AMP_TOTAL","BATT2_AMP_TOTAL",
-  "INS_ACC_ID","INS_ACC2_ID","INS_ACC3_ID",
-  "INS_GYR_ID","INS_GYR2_ID","INS_GYR3_ID","INS_GYR_CAL",
-]);
 
 type Stage = "form" | "confirm" | "flashing" | "done" | "error";
 

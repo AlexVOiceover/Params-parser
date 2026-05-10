@@ -215,6 +215,7 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
     // Orphan drones show on the Default card since they track the Default.
     const isOrphanOnDefault = isOrphanDrone && c.isDefault;
     const hasUpdate = (isConnected || isOrphanOnDefault) && match.versionStatus === "update_available";
+    const isModified = (isConnected || isOrphanOnDefault) && match.versionStatus === "up_to_date_modified";
 
     return (
       <div className="relative group/row">
@@ -247,6 +248,11 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
                   Update available
                 </span>
               )}
+              {isModified && (
+                <span className="flex items-center gap-1 animate-pulse rounded-full bg-amber-500/15 border border-amber-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400 leading-none whitespace-nowrap">
+                  Modified
+                </span>
+              )}
               {c.isDefault ? (
                 <span className="rounded-full bg-primary/15 border border-primary/30 px-1.5 py-0.5 text-[10px] font-semibold text-primary leading-none whitespace-nowrap">
                   catalog reference
@@ -276,6 +282,18 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
             {hasUpdate && match.droneVersion !== null && match.catalogVersion !== null && (
               <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
                 Drone has v{match.droneVersion} · Catalog has v{match.catalogVersion}
+              </span>
+            )}
+            {isModified && match.driftCount !== null && c.latestVersionId && (
+              <span className="text-xs text-amber-600 dark:text-amber-400">
+                {match.driftCount} param{match.driftCount === 1 ? "" : "s"} differ from catalog{" "}
+                <Link
+                  href={`/compare?v=__drone__&v=${c.latestVersionId}`}
+                  className="underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Review
+                </Link>
               </span>
             )}
           </div>
