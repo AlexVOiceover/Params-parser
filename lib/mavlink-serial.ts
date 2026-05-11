@@ -452,11 +452,14 @@ export async function openDroneConnection(
         }
 
         for (const pv of result.params) {
-          if (paramCount === null && pv.count > 0) {
+          // Only trust the param count from the FC after we've actually sent the
+          // request — params arriving before that are from a previous session's
+          // leftover stream or false-positive boot noise.
+          if (paramCount === null && pv.count > 0 && requestSent) {
             paramCount = pv.count;
             onLog(`Drone has ${paramCount} parameters`);
           }
-          if (!received.has(pv.index)) {
+          if (requestSent && !received.has(pv.index)) {
             received.set(pv.index, { name: pv.name, value: String(pv.value) });
             onProgress(received.size, paramCount ?? 0);
             const n = received.size;
