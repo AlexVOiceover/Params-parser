@@ -33,6 +33,7 @@ interface ClientSetOption {
   id: string;
   client_name: string;
   serial: string;
+  is_default: boolean;
 }
 
 interface Props {
@@ -53,6 +54,7 @@ interface Props {
 }
 
 const NEW_CLIENT_SET = "__new__";
+const NEW_DEFAULT = "__default__";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -164,6 +166,7 @@ export function ParamVersionList({
   const deleteTarget = versions.find((v) => v.id === deleteId);
   const cloneTarget = versions.find((v) => v.id === cloneId);
   const isNewClientSet = cloneClientSetId === NEW_CLIENT_SET;
+  const isNewDefault = cloneClientSetId === NEW_DEFAULT;
 
   // Load families on first admin render
   useEffect(() => {
@@ -305,12 +308,14 @@ export function ParamVersionList({
     if (!cloneId) return;
     setCloning(true);
     setCloneError(null);
+    const isNewDefault = cloneClientSetId === NEW_DEFAULT;
     const res = await fetch(`/api/admin/param-versions/${cloneId}/clone`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         variantId: cloneVariantId,
-        clientSetId: isNewClientSet ? null : cloneClientSetId,
+        clientSetId: (isNewClientSet || isNewDefault) ? null : cloneClientSetId,
+        createDefault: isNewDefault ? true : undefined,
         newClientSet: isNewClientSet ? { clientName: newClientName, serial: newSerial, description: newClientSetDescription } : undefined,
         versionLabel: cloneVersionLabel,
         changelog: cloneChangelog,
@@ -335,6 +340,7 @@ export function ParamVersionList({
     !versionLabelValid ||
     !cloneVariantId ||
     (isNewClientSet && (!newClientName.trim() || !newSerial.trim()));
+  // isNewDefault needs no extra fields — variant is sufficient
 
   const uploadDisabled = uploading || (uploadSource === "file" ? !uploadFile : !droneParams?.length);
   const uploadHasError = uploadLog.some((l) => l.error);
@@ -703,7 +709,10 @@ export function ParamVersionList({
                 <span className="text-xs font-medium text-muted-foreground">Client + drone</span>
                 <select
                   value={cloneClientSetId}
-                  onChange={(e) => setCloneClientSetId(e.target.value)}
+                  onChange={(e) => {
+                    setCloneClientSetId(e.target.value);
+                    if (e.target.value === NEW_DEFAULT) setCloneVersionLabel("1");
+                  }}
                   disabled={cloning}
                   className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer disabled:opacity-40"
                 >
@@ -712,6 +721,9 @@ export function ParamVersionList({
                       {c.client_name}{c.serial ? ` · ${c.serial}` : ""}
                     </option>
                   ))}
+                  {!clientSets.some((c) => c.is_default) && (
+                    <option value={NEW_DEFAULT}>＋ Create new Default param set…</option>
+                  )}
                   <option value={NEW_CLIENT_SET}>＋ Create new client + drone…</option>
                 </select>
               </label>

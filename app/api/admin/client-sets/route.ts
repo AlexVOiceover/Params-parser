@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("client_sets")
-    .select("id, client_name, serial")
+    .select("id, client_name, serial, is_default")
     .eq("variant_id", variantId)
     .order("client_name")
     .order("serial");

@@ -5,6 +5,7 @@ interface CloneBody {
   variantId: string;
   clientSetId: string | null;
   newClientSet?: { clientName: string; serial: string; description?: string };
+  createDefault?: boolean;
   versionLabel: string;
   changelog?: string;
 }
@@ -22,13 +23,13 @@ export async function POST(
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
   if (profile?.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const { variantId, clientSetId, newClientSet, versionLabel, changelog } = await request.json() as CloneBody;
+  const { variantId, clientSetId, newClientSet, createDefault, versionLabel, changelog } = await request.json() as CloneBody;
 
   if (!variantId) return NextResponse.json({ error: "variantId required" }, { status: 400 });
   if (!versionLabel?.trim()) return NextResponse.json({ error: "versionLabel required" }, { status: 400 });
   if (!/^\d+$/.test(versionLabel.trim())) return NextResponse.json({ error: "Version label must be a whole number (e.g. 1)" }, { status: 400 });
-  if (!clientSetId && (!newClientSet?.clientName?.trim() || !newClientSet?.serial?.trim())) {
-    return NextResponse.json({ error: "clientSetId or newClientSet.clientName + serial required" }, { status: 400 });
+  if (!clientSetId && !createDefault && (!newClientSet?.clientName?.trim() || !newClientSet?.serial?.trim())) {
+    return NextResponse.json({ error: "clientSetId, createDefault, or newClientSet.clientName + serial required" }, { status: 400 });
   }
 
   const admin = createAdminClient();
@@ -44,13 +45,26 @@ export async function POST(
   // Resolve or create the target client set
   let targetClientSetId = clientSetId;
   if (!targetClientSetId) {
+    if (createDefault) {
+      // Check a Default doesn't already exist for this variant
+      const { data: existingDefault } = await admin
+        .from("client_sets")
+        .select("id")
+        .eq("variant_id", variantId)
+        .eq("is_default", true)
+        .maybeSingle();
+      if (existingDefault) {
+        return NextResponse.json({ error: "A Default param set already exists for this variant" }, { status: 409 });
+      }
+    }
     const { data: created, error: createError } = await admin
       .from("client_sets")
       .insert({
-        client_name: newClientSet!.clientName.trim(),
-        serial: newClientSet!.serial.trim(),
-        description: newClientSet!.description?.trim() || null,
+        client_name: createDefault ? "Default" : newClientSet!.clientName.trim(),
+        serial: createDefault ? "" : newClientSet!.serial.trim(),
+        description: createDefault ? null : (newClientSet!.description?.trim() || null),
         variant_id: variantId,
+        is_default: createDefault ?? false,
         created_by: user.id,
       })
       .select("id")

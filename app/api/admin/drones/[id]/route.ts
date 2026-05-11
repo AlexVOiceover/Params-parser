@@ -32,6 +32,22 @@ export async function PATCH(
 
   const admin = createAdminClient();
 
+  // Check for duplicate serial before writing — exclude the drone being updated
+  if (update.serial) {
+    const { data: existing } = await admin
+      .from("drones")
+      .select("id")
+      .eq("serial", update.serial as string)
+      .neq("id", id)
+      .maybeSingle();
+    if (existing) {
+      return NextResponse.json(
+        { error: `Serial "${update.serial}" is already used by another drone` },
+        { status: 409 }
+      );
+    }
+  }
+
   // If changing variant, cascade the change to all client_sets under this drone
   // so the param-version history follows the drone to its new variant.
   if (update.variant_id) {
