@@ -1,0 +1,19 @@
+{
+  "description": "Params excluded from version diffs and drone writes. These change automatically at runtime and do not reflect a deliberate configuration change. Edit this file to add or remove entries — no TypeScript changes needed.",
+  "params": [
+    { "name": "STAT_BOOTCNT",    "reason": "Boot counter, increments on every power cycle" },
+    { "name": "STAT_FLTTIME",    "reason": "Total flight time accumulator" },
+    { "name": "STAT_RUNTIME",    "reason": "Total runtime accumulator" },
+    { "name": "STAT_RESET",      "reason": "Stats reset flag" },
+    { "name": "SYS_NUM_RESETS",  "reason": "System reset counter" },
+    { "name": "BATT_AMP_TOTAL",  "reason": "Accumulated amp-hours, resets on power cycle" },
+    { "name": "BATT2_AMP_TOTAL", "reason": "Same for second battery" },
+    { "name": "INS_ACC_ID",      "reason": "Hardware ID, set by driver on boot" },
+    { "name": "INS_ACC2_ID",     "reason": "Hardware ID, set by driver on boot" },
+    { "name": "INS_ACC3_ID",     "reason": "Hardware ID, set by driver on boot" },
+    { "name": "INS_GYR_ID",      "reason": "Hardware ID, set by driver on boot" },
+    { "name": "INS_GYR2_ID",     "reason": "Hardware ID, set by driver on boot" },
+    { "name": "INS_GYR3_ID",     "reason": "Hardware ID, set by driver on boot" },
+    { "name": "INS_GYR_CAL",     "reason": "Gyro calibration state flag" }
+  ]
+}
