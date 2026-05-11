@@ -16,6 +16,7 @@ interface ParamVersionRow {
   changelog: string | null;
   created_at: string;
   is_latest: boolean;
+  needs_review: boolean;
 }
 
 interface FamilyOption {
@@ -410,6 +411,11 @@ export function ParamVersionList({
                   {v.is_latest && (
                     <span className="rounded-full bg-emerald-900/50 border border-emerald-700/60 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
                       latest
+                    </span>
+                  )}
+                  {v.needs_review && (
+                    <span className="rounded-full bg-amber-900/50 border border-amber-700/60 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                      pending review
                     </span>
                   )}
                   {droneMatchesThisSet && droneVersion !== null && parseInt(v.version_label, 10) === droneVersion && (

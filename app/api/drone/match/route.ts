@@ -107,6 +107,7 @@ export async function GET(request: NextRequest) {
       drone_version: droneVersionOut,
       is_orphan: isOrphan,
       drift_count: null, // populated separately via POST /api/drone/drift
+      client_set_id: clientSet?.id ?? null,
     },
   });
 }

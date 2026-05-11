@@ -17,6 +17,7 @@ export interface MatchedDrone {
   drone_version: number | null;
   is_orphan: boolean;
   drift_count: number | null;
+  client_set_id: string | null;
 }
 
 export type DroneMatchStatus = "idle" | "loading" | "matched" | "unmatched";
