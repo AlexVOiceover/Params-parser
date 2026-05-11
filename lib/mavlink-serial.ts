@@ -416,9 +416,12 @@ export async function openDroneConnection(
           onLog(`MAVLink v${splitter.detectedVersion} detected — waiting for autopilot to boot…`);
         }
 
-        // Show ArduPilot status messages as they arrive during boot
+        // Show informational ArduPilot status messages; suppress config/hardware
+        // errors — they're noise when connecting via USB without full power.
         for (const txt of result.statusTexts) {
-          onLog(`AP: ${txt}`);
+          if (!/config error|unable to initialise|fix problem then reboot/i.test(txt)) {
+            onLog(`AP: ${txt}`);
+          }
         }
 
         // Wait for ArduPilot to finish booting before requesting params.
