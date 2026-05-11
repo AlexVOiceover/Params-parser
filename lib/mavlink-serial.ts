@@ -323,7 +323,6 @@ export async function openDroneConnection(
   let done = false;
   let totalBytes = 0;
   let versionLogged = false;
-  let heartbeatCount = 0;
   let lastProgressLog = 0;
 
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
@@ -427,26 +426,13 @@ export async function openDroneConnection(
         // string (e.g. "ArduCopter V4.5.0") — sent after full init.
         // "Initialising ArduPilot" and "Config Error" are early-boot messages
         // and must NOT trigger the request.
-        if (versionLogged && !requestSent) {
-          // Count only real HEARTBEAT frames (msgId 0), not all valid frames.
-          // The FC may flood STATUSTEXT during a boot error loop, which would
-          // previously cause validFrames to hit the threshold immediately.
-          heartbeatCount += result.heartbeats;
-
-          const bootComplete = result.statusTexts.some((txt) =>
-            /^(ArduCopter|ArduPlane|ArduRover|ArduSub|AntennaTracker|Blimp)\s+V\d/i.test(txt)
-          );
-
-          // Fallback: 10 real heartbeats (~10 s). This handles USB-only connections
-          // where hardware (baro, GPS) is unpowered and the version string may never
-          // arrive. Config errors are not a reason to delay — we just need the FC
-          // to be at the MAVLink communication stage, not error-free.
-          if (bootComplete || heartbeatCount >= 10) {
-            onLog("Autopilot ready — reading parameters…");
-            await sendFrame(buildParamRequestList(splitter.detectedVersion === 1));
-            requestSent = true;
-            scheduleRetry();
-          }
+        if (versionLogged && !requestSent && result.heartbeats > 0) {
+          // One heartbeat is enough — MAVLink is up and the FC accepts requests.
+          // Config errors (baro, GPS, etc.) don't affect param read/write.
+          onLog("Autopilot ready — reading parameters…");
+          await sendFrame(buildParamRequestList(splitter.detectedVersion === 1));
+          requestSent = true;
+          scheduleRetry();
         }
 
         for (const pv of result.params) {
