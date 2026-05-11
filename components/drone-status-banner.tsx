@@ -22,9 +22,10 @@ export function DroneStatusBanner() {
 
   const identified = match.status === "matched" && match.drone !== null;
   const { drone, versionStatus, droneVersion, catalogVersion } = match;
-  // Show register prompt when drone is unversioned (SCR_USER2=0)
-  const needsRegistration = match.droneVersion === null &&
-    (match.status === "unmatched" || (match.status === "matched" && match.drone !== null));
+  // Show register prompt when drone is not in the catalog (unmatched)
+  // or when it's matched but unversioned (SCR_USER2=0)
+  const needsRegistration = match.status === "unmatched" ||
+    (match.droneVersion === null && match.status === "matched" && match.drone !== null);
 
   return (
     <>

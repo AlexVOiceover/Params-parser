@@ -301,9 +301,9 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
                   )}
                 </div>
               )}
-              {/* Register prompt when SCR_USER2=0 (unversioned drone) */}
-              {(match.status === "matched" || match.status === "unmatched") &&
-                match.droneVersion === null && (
+              {/* Register prompt: unmatched (not in catalog) or unversioned (SCR_USER2=0) */}
+              {(match.status === "unmatched" || match.droneVersion === null) &&
+                (match.status === "matched" || match.status === "unmatched") && (
                 <button
                   type="button"
                   onClick={() => setShowRegister(true)}

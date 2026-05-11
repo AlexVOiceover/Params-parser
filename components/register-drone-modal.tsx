@@ -9,6 +9,7 @@ import { clearDroneMatchCache } from "@/lib/use-connected-drone-match";
 import { WriteDroneDialog, type WriteChange } from "@/components/write-drone-dialog";
 import { WriteNFCButton } from "@/components/write-nfc-button";
 import { parseSerialId, RUNTIME_PARAMS } from "@/lib/param-engine";
+import { flashParamsToDrone, type FlashTarget } from "@/lib/drone-flash-engine";
 import type { ParamWriteResult } from "@/lib/mavlink-serial";
 
 
@@ -70,7 +71,9 @@ export function RegisterDroneModal({ onClose }: Props) {
 
   // Flash
   const [writeChanges, setWriteChanges] = useState<WriteChange[] | null>(null);
+  const [flashTarget, setFlashTarget] = useState<FlashTarget>(new Map());
   const [newDroneId, setNewDroneId] = useState<string | null>(null);
+  const [flashedVersion, setFlashedVersion] = useState<string>("1");
 
   // Load dropdown data
   useEffect(() => {
@@ -229,6 +232,13 @@ export function RegisterDroneModal({ onClose }: Props) {
     // Override SCR_USER1 with the drone's correct serial trailing-int
     const serialInt = parseSerialId(serial.trim());
     if (serialInt !== null) target.set("SCR_USER1", serialInt);
+
+    // Always write SCR_USER2 with the version being flashed
+    const versionInt = parseInt(latestPV.version_label, 10);
+    if (Number.isFinite(versionInt)) target.set("SCR_USER2", versionInt);
+
+    setFlashedVersion(latestPV.version_label);
+    setFlashTarget(new Map(target));
 
     const droneMap = new Map((droneParams ?? []).map((p) => [p.name, parseFloat(p.value)]));
     const diff: WriteChange[] = [];
@@ -453,7 +463,7 @@ export function RegisterDroneModal({ onClose }: Props) {
                 <CheckCircle className="h-10 w-10 text-emerald-400" />
                 <p className="text-sm font-medium text-foreground">Drone registered</p>
                 <p className="text-xs text-muted-foreground">
-                  <span className="font-mono">{serial}</span> is now registered and flashed with the Default param set (v1).
+                  <span className="font-mono">{serial}</span> is now registered and flashed with the Default param set (v{flashedVersion}).
                 </p>
                 <div className="flex flex-col items-center gap-1.5 mt-1">
                   <WriteNFCButton
@@ -490,6 +500,12 @@ export function RegisterDroneModal({ onClose }: Props) {
           changes={writeChanges}
           onClose={() => { setWriteChanges(null); setStage("error"); setErrorMsg("Flash cancelled."); }}
           onSuccess={handleWriteSuccess}
+          onStart={(addLog) => {
+            const current = new Map(
+              (droneParams ?? []).map((p) => [p.name, parseFloat(p.value)])
+            );
+            return flashParamsToDrone(flashTarget, current, addLog);
+          }}
         />
       )}
     </>
