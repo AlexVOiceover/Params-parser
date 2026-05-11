@@ -287,13 +287,13 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
             {isModified && match.driftCount !== null && c.latestVersionId && (
               <span className="text-xs text-amber-600 dark:text-amber-400">
                 {match.driftCount} param{match.driftCount === 1 ? "" : "s"} differ from catalog{" "}
-                <Link
-                  href={`/compare?v=__drone__&v=${c.latestVersionId}`}
-                  className="underline"
-                  onClick={(e) => e.stopPropagation()}
+                <button
+                  type="button"
+                  className="underline cursor-pointer"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); router.push(`/compare?v=__drone__&v=${c.latestVersionId}`); }}
                 >
                   Review
-                </Link>
+                </button>
               </span>
             )}
           </div>
