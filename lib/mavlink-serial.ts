@@ -172,6 +172,7 @@ interface SplitterResult {
   statusTexts: string[];
   detectedVersion: 1 | 2 | null;
   validFrames: number;
+  heartbeats: number;
 }
 
 class MavlinkSplitter {
@@ -189,6 +190,7 @@ class MavlinkSplitter {
     const params: ParamValue[] = [];
     const statusTexts: string[] = [];
     let validFrames = 0;
+    let heartbeats = 0;
 
     while (this.buf.length > 0) {
       // Find first STX
@@ -228,6 +230,7 @@ class MavlinkSplitter {
           validFrames++;
           if (this.detectedVersion === null) this.detectedVersion = isV2 ? 2 : 1;
 
+          if (msgId === 0) heartbeats++;
           if (msgId === 22) {
             const payload = frame.slice(headerLen, headerLen + payloadLen);
             const pv = parseParamValue(payload);
@@ -259,7 +262,7 @@ class MavlinkSplitter {
       }
     }
 
-    return { params, statusTexts, detectedVersion: this.detectedVersion, validFrames };
+    return { params, statusTexts, detectedVersion: this.detectedVersion, validFrames, heartbeats };
   }
 }
 
@@ -425,13 +428,19 @@ export async function openDroneConnection(
         // "Initialising ArduPilot" and "Config Error" are early-boot messages
         // and must NOT trigger the request.
         if (versionLogged && !requestSent) {
-          heartbeatCount += result.validFrames;
+          // Count only real HEARTBEAT frames (msgId 0), not all valid frames.
+          // The FC may flood STATUSTEXT during a boot error loop, which would
+          // previously cause validFrames to hit the threshold immediately.
+          heartbeatCount += result.heartbeats;
 
           const bootComplete = result.statusTexts.some((txt) =>
             /^(ArduCopter|ArduPlane|ArduRover|ArduSub|AntennaTracker|Blimp)\s+V\d/i.test(txt)
           );
 
-          // Fallback: 10 heartbeats (~10 s) if the version string never arrives.
+          // Fallback: 10 real heartbeats (~10 s). This handles USB-only connections
+          // where hardware (baro, GPS) is unpowered and the version string may never
+          // arrive. Config errors are not a reason to delay — we just need the FC
+          // to be at the MAVLink communication stage, not error-free.
           if (bootComplete || heartbeatCount >= 10) {
             onLog("Autopilot ready — reading parameters…");
             await sendFrame(buildParamRequestList(splitter.detectedVersion === 1));
