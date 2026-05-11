@@ -6,6 +6,14 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.15.0",
+    date: "2026-05-11",
+    items: [
+      "Apply update now verifies params were written correctly and retries up to 4 passes automatically",
+      "Failed flashes revert the drone to its previous state to avoid partial configurations",
+    ],
+  },
+  {
     version: "0.14.0",
     date: "2026-05-11",
     items: [
