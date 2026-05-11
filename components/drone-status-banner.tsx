@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Usb, Eye, ClipboardList } from "lucide-react";
+import { Eye, ClipboardList } from "lucide-react";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
 import { ApplyUpdateButton } from "@/components/apply-update-button";
@@ -33,7 +33,6 @@ export function DroneStatusBanner() {
         ? "border-emerald-500/40 bg-emerald-500/8"
         : "border-border bg-secondary/40"
     }`}>
-      <Usb className={`h-4 w-4 shrink-0 ${identified ? "text-emerald-500" : "text-muted-foreground"}`} />
       {/* Always show View link when drone is connected */}
       <Link
         href="/compare?v=__drone__"
@@ -97,8 +96,13 @@ export function DroneStatusBanner() {
         </>
       ) : (
         <>
-          <span className="text-sm text-muted-foreground">Drone connected</span>
-          <span className="text-xs text-muted-foreground">· {droneParams.length} params · not registered in catalog</span>
+          <span className="text-sm text-muted-foreground">
+            {match.status === "loading" ? "Identifying drone…" : "Drone connected"}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            · {droneParams.length} params
+            {match.status !== "loading" && " · not registered in catalog"}
+          </span>
         </>
       )}
       {needsRegistration && (

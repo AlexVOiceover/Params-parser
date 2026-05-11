@@ -25,6 +25,7 @@ interface VersionNode {
 interface ClientSetNode {
   id: string;
   name: string;
+  isDefault: boolean;
   versions: VersionNode[];
 }
 
@@ -51,6 +52,7 @@ type ClientSetRow = {
   variant_id: string;
   client_id: string | null;
   drone_id: string | null;
+  is_default: boolean;
 };
 type VersionRow = { id: string; version_label: string; is_latest: boolean; client_set_id: string };
 
@@ -79,8 +81,9 @@ async function fetchTree(): Promise<FamilyNode[]> {
   if (variantIds.length) {
     const { data } = await supabase
       .from("client_sets")
-      .select("id, client_name, serial, variant_id, client_id, drone_id")
+      .select("id, client_name, serial, variant_id, client_id, drone_id, is_default")
       .in("variant_id", variantIds)
+      .order("is_default", { ascending: false })
       .order("client_name")
       .order("serial");
     clientSets = data ?? [];
@@ -147,6 +150,7 @@ async function fetchTree(): Promise<FamilyNode[]> {
             .map((c) => ({
               id: c.id,
               name: liveLabel(c),
+              isDefault: c.is_default,
               versions: (versionsByClientSet.get(c.id) ?? []).map((ver) => ({
                 id: ver.id,
                 label: ver.version_label,

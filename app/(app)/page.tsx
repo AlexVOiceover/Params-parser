@@ -82,6 +82,7 @@ export default async function CatalogPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-10">
+      <DroneStatusBanner />
       <div className="flex items-end justify-between gap-4 mb-6">
         <h1 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
           Families
@@ -112,7 +113,6 @@ export default async function CatalogPage() {
           )}
         </div>
       </div>
-      <DroneStatusBanner />
       {families.length === 0 && !isAdmin ? (
         <p className="text-sm text-muted-foreground">No families found.</p>
       ) : (

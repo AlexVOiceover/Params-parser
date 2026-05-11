@@ -22,6 +22,7 @@ interface VersionNode {
 interface ClientSetNode {
   id: string;
   name: string;
+  isDefault: boolean;
   versions: VersionNode[];
 }
 
@@ -183,11 +184,11 @@ export function VersionTree({ tree }: Props) {
                           variant.clientSets.map((clientSet) => {
                             const isClientSetCollapsed = collapsedClientSets.has(clientSet.id);
                             return (
-                              <div key={clientSet.id}>
+                              <div key={clientSet.id} className={clientSet.isDefault ? "bg-secondary/40" : ""}>
                                 {/* Client set row */}
                                 <button
                                   onClick={() => toggleClientSet(clientSet.id)}
-                                  className="flex items-center gap-2 w-full pl-14 pr-4 py-1.5 text-sm text-foreground hover:bg-secondary/50 transition-colors cursor-pointer"
+                                  className="flex items-center gap-2 w-full pl-14 pr-4 py-1.5 text-sm hover:bg-secondary/70 transition-colors cursor-pointer"
                                 >
                                   {isClientSetCollapsed ? (
                                     <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -195,12 +196,17 @@ export function VersionTree({ tree }: Props) {
                                     <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                                   )}
                                   {isClientSetCollapsed ? (
-                                    <Folder className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
+                                    <Folder className={`h-3.5 w-3.5 shrink-0 ${clientSet.isDefault ? "text-foreground/70" : "text-muted-foreground/50"}`} />
                                   ) : (
-                                    <FolderOpen className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
+                                    <FolderOpen className={`h-3.5 w-3.5 shrink-0 ${clientSet.isDefault ? "text-foreground/70" : "text-muted-foreground/50"}`} />
                                   )}
-                                  <span>{clientSet.name}</span>
-                                  <span className="text-muted-foreground text-xs">
+                                  <span className={clientSet.isDefault ? "text-foreground font-medium" : "text-muted-foreground"}>
+                                    {clientSet.name}
+                                  </span>
+                                  {clientSet.isDefault && (
+                                    <span className="text-[10px] text-muted-foreground/60 font-normal">catalog default</span>
+                                  )}
+                                  <span className="text-muted-foreground/60 text-xs ml-auto">
                                     ({clientSet.versions.length})
                                   </span>
                                 </button>
