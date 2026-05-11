@@ -169,6 +169,7 @@ function parseParamValue(payload: Uint8Array): ParamValue | null {
 
 interface SplitterResult {
   params: ParamValue[];
+  statusTexts: string[];
   detectedVersion: 1 | 2 | null;
   validFrames: number;
 }
@@ -186,6 +187,7 @@ class MavlinkSplitter {
     this.buf = next;
 
     const params: ParamValue[] = [];
+    const statusTexts: string[] = [];
     let validFrames = 0;
 
     while (this.buf.length > 0) {
@@ -231,6 +233,16 @@ class MavlinkSplitter {
             const pv = parseParamValue(payload);
             if (pv) params.push(pv);
           }
+          // STATUSTEXT (253): severity uint8 at [0], text char[50] at [1..50]
+          if (msgId === 253 && payloadLen >= 2) {
+            const payload = frame.slice(headerLen, headerLen + payloadLen);
+            let text = "";
+            for (let i = 1; i < payloadLen; i++) {
+              if (payload[i] === 0) break;
+              text += String.fromCharCode(payload[i]);
+            }
+            if (text.trim()) statusTexts.push(text.trim());
+          }
           this.buf = this.buf.slice(frameLen);
         } else {
           // CRC mismatch — record first failure for diagnostics, advance 1 byte
@@ -247,7 +259,7 @@ class MavlinkSplitter {
       }
     }
 
-    return { params, detectedVersion: this.detectedVersion, validFrames };
+    return { params, statusTexts, detectedVersion: this.detectedVersion, validFrames };
   }
 }
 
@@ -399,14 +411,28 @@ export async function openDroneConnection(
 
         if (result.validFrames > 0 && !versionLogged) {
           versionLogged = true;
-          onLog(`MAVLink v${splitter.detectedVersion} detected — waiting for autopilot to be ready…`);
+          onLog(`MAVLink v${splitter.detectedVersion} detected — waiting for autopilot to boot…`);
         }
 
-        // Count heartbeats (msgId 0) to know autopilot is fully booted
+        // Show ArduPilot status messages as they arrive during boot
+        for (const txt of result.statusTexts) {
+          onLog(`AP: ${txt}`);
+        }
+
+        // Wait for the first STATUSTEXT — by that point ArduPilot has finished
+        // initialisation (EKF, barometer, etc). Counting heartbeats alone fires
+        // too early while the FC is still booting.
         if (versionLogged && !requestSent) {
           heartbeatCount += result.validFrames;
-          if (heartbeatCount >= 3) {
-            onLog("Autopilot ready — sending PARAM_REQUEST_LIST…");
+          const hasStatusText = result.statusTexts.length > 0;
+          // Trigger on first STATUSTEXT, or fall back to 5 heartbeats
+          // for FCs that don't send STATUSTEXT before being polled.
+          if (hasStatusText || heartbeatCount >= 5) {
+            if (hasStatusText) {
+              onLog("Autopilot ready — reading parameters…");
+            } else {
+              onLog("Autopilot ready (no status yet) — reading parameters…");
+            }
             await sendFrame(buildParamRequestList(splitter.detectedVersion === 1));
             requestSent = true;
             scheduleRetry();
