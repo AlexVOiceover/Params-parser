@@ -419,20 +419,21 @@ export async function openDroneConnection(
           onLog(`AP: ${txt}`);
         }
 
-        // Wait for the first STATUSTEXT — by that point ArduPilot has finished
-        // initialisation (EKF, barometer, etc). Counting heartbeats alone fires
-        // too early while the FC is still booting.
+        // Wait for ArduPilot to finish booting before requesting params.
+        // The reliable signal is a STATUSTEXT containing the vehicle+version
+        // string (e.g. "ArduCopter V4.5.0") — sent after full init.
+        // "Initialising ArduPilot" and "Config Error" are early-boot messages
+        // and must NOT trigger the request.
         if (versionLogged && !requestSent) {
           heartbeatCount += result.validFrames;
-          const hasStatusText = result.statusTexts.length > 0;
-          // Trigger on first STATUSTEXT, or fall back to 5 heartbeats
-          // for FCs that don't send STATUSTEXT before being polled.
-          if (hasStatusText || heartbeatCount >= 5) {
-            if (hasStatusText) {
-              onLog("Autopilot ready — reading parameters…");
-            } else {
-              onLog("Autopilot ready (no status yet) — reading parameters…");
-            }
+
+          const bootComplete = result.statusTexts.some((txt) =>
+            /^(ArduCopter|ArduPlane|ArduRover|ArduSub|AntennaTracker|Blimp)\s+V\d/i.test(txt)
+          );
+
+          // Fallback: 10 heartbeats (~10 s) if the version string never arrives.
+          if (bootComplete || heartbeatCount >= 10) {
+            onLog("Autopilot ready — reading parameters…");
             await sendFrame(buildParamRequestList(splitter.detectedVersion === 1));
             requestSent = true;
             scheduleRetry();
