@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { SlidersHorizontal, Info, Pencil, Upload, X, RotateCcw, Search } from "lucide-react";
+import { SlidersHorizontal, Info, Pencil, Upload, X, RotateCcw, Search, GitCompareArrows } from "lucide-react";
 import { validateParam } from "@/lib/param-engine";
 import type { CompareVersion, CompareRow, ParamDefinition } from "@/lib/types";
 
@@ -48,9 +48,15 @@ export function CompareTable({
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [editInput, setEditInput] = useState("");
   const [expandedParam, setExpandedParam] = useState<string | null>(null);
-  const [copiedCell, setCopiedCell] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMode, setSearchMode] = useState<"name" | "value" | "both">("name");
+  const [showModifiedOnly, setShowModifiedOnly] = useState(false);
+  // Reset "modified only" filter when write mode exits
+  const prevWriteMode = React.useRef(writeMode);
+  if (prevWriteMode.current !== writeMode) {
+    prevWriteMode.current = writeMode;
+    if (!writeMode && showModifiedOnly) setShowModifiedOnly(false);
+  }
 
   // column widths: index 0 = param name col, 1..n = version cols
   const [colWidths, setColWidths] = useState<number[]>(() => [
@@ -103,13 +109,6 @@ export function CompareTable({
       .catch(() => {});
   }, []);
 
-  function copyValue(value: string, cellKey: string) {
-    navigator.clipboard.writeText(value).then(() => {
-      setCopiedCell(cellKey);
-      setTimeout(() => setCopiedCell((c) => (c === cellKey ? null : c)), 1200);
-    });
-  }
-
   const versionIds = versions.map((v) => v.id);
 
   const processedRows = rows.map((row) => {
@@ -147,6 +146,9 @@ export function CompareTable({
   }
 
   let visibleRows = showDiffsOnly && canDiff ? processedRows.filter((r) => r.isDiff) : processedRows;
+  if (showModifiedOnly && pendingEdits && pendingEdits.size > 0) {
+    visibleRows = visibleRows.filter((r) => pendingEdits.has(r.name));
+  }
   if (trimmedQuery) visibleRows = visibleRows.filter(rowMatchesSearch);
 
   function ResizeHandle({ colIndex }: { colIndex: number }) {
@@ -229,6 +231,19 @@ export function CompareTable({
           >
             <SlidersHorizontal className="h-3.5 w-3.5" />
             {showDiffsOnly ? "Differences only" : "Show differences only"}
+          </button>
+        )}
+        {writeMode && pendingEdits && pendingEdits.size > 0 && (
+          <button
+            onClick={() => setShowModifiedOnly((v) => !v)}
+            className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              showModifiedOnly
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border text-foreground hover:bg-secondary"
+            }`}
+          >
+            <GitCompareArrows className="h-3.5 w-3.5" />
+            {showModifiedOnly ? `Modified (${pendingEdits.size})` : `Show modified (${pendingEdits.size})`}
           </button>
         )}
         {writeMode && pendingEdits && pendingEdits.size > 0 && (
@@ -331,16 +346,8 @@ export function CompareTable({
                         {row.isDiff && (
                           <span className="mr-0.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-500 dark:bg-amber-400 align-middle shrink-0" />
                         )}
-                        <span
-                          onClick={() => copyValue(row.name, `name:${row.name}`)}
-                          title="Click to copy"
-                          className="font-mono text-xs text-foreground cursor-pointer hover:text-primary transition-colors truncate min-w-0"
-                        >
-                          {copiedCell === `name:${row.name}` ? (
-                            <span className="text-emerald-400">copied!</span>
-                          ) : (
-                            row.name
-                          )}
+                        <span className="font-mono text-xs text-foreground truncate min-w-0">
+                          {row.name}
                         </span>
                         <button
                           onClick={() => setExpandedParam(isExpanded ? null : row.name)}
@@ -365,13 +372,10 @@ export function CompareTable({
                       const isInvalid = !isMissing && def ? validateParam(displayValue ?? "", def) !== null : false;
                       const isDiffCell = row.isDiff && !isMissing;
                       const cellKey = `${row.name}:${vid}`;
-                      const copied = copiedCell === cellKey;
                       const isEditing = editingCell === cellKey;
 
                       let cellClass = "px-4 py-2 font-mono text-xs overflow-hidden whitespace-nowrap transition-colors max-w-0 ";
-                      if (copied) {
-                        cellClass += "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300";
-                      } else if (hasPending) {
+                      if (hasPending) {
                         cellClass += "bg-amber-500/25 text-amber-900 dark:text-amber-100 font-semibold";
                       } else if (isInvalid) {
                         cellClass += "bg-destructive/20 text-destructive";
@@ -435,21 +439,27 @@ export function CompareTable({
                         );
                       }
 
+                      // Cells in editable columns: clicking activates write mode
+                      // for that column and immediately opens the input.
+                      const isEditable = onToggleWriteMode && vid !== "live" && !isMissing;
                       return (
                         <td
                           key={vid}
-                          className={cellClass + (isWritable ? " cursor-text hover:bg-amber-400/20" : !isMissing ? " cursor-pointer hover:brightness-125" : "")}
+                          className={cellClass + (isWritable ? " cursor-text hover:bg-amber-400/20" : isEditable ? " cursor-text hover:bg-secondary/60" : "")}
                           onClick={() => {
                             if (isWritable) {
                               setEditInput(displayValue ?? "");
                               setEditingCell(cellKey);
-                            } else if (!isMissing) {
-                              copyValue(rawValue, cellKey);
+                            } else if (isEditable) {
+                              // Activate write mode for this column, then start editing
+                              onToggleWriteMode(vid);
+                              setEditInput(displayValue ?? "");
+                              setEditingCell(cellKey);
                             }
                           }}
-                          title={isWritable ? "Click to edit" : !isMissing ? "Click to copy" : undefined}
+                          title={isWritable || isEditable ? "Click to edit" : undefined}
                         >
-                          {copied ? "copied!" : isMissing ? "—" : displayValue}
+                          {isMissing ? "—" : displayValue}
                         </td>
                       );
                     })}
@@ -518,7 +528,9 @@ export function CompareTable({
                   colSpan={versions.length + 1}
                   className="px-4 py-12 text-center text-sm text-muted-foreground"
                 >
-                  {showDiffsOnly
+                  {showModifiedOnly
+                    ? "No modified params yet."
+                    : showDiffsOnly
                     ? "All params are identical across selected versions."
                     : "No params found."}
                 </td>
