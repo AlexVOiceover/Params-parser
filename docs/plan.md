@@ -1,48 +1,44 @@
-# 12 Param Sanity Check
+# 13 Admin Capture of Field Versions
 
-> When a drone's version matches the catalog, compare actual param values in the background. Surface "up_to_date_modified" if values differ — catching post-flash changes made via Mission Planner or any other GCS.
+> When a drone is ahead of the catalog, an admin can capture its params as a new `needs_review` version. A review queue lets admins accept or discard before it becomes part of the catalog.
 
 ## Tasks
 
-1. [x] **Extract RUNTIME_PARAMS to shared lib**
-   - [ ] 1.1 Move the `RUNTIME_PARAMS` set from `components/apply-update-button.tsx` to `lib/param-engine.ts` as a named export. Update the import in `apply-update-button.tsx`.
+1. [x] **DB migration — add `needs_review` column**
+   - [x] 1.1 Run SQL: `ALTER TABLE param_versions ADD COLUMN needs_review BOOLEAN NOT NULL DEFAULT FALSE`
+   - [x] 1.2 Update TypeScript types referencing `param_versions` to include `needs_review: boolean`
 
-2. [x] **Extend /api/drone/match — drift detection**
-   - [ ] 2.1 Accept an optional `&params=<base64>` query param. Decode it as `JSON.parse(Buffer.from(params, "base64").toString("utf-8"))` → `Record<string, string>`. Return `drone.drift_count = null` when no params sent.
-   - [ ] 2.2 When `droneVersion === catalogVersion` AND decoded params are present, fetch `param_values` for `resolvedClientSet.id` (paginated). Diff decoded params vs fetched values: for each name in the catalog version, skip names in `RUNTIME_PARAMS`, skip `SCR_USER1`/`SCR_USER2`; count names where string values differ. Set `drift_count = diffCount`.
-   - [ ] 2.3 Add `drift_count: number | null` to the JSON response and to the `MatchedDrone` interface in `lib/use-connected-drone-match.ts`.
+2. [x] **`/api/admin/capture` route**
+   - [x] 2.1 Create `app/api/admin/capture/route.ts` — POST, admin/contributor only
+   - [x] 2.2 Accept `{ clientSetId, versionLabel, params: { name: string; value: string }[] }` in body
+   - [x] 2.3 Insert `param_versions` row with `needs_review=true`, `is_latest=false`
+   - [x] 2.4 Bulk-insert `param_values` rows for the new version
+   - [x] 2.5 Return `{ versionId }` on success
 
-3. [x] **Extend useConnectedDroneMatch hook**
-   - [ ] 3.1 Add `"up_to_date_modified"` to the `VersionStatus` type.
-   - [ ] 3.2 When `droneParams` is available and non-empty, build the base64 param payload: `btoa(unescape(encodeURIComponent(JSON.stringify(Object.fromEntries(droneParams.map(p => [p.name, p.value]))))))`. Append `&params=<encoded>` to the fetch URL.
-   - [ ] 3.3 Update `computeVersionStatus` to return `"up_to_date_modified"` when `drone.drift_count !== null && drone.drift_count > 0` and the existing status would be `"up_to_date"`.
-   - [ ] 3.4 Expose `driftCount: number | null` on `DroneMatchResult` (from `drone.drift_count ?? null`).
-   - [ ] 3.5 **Cache**: always bypass the cache when `droneParams` is present — never return a stale cached result when the drone's actual params may have changed between imports. Do this by appending the param payload to the cache key, or simply skipping cache lookup when `droneParams` is non-null.
+3. [x] **Capture button in import modal**
+   - [x] 3.1 In `connect-drone-dialog.tsx`, show "Capture to catalog" button when `versionStatus === "drone_ahead"` and user role is `admin` or `contributor`
+   - [x] 3.2 On click: POST connected drone params to `/api/admin/capture` with matched `clientSetId` and `droneVersion`
+   - [x] 3.3 Show loading state, then inline "Saved as vN — marked for review" confirmation
 
-4. [x] **Import modal recap**
-   - [ ] 4.1 In `components/connect-drone-dialog.tsx`, replace the green "up to date" line with amber "v{N} — {driftCount} params differ from catalog" when `versionStatus === "up_to_date_modified"`. Include a Compare link: `/compare?v=__drone__&v=<match.drone.latest_version_id>`.
-   - [ ] 4.2 Keep the existing "up to date" green line for `versionStatus === "up_to_date"` (no drift).
+4. [x] **Admin alert badge on AppHeader**
+   - [x] 4.1 In `app-header.tsx`, fetch count of `needs_review=true` rows server-side (admin only)
+   - [x] 4.2 Render a red dot badge with the count, linking to `/admin/review`
 
-5. [x] **Variant page client_set card**
-   - [ ] 5.1 In `components/client-set-list.tsx`, in `renderCard`, add an `isModified` computed value: `isConnected && match.versionStatus === "up_to_date_modified"`.
-   - [ ] 5.2 Show an amber pulsing "Modified" badge next to the version info when `isModified`. Style matches the existing "Update available" badge but uses "Modified" label.
-   - [ ] 5.3 Add a small "Review" link to `/compare?v=__drone__&v=<c.latestVersionId>` when `isModified` — same position as other action links (before the icons).
+5. [x] **`/admin/review` page**
+   - [x] 5.1 Create `app/(app)/admin/review/page.tsx` — server component, admin only
+   - [x] 5.2 Fetch all `param_versions WHERE needs_review=true` joined with client_sets, clients, drones
+   - [x] 5.3 Render table: client name, drone serial, version label, created date
+   - [x] 5.4 Accept button → PATCH sets `needs_review=false` (reuse or extend existing param-versions API)
+   - [x] 5.5 Discard button → DELETE removes version row (cascades to param_values)
+   - [x] 5.6 View link → `/compare?v=<versionId>` to inspect params before deciding
 
-6. [x] **Drone status banner**
-   - [ ] 6.1 In `components/drone-status-banner.tsx`, add a case for `versionStatus === "up_to_date_modified"`: show amber text "v{N} — {driftCount} params modified" and a Review link to `/compare?v=__drone__&v=<drone.latest_version_id>`.
-
-7. [x] **Typecheck + build**
-   - [ ] 7.1 `npx tsc --noEmit` — fix any errors.
-   - [ ] 7.2 `npm run build` — confirm clean.
-
-8. [x] **Changelog + version bump**
-   - [ ] 8.1 Add v0.13.0 entry to `lib/changelog.ts`.
+6. [x] **Variant page — "Pending review" pill**
+   - [x] 6.1 Include `needs_review` in the variant page's `param_versions` select query
+   - [x] 6.2 Render amber "Pending review" pill next to version label when `needs_review=true`
 
 ## Notes
 
-- `RUNTIME_PARAMS` must be available in the API route — move to `lib/param-engine.ts` in task 1.
-- The base64 encoding in the browser: `btoa(unescape(encodeURIComponent(json)))` handles Unicode safely. Server decoding: `Buffer.from(b64, "base64").toString("utf-8")`.
-- Cache bypass in task 3.5: simplest approach is to add the param payload length (not the full encoded string) to the cache key, e.g. `"${scr1}_${scr2}_${droneParams?.length ?? 0}"`. This busts when the param count changes (e.g. after a flash) without encoding the full 20KB in the key. Full re-fetch on every import is also acceptable — the match request is cheap.
-- The drift diff only runs when `droneVersion === catalogVersion`. For `update_available` and `drone_ahead` cases, the existing logic is unchanged.
-- `latest_version_id` is already on `match.drone` (added in feature 08) — use it for the Compare link.
-- The `resolvedClientSet` variable in the match route already handles both registered and orphan drones — the drift check reuses the same variable.
+- Captured versions use `is_latest=false` — they don't affect update notifications until accepted
+- Accept sets `needs_review=false` only; does NOT auto-promote to `is_latest` (admin does that separately)
+- Reuse the paginated bulk-insert pattern from the existing upload API for param_values
+- Role check: follow the pattern in other admin routes (check session user role)

@@ -3,10 +3,11 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Usb, X, Trash2, CheckCircle, AlertCircle, AlertTriangle, Loader2, ClipboardList } from "lucide-react";
 import { openDroneConnection } from "@/lib/mavlink-serial";
-import { getStoredDroneParamsCount } from "@/lib/drone-params-context";
+import { getStoredDroneParamsCount, useDroneParams } from "@/lib/drone-params-context";
 import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
 import { useSerialMode } from "@/lib/use-serial-mode";
 import { RegisterDroneModal } from "@/components/register-drone-modal";
+import { useAuth } from "@/components/auth-provider";
 import type { Param } from "@/lib/types";
 
 function isIOS(): boolean {
@@ -45,7 +46,11 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
   const logEndRef = useRef<HTMLDivElement>(null);
   const serialMode = useSerialMode();
   const match = useConnectedDroneMatch();
+  const { droneParams } = useDroneParams();
+  const { role } = useAuth();
   const [showRegister, setShowRegister] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const [captureResult, setCaptureResult] = useState<string | null>(null);
 
   useEffect(() => {
     setStoredCount(getStoredDroneParamsCount());
@@ -59,6 +64,28 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
 
   function addLog(msg: string) {
     setLog((prev) => [...prev, msg]);
+  }
+
+  async function handleCapture() {
+    if (!droneParams || !match.drone?.client_set_id || match.droneVersion === null) return;
+    setCapturing(true);
+    setCaptureResult(null);
+    const res = await fetch("/api/admin/capture", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        clientSetId: match.drone.client_set_id,
+        versionLabel: String(match.droneVersion),
+        params: droneParams,
+      }),
+    });
+    setCapturing(false);
+    if (res.ok) {
+      setCaptureResult(`Saved as v${match.droneVersion} — marked for review`);
+    } else {
+      const body = await res.json().catch(() => ({})) as { error?: string };
+      setCaptureResult(`Capture failed: ${body.error ?? "unknown error"}`);
+    }
   }
 
   const connect = useCallback(async () => {
@@ -240,10 +267,29 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
                         </p>
                       )}
                       {match.versionStatus === "drone_ahead" && (
-                        <p className="flex items-center gap-1.5 text-xs text-sky-400 bg-sky-400/10 border border-sky-400/30 rounded px-2 py-1">
-                          <AlertCircle className="h-3 w-3 shrink-0" />
-                          Drone has v{match.droneVersion}, catalog latest is v{match.catalogVersion}
-                        </p>
+                        <>
+                          <p className="flex items-center gap-1.5 text-xs text-sky-400 bg-sky-400/10 border border-sky-400/30 rounded px-2 py-1">
+                            <AlertCircle className="h-3 w-3 shrink-0" />
+                            Drone has v{match.droneVersion}, catalog latest is v{match.catalogVersion}
+                          </p>
+                          {(role === "admin" || role === "contributor") && match.drone?.client_set_id && droneParams && (
+                            captureResult ? (
+                              <p className={`text-xs px-2 py-1 rounded border ${captureResult.startsWith("Capture failed") ? "text-destructive border-destructive/40 bg-destructive/10" : "text-emerald-400 border-emerald-400/30 bg-emerald-400/10"}`}>
+                                {captureResult}
+                              </p>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={handleCapture}
+                                disabled={capturing}
+                                className="flex items-center gap-1.5 text-xs text-sky-300 bg-sky-400/10 border border-sky-400/30 hover:bg-sky-400/20 rounded px-2 py-1 cursor-pointer disabled:opacity-50 whitespace-nowrap transition-colors"
+                              >
+                                {capturing ? <Loader2 className="h-3 w-3 shrink-0 animate-spin" /> : <AlertCircle className="h-3 w-3 shrink-0" />}
+                                {capturing ? "Capturing…" : "Capture to catalog"}
+                              </button>
+                            )
+                          )}
+                        </>
                       )}
                     </>
                   )}

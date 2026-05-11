@@ -11,6 +11,7 @@ import {
   LogOut,
   LogIn,
   ChevronDown,
+  ClipboardList,
 } from "lucide-react";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -32,6 +33,15 @@ export function AppHeader() {
   const { user, role, clientName, signOut } = useAuth();
 
   const isAdmin = role === "admin";
+  const [reviewCount, setReviewCount] = useState<number>(0);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    fetch("/api/admin/review-count")
+      .then((r) => r.json())
+      .then((d: { count: number }) => setReviewCount(d.count ?? 0))
+      .catch(() => {});
+  }, [isAdmin]);
 
   useEffect(() => {
     if (!userMenuOpen) return;
@@ -143,6 +153,19 @@ export function AppHeader() {
                 >
                   <Building2 className="h-3.5 w-3.5" />
                   Clients & Drones
+                </Link>
+                <Link
+                  href="/admin/review"
+                  onClick={() => setUserMenuOpen(false)}
+                  className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  <ClipboardList className="h-3.5 w-3.5" />
+                  Review queue
+                  {reviewCount > 0 && (
+                    <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
+                      {reviewCount}
+                    </span>
+                  )}
                 </Link>
               </>
             )}

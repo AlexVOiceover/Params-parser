@@ -6,6 +6,16 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.14.0",
+    date: "2026-05-11",
+    items: [
+      "Admins can now capture a connected drone's params directly to the catalog when the drone is ahead of the catalog version",
+      "New review queue (/admin/review) — captured versions are held for admin approval before entering the catalog",
+      "Red badge on the admin menu shows how many versions are pending review",
+      "Version cards show an amber 'pending review' pill until an admin accepts or discards the capture",
+    ],
+  },
+  {
     version: "0.13.0",
     date: "2026-05-10",
     items: [

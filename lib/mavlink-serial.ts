@@ -424,8 +424,6 @@ export async function openDroneConnection(
         for (const txt of result.statusTexts) {
           if (!/config error|unable to initialise|fix problem then reboot/i.test(txt)) {
             onLog(`AP: ${txt}`);
-          } else {
-            onLog(`AP (suppressed): ${txt}`);
           }
         }
 

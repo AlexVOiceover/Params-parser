@@ -28,7 +28,7 @@ async function getData(familySlug: string, variantId: string, clientSetId: strin
       .maybeSingle(),
     supabase
       .from("param_versions")
-      .select("id, client_set_id, version_label, storage_path, changelog, created_by, created_at, is_latest")
+      .select("id, client_set_id, version_label, storage_path, changelog, created_by, created_at, is_latest, needs_review")
       .eq("client_set_id", clientSetId)
       .order("created_at", { ascending: false }),
   ]);

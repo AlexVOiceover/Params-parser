@@ -100,6 +100,7 @@ export interface ParamVersion {
   created_by: string | null;
   created_at: string;
   is_latest: boolean;
+  needs_review: boolean;
 }
 
 // ── Compare view types ────────────────────────────────────────────────────
