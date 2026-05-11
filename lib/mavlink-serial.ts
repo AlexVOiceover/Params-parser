@@ -323,6 +323,7 @@ export async function openDroneConnection(
   let done = false;
   let totalBytes = 0;
   let versionLogged = false;
+  let consecutiveHeartbeats = 0;
   let lastProgressLog = 0;
 
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
@@ -411,7 +412,9 @@ export async function openDroneConnection(
 
         const result = splitter.feed(value);
 
-        if (result.validFrames > 0 && !versionLogged) {
+        // Only announce MAVLink detected once we see a real heartbeat —
+        // not just any valid frame, since CRC can false-positive on boot text.
+        if (result.heartbeats > 0 && !versionLogged) {
           versionLogged = true;
           onLog(`MAVLink v${splitter.detectedVersion} detected — waiting for autopilot to boot…`);
         }
@@ -429,9 +432,19 @@ export async function openDroneConnection(
         // string (e.g. "ArduCopter V4.5.0") — sent after full init.
         // "Initialising ArduPilot" and "Config Error" are early-boot messages
         // and must NOT trigger the request.
-        if (versionLogged && !requestSent && result.heartbeats > 0) {
-          // One heartbeat is enough — MAVLink is up and the FC accepts requests.
-          // Config errors (baro, GPS, etc.) don't affect param read/write.
+        if (versionLogged && !requestSent) {
+          if (result.heartbeats > 0) {
+            consecutiveHeartbeats += result.heartbeats;
+          } else if (result.validFrames === 0) {
+            // No valid frames at all — reset the streak to avoid false positives
+            // from noise that happens to pass CRC once.
+            consecutiveHeartbeats = 0;
+          }
+        }
+
+        if (versionLogged && !requestSent && consecutiveHeartbeats >= 2) {
+          // 2 consecutive heartbeat frames = MAVLink is genuinely up.
+          // A single heartbeat can be a false positive in pre-MAVLink boot text.
           onLog("Autopilot ready — reading parameters…");
           await sendFrame(buildParamRequestList(splitter.detectedVersion === 1));
           requestSent = true;
