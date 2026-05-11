@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { SlidersHorizontal, Info, Pencil, Upload, X, RotateCcw, Search, GitCompareArrows } from "lucide-react";
+import { SlidersHorizontal, Info, Upload, X, RotateCcw, Search, GitCompareArrows } from "lucide-react";
 import { validateParam } from "@/lib/param-engine";
 import type { CompareVersion, CompareRow, ParamDefinition } from "@/lib/types";
 
@@ -310,20 +310,11 @@ export function CompareTable({
                   </div>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <span className="rounded bg-primary/20 border border-primary/40 px-1.5 py-px font-mono text-[10px] font-bold text-primary shrink-0">v{v.label}</span>
-                    {/* Edit button — only for catalog versions, not for the drone column */}
-                    {onToggleWriteMode && v.id !== "live" && (
-                      <button
-                        type="button"
-                        onClick={() => onToggleWriteMode(v.id)}
-                        title={writableVersionId === v.id && writeMode ? "Exit edit mode" : "Edit this version"}
-                        className={`rounded p-0.5 transition-colors cursor-pointer ${
-                          writableVersionId === v.id && writeMode
-                            ? "text-amber-500 hover:text-amber-600"
-                            : "text-muted-foreground/40 hover:text-muted-foreground"
-                        }`}
-                      >
-                        <Pencil className="h-3 w-3" />
-                      </button>
+                    {/* Amber indicator when this column is in write mode */}
+                    {writableVersionId === v.id && writeMode && (
+                      <span className="rounded px-1 py-px text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30">
+                        editing
+                      </span>
                     )}
                   </div>
                   <ResizeHandle colIndex={i + 1} />
