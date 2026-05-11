@@ -436,15 +436,21 @@ export async function openDroneConnection(
           if (result.heartbeats > 0) {
             consecutiveHeartbeats += result.heartbeats;
           } else if (result.validFrames === 0) {
-            // No valid frames at all — reset the streak to avoid false positives
-            // from noise that happens to pass CRC once.
             consecutiveHeartbeats = 0;
           }
         }
 
-        if (versionLogged && !requestSent && consecutiveHeartbeats >= 2) {
-          // 2 consecutive heartbeat frames = MAVLink is genuinely up.
-          // A single heartbeat can be a false positive in pre-MAVLink boot text.
+        // The version STATUSTEXT (e.g. "ArduCopter V4.6.3") fires after ALL
+        // hardware init attempts complete — succeeded or failed. At that point
+        // the param table is finalised. This is the reliable trigger.
+        const versionStringReceived = result.statusTexts.some((txt) =>
+          /^(ArduCopter|ArduPlane|ArduRover|ArduSub|AntennaTracker|Blimp)\s+V\d/i.test(txt)
+        );
+
+        if (versionLogged && !requestSent && (versionStringReceived || consecutiveHeartbeats >= 10)) {
+          if (!versionStringReceived) {
+            onLog("Autopilot ready (no version string received, falling back)…");
+          }
           onLog("Autopilot ready — reading parameters…");
           await sendFrame(buildParamRequestList(splitter.detectedVersion === 1));
           requestSent = true;
