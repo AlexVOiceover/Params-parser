@@ -11,39 +11,34 @@ Commit all staged and unstaged changes, run quality checks, bump the app version
    - `npx eslint .` — fix any lint errors before continuing
    - If either fails, fix the errors, commit the fixes, then re-run checks until clean
 
-4. **Bump the app version** — `src/lib/version.ts` exports `VERSION` and a `CHANGELOG` array (newest first). Bump and prepend a new entry:
+4. **Bump the app version** — `lib/changelog.ts` exports `CURRENT_VERSION` (derived from `CHANGELOG[0].version`) and a `CHANGELOG` array (newest first). Bump and prepend a new entry:
 
-   a. **Decide the bump kind** from the branch name and the commits being shipped:
-      - `feature/...` → **minor** (0.x.0 → 0.x+1.0). New user-facing feature.
-      - `fix/...`, `chore/...`, `perf/...`, `refactor/...`, `docs/...` → **patch** (0.x.y → 0.x.y+1).
-      - User typed `major` in the slash args, OR a commit body contains `BREAKING CHANGE:` → **major** (X.y.z → X+1.0.0).
-      - If unclear (e.g. branch named `tweaks/something`), default to **patch**.
+   a. **Decide the bump kind** from the branch name and the commits being shipped — no need to ask the user:
+      - `feature/...` → **minor** (0.x.0 → 0.x+1.0)
+      - `fix/...`, `chore/...`, `perf/...`, `refactor/...`, `docs/...` → **patch** (0.x.y → 0.x.y+1)
+      - A commit body contains `BREAKING CHANGE:` → **major** (X.y.z → X+1.0.0)
+      - If unclear, default to **patch**
+      - Never auto-decide a **major** bump without a `BREAKING CHANGE:` in the commits
 
-      State the inferred bump and the next version, then ask: *"Bump 0.2.0 → 0.3.0 (minor)? [y/N/major/patch/minor]"*. Accept the typed override.
+   b. **Write the What's New description** — derive 1–3 short user-facing bullet points from the commits and changed files. Keep entries short, capitalise the first letter, no trailing period, no AI attribution, no commit hashes.
 
-   b. **Ask the user for a brief What's New description** — 1–3 short user-facing bullet points. Frame the prompt: *"Briefly describe what's new for end users (1–3 bullets, blank line to skip)."* If the user types nothing, skip step c entirely (don't add an empty entry — just bump the version number alone).
-
-      Convert each line typed by the user into one item in the `changes: string[]` array. Strip leading bullet characters (`- `, `* `, `• `) so the file's existing format is preserved. Keep entries short — no PR-style prose, no commit hashes, no AI attribution. Capitalise the first letter; no trailing period.
-
-   c. **Edit `src/lib/version.ts`**:
-      - Update `export const VERSION = '...'` to the new value.
+   c. **Edit `lib/changelog.ts`**:
       - Prepend a new entry at the **top** of the `CHANGELOG` array:
         ```ts
         {
             version: '<new-version>',
             date: '<today's date in YYYY-MM-DD>',
-            changes: [
+            items: [
                 '<line 1>',
                 '<line 2>',
-                ...
             ]
         },
         ```
-      - Get today's date from `date +%F` (don't use the model's notion of "today" — it's wrong half the time).
+      - Get today's date from `date +%F` (don't use the model's notion of "today").
 
-   d. **Commit the bump** as its own commit so it stands out in `git log`:
+   d. **Commit the bump** as its own commit:
       ```
-      git add src/lib/version.ts
+      git add lib/changelog.ts
       git commit -m "chore: release v<new-version>"
       ```
 
@@ -70,9 +65,9 @@ Commit all staged and unstaged changes, run quality checks, bump the app version
 
 ## Rules
 
-- **Never auto-decide a major bump.** Major version bumps are intentional; require explicit `major` from the user or a `BREAKING CHANGE:` in a commit message.
-- **Empty `changes: []` is allowed** when the user skips the description, but prefer to nudge them once for a one-liner — version bumps without notes hide what shipped.
+- **Never ask the user about the bump kind or changelog** — decide both yourself from the branch name and commits.
+- **Never auto-decide a major bump** without a `BREAKING CHANGE:` in a commit message.
 - **Don't include AI attribution** in commit messages or changelog entries.
 - **Bump the version on the feature branch**, not on main. The bump commit is part of the merge.
 - **If the version bump fails** (file missing, parse error, etc.), abort the ship and surface the error — don't silently push without a bump.
-- **Today's date** comes from `date +%F` (UTC-leaning), not from the model's training cutoff.
+- **Today's date** comes from `date +%F`, not from the model's training cutoff.

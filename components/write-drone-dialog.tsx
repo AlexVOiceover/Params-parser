@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Usb, X, AlertTriangle } from "lucide-react";
 import { writeDroneParams, type ParamWriteResult } from "@/lib/mavlink-serial";
+import type { FlashResult } from "@/lib/drone-flash-engine";
 
 const BAUD_RATE = 115200;
 
@@ -15,9 +16,15 @@ interface Props {
   onClose: () => void;
   /** Called with successful writes so parent can merge updated values into context. */
   onSuccess: (written: ParamWriteResult[]) => void;
+  /**
+   * When provided, called instead of the built-in single-pass write.
+   * The parent drives the write (e.g. via flashParamsToDrone) and resolves
+   * with a FlashResult. Log messages should be pushed via the returned addLog.
+   */
+  onStart?: (addLog: (msg: string) => void) => Promise<FlashResult>;
 }
 
-export function WriteDroneDialog({ changes, onClose, onSuccess }: Props) {
+export function WriteDroneDialog({ changes, onClose, onSuccess, onStart }: Props) {
   const [stage, setStage] = useState<Stage>("confirm");
   const [log, setLog] = useState<string[]>([]);
   const [progress, setProgress] = useState(0);
@@ -39,6 +46,32 @@ export function WriteDroneDialog({ changes, onClose, onSuccess }: Props) {
     setProgress(0);
     setResults([]);
 
+    if (onStart) {
+      const flashResult = await onStart(addLog);
+      if (flashResult.ok) {
+        setStage("done");
+        // Synthesise a ParamWriteResult array from the changes so onSuccess
+        // receives the full written set for droneParams context update.
+        const written: ParamWriteResult[] = changes.map((c) => ({
+          name: c.name,
+          requested: c.value,
+          actual: c.value,
+          success: true,
+        }));
+        onSuccess(written);
+      } else {
+        if (flashResult.reverted) {
+          setError("Flash failed after max passes — reverted to previous state.");
+        } else if (flashResult.unresolved.length > 0) {
+          setError(`${flashResult.unresolved.length} param${flashResult.unresolved.length === 1 ? "" : "s"} could not be written: ${flashResult.unresolved.join(", ")}`);
+        } else {
+          setError("Flash failed — check connection and retry.");
+        }
+        setStage("error");
+      }
+      return;
+    }
+
     const disconnect = await writeDroneParams(BAUD_RATE, changes, {
       onLog: addLog,
       onProgress(done) { setProgress(done); },
@@ -57,7 +90,7 @@ export function WriteDroneDialog({ changes, onClose, onSuccess }: Props) {
       },
     });
     disconnectRef.current = disconnect;
-  }, [changes, onSuccess]);
+  }, [changes, onSuccess, onStart]);
 
   function handleClose() {
     disconnectRef.current?.();
