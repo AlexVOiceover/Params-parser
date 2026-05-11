@@ -8,6 +8,7 @@ import { useDroneParams } from "@/lib/drone-params-context";
 import { WriteDroneDialog, type WriteChange } from "@/components/write-drone-dialog";
 import { clearDroneMatchCache } from "@/lib/use-connected-drone-match";
 import { RUNTIME_PARAMS } from "@/lib/param-engine";
+import { flashParamsToDrone } from "@/lib/drone-flash-engine";
 import type { ParamWriteResult } from "@/lib/mavlink-serial";
 
 interface Props {
@@ -124,6 +125,12 @@ export function ApplyUpdateButton({ versionId, className, label = "Apply update"
           changes={changes}
           onClose={() => setChanges(null)}
           onSuccess={handleSuccess}
+          onStart={(addLog) => {
+            const current = new Map(
+              (droneParams ?? []).map((p) => [p.name, parseFloat(p.value)])
+            );
+            return flashParamsToDrone(targetParams, current, addLog);
+          }}
         />
       )}
     </>
