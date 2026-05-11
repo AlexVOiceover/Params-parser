@@ -6,6 +6,16 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.16.0",
+    date: "2026-05-11",
+    items: [
+      "Register drone flow now uses the multi-pass flash engine — failed writes retry and revert automatically",
+      "Register button now appears for any drone not in the catalog, not just unversioned ones",
+      "Orphan drones (no client assigned) can now be registered and flashed correctly",
+      "Clone version dialog can create a new Default param set when none exists for the variant",
+    ],
+  },
+  {
     version: "0.15.0",
     date: "2026-05-11",
     items: [
