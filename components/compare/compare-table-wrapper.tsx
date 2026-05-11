@@ -6,6 +6,7 @@ import { useDroneParams, DRONE_VERSION_ID } from "@/lib/drone-params-context";
 import { clearDroneMatchCache } from "@/lib/use-connected-drone-match";
 import { CompareTable } from "@/components/compare/compare-table";
 import { WriteDroneDialog, type WriteChange } from "@/components/write-drone-dialog";
+import { RUNTIME_PARAMS } from "@/lib/param-engine";
 import type { CompareVersion, CompareRow } from "@/lib/types";
 import type { ParamWriteResult } from "@/lib/mavlink-serial";
 
@@ -50,6 +51,7 @@ export function CompareTableWrapper({ versions, rows, hasDroneVersion }: Props) 
     }
 
     const allRows: CompareRow[] = Array.from(rowMap.entries())
+      .filter(([name]) => !RUNTIME_PARAMS.has(name))
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([name, values]) => ({ name, values }));
 

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { createClient, createAdminClient, createSessionClient } from "@/lib/supabase/server";
-import { parseParamFile } from "@/lib/param-engine";
+import { parseParamFile, RUNTIME_PARAMS } from "@/lib/param-engine";
 import { VersionTree } from "@/components/compare/version-tree";
 import { CompareTableWrapper } from "@/components/compare/compare-table-wrapper";
 import { DRONE_VERSION_ID } from "@/lib/drone-params-shared";
@@ -281,10 +281,9 @@ async function fetchCompareData(
     })
   );
 
-  const rows: CompareRow[] = Array.from(rowMap.entries()).map(([name, values]) => ({
-    name,
-    values,
-  }));
+  const rows: CompareRow[] = Array.from(rowMap.entries())
+    .filter(([name]) => !RUNTIME_PARAMS.has(name))
+    .map(([name, values]) => ({ name, values }));
 
   return { versions, rows };
 }

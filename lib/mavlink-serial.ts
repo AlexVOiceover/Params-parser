@@ -424,6 +424,8 @@ export async function openDroneConnection(
         for (const txt of result.statusTexts) {
           if (!/config error|unable to initialise|fix problem then reboot/i.test(txt)) {
             onLog(`AP: ${txt}`);
+          } else {
+            onLog(`AP (suppressed): ${txt}`);
           }
         }
 
@@ -432,12 +434,8 @@ export async function openDroneConnection(
         // string (e.g. "ArduCopter V4.5.0") — sent after full init.
         // "Initialising ArduPilot" and "Config Error" are early-boot messages
         // and must NOT trigger the request.
-        if (versionLogged && !requestSent) {
-          if (result.heartbeats > 0) {
-            consecutiveHeartbeats += result.heartbeats;
-          } else if (result.validFrames === 0) {
-            consecutiveHeartbeats = 0;
-          }
+        if (versionLogged && !requestSent && result.heartbeats > 0) {
+          consecutiveHeartbeats += result.heartbeats;
         }
 
         // The version STATUSTEXT (e.g. "ArduCopter V4.6.3") fires after ALL
@@ -486,16 +484,6 @@ export async function openDroneConnection(
   }
 
   readLoop();
-
-  // Fallback: send after 5s if heartbeat detection hasn't triggered yet
-  setTimeout(async () => {
-    if (done || requestSent) return;
-    onLog("No heartbeats yet — sending PARAM_REQUEST_LIST anyway…");
-    await sendFrame(buildParamRequestList(true));
-    await sendFrame(buildParamRequestList(false));
-    requestSent = true;
-    scheduleRetry();
-  }, 5000);
 
   return async function disconnect() {
     done = true;
