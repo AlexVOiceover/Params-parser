@@ -90,9 +90,7 @@ export function useConnectedDroneMatch(): DroneMatchResult {
     const droneVersion = scrUser2 ? parseInt(scrUser2.value, 10) : null;
     const droneVersionOut = (droneVersion !== null && Number.isFinite(droneVersion)) ? droneVersion : null;
 
-    // Include param count in cache key so re-importing the drone (which may
-    // have different values) always triggers a fresh fetch for drift detection.
-    const cacheKey = `${wanted}_${droneVersionOut ?? "null"}_${droneParams?.length ?? 0}`;
+    const cacheKey = `${wanted}_${droneVersionOut ?? "null"}`;
     if (lastKeyRef.current === cacheKey) return;
     lastKeyRef.current = cacheKey;
 
@@ -119,33 +117,51 @@ export function useConnectedDroneMatch(): DroneMatchResult {
     setResult({ status: "loading", drone: null, versionStatus: "unknown", droneVersion: droneVersionOut, catalogVersion: null, isOrphan: false, driftCount: null });
     let cancelled = false;
 
-    // Encode drone params for server-side drift detection.
-    let paramsB64: string | null = null;
-    if (droneParams && droneParams.length > 0) {
-      try {
-        const obj: Record<string, string> = {};
-        for (const p of droneParams) obj[p.name] = p.value;
-        paramsB64 = btoa(unescape(encodeURIComponent(JSON.stringify(obj))));
-      } catch { /* encoding failed — skip drift detection */ }
-    }
-
     let url = `/api/drone/match?id=${wanted}`;
     if (droneVersionOut !== null) url += `&scr_user2=${droneVersionOut}`;
-    if (paramsB64) url += `&params=${encodeURIComponent(paramsB64)}`;
 
     fetch(url)
       .then((r) => r.json())
-      .then((body: { drone: MatchedDrone | null }) => {
+      .then(async (body: { drone: MatchedDrone | null }) => {
         if (cancelled) return;
-        cache.set(cacheKey, body.drone);
+
+        let drone = body.drone;
+        const initialStatus = computeVersionStatus(drone);
+
+        // If version matches, run drift check via a separate POST so we don't
+        // blow the URL length limit with ~50KB of encoded params.
+        if (
+          drone &&
+          initialStatus === "up_to_date" &&
+          drone.latest_version_id &&
+          droneParams &&
+          droneParams.length > 0
+        ) {
+          try {
+            const paramObj: Record<string, string> = {};
+            for (const p of droneParams) paramObj[p.name] = p.value;
+            const driftRes = await fetch("/api/drone/drift", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ versionId: drone.latest_version_id, params: paramObj }),
+            });
+            if (!cancelled && driftRes.ok) {
+              const { drift_count } = await driftRes.json() as { drift_count: number | null };
+              drone = { ...drone, drift_count };
+            }
+          } catch { /* drift check failed — treat as no drift */ }
+        }
+
+        if (cancelled) return;
+        cache.set(cacheKey, drone);
         setResult({
-          status: body.drone ? "matched" : "unmatched",
-          drone: body.drone,
-          versionStatus: computeVersionStatus(body.drone),
-          droneVersion: body.drone?.drone_version ?? droneVersionOut,
-          catalogVersion: body.drone?.catalog_version ?? null,
-          isOrphan: body.drone?.is_orphan ?? false,
-          driftCount: body.drone?.drift_count ?? null,
+          status: drone ? "matched" : "unmatched",
+          drone,
+          versionStatus: computeVersionStatus(drone),
+          droneVersion: drone?.drone_version ?? droneVersionOut,
+          catalogVersion: drone?.catalog_version ?? null,
+          isOrphan: drone?.is_orphan ?? false,
+          driftCount: drone?.drift_count ?? null,
         });
       })
       .catch(() => {
