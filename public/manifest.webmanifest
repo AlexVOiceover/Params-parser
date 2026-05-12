@@ -9,6 +9,18 @@
   "background_color": "#0d0f14",
   "theme_color": "#0d0f14",
   "categories": ["utilities", "productivity"],
+  "usb_device_ids": [
+    { "vendor_id": "0x1209" },
+    { "vendor_id": "0x26AC" },
+    { "vendor_id": "0x2DAE" },
+    { "vendor_id": "0x0483" },
+    { "vendor_id": "0x1A86" },
+    { "vendor_id": "0x10C4" },
+    { "vendor_id": "0x0403" },
+    { "vendor_id": "0x3162" },
+    { "vendor_id": "0x27AC" },
+    { "vendor_id": "0x1FC9" }
+  ],
   "icons": [
     {
       "src": "/icons/icon.svg",

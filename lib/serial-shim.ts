@@ -56,12 +56,15 @@ interface UsbFilter { usbVendorId?: number; usbProductId?: number; }
  */
 export const ARDUPILOT_USB_FILTERS: UsbFilter[] = [
   { usbVendorId: 0x1209 }, // Generic / pid.codes (community ArduPilot boards)
-  { usbVendorId: 0x26ac }, // 3DR (Pixhawk 1, Pixhawk 2 Cube)
+  { usbVendorId: 0x26ac }, // 3DR / ProfiCNC (Pixhawk 1, Cube)
   { usbVendorId: 0x2dae }, // Hex Technology (Cube Orange / Black / Yellow)
-  { usbVendorId: 0x0483 }, // STMicroelectronics (most STM32 FCs default)
-  { usbVendorId: 0x1a86 }, // QinHeng CH340 (some clones / generic USB-serial)
-  { usbVendorId: 0x10c4 }, // Silicon Labs CP210x (some telemetry radios)
-  { usbVendorId: 0x0403 }, // FTDI (legacy telemetry — note: polyfill doesn't support FTDI yet)
+  { usbVendorId: 0x0483 }, // STMicroelectronics (most STM32 FCs: Matek, Kakute, etc.)
+  { usbVendorId: 0x1a86 }, // QinHeng CH340 (clones / generic USB-serial)
+  { usbVendorId: 0x10c4 }, // Silicon Labs CP210x (telemetry radios, some FCs)
+  { usbVendorId: 0x0403 }, // FTDI (legacy boards / radios)
+  { usbVendorId: 0x3162 }, // Holybro (Pixhawk 6, Kakute H7)
+  { usbVendorId: 0x27ac }, // mRobotics (mRo Control Zero, X2.1)
+  { usbVendorId: 0x1fc9 }, // NXP (UCANS32K1, NXP-based FCs)
 ];
 
 /**
