@@ -224,29 +224,19 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
                         <CheckCircle className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
                         Drone identified
                       </p>
-                      <dl className="grid grid-cols-[auto,1fr] gap-x-3 gap-y-0.5 text-xs">
-                        <dt className="text-muted-foreground">Drone</dt>
-                        <dd className="font-mono text-foreground">{match.drone.serial}</dd>
-                        {match.isOrphan ? (
-                          <>
-                            <dt className="text-muted-foreground">Client</dt>
-                            <dd className="text-muted-foreground italic">No client assigned</dd>
-                          </>
-                        ) : match.drone.client_name ? (
-                          <>
-                            <dt className="text-muted-foreground">Client</dt>
-                            <dd className="text-foreground">{match.drone.client_name}</dd>
-                          </>
-                        ) : null}
-                        {match.drone.family_name && match.drone.variant_name && (
-                          <>
-                            <dt className="text-muted-foreground">Catalog</dt>
-                            <dd className="text-foreground">
-                              {match.drone.family_name} / {match.drone.variant_name}
-                            </dd>
-                          </>
-                        )}
-                      </dl>
+                      <div className="flex flex-col gap-0.5 text-xs">
+                        {[
+                          ["Drone serial", <span className="font-mono">{match.drone.serial}</span>],
+                          ["Client", match.isOrphan ? <span className="italic text-muted-foreground">No client</span> : (match.drone.client_name ?? "—")],
+                          ...(match.drone.family_name ? [["Family", match.drone.family_name]] : []),
+                          ...(match.drone.variant_name ? [["Variant", match.drone.variant_name]] : []),
+                        ].map(([label, value]) => (
+                          <div key={String(label)} className="flex items-baseline gap-1.5">
+                            <span className="text-muted-foreground shrink-0">{label}:</span>
+                            <span className="text-foreground">{value}</span>
+                          </div>
+                        ))}
+                      </div>
                       {match.versionStatus === "up_to_date" && match.droneVersion !== null && (
                         <p className="flex items-center gap-1.5 text-xs text-emerald-400">
                           <CheckCircle className="h-3 w-3 shrink-0" />

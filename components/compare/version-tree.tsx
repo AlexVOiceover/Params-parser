@@ -100,11 +100,21 @@ export function VersionTree({ tree }: Props) {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-border shrink-0">
-        <h1 className="text-base font-semibold text-foreground">Compare params</h1>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Select 2 or more versions to compare side-by-side.
-        </p>
+      <div className="px-6 py-4 border-b border-border shrink-0 flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-base font-semibold text-foreground">Compare params</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {selectedCount === 0 ? "Select 2 or more versions to compare side-by-side." : `${selectedCount} version${selectedCount !== 1 ? "s" : ""} selected`}
+          </p>
+        </div>
+        <button
+          onClick={handleCompare}
+          disabled={selectedCount < 1}
+          className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed whitespace-nowrap shrink-0"
+        >
+          <GitCompareArrows className="h-4 w-4" />
+          {selectedCount >= 2 ? `Compare (${selectedCount})` : selectedCount === 1 ? "View" : "Compare"}
+        </button>
       </div>
 
       {/* Tree */}
@@ -246,22 +256,6 @@ export function VersionTree({ tree }: Props) {
         )}
       </div>
 
-      {/* Footer */}
-      <div className="border-t border-border bg-toolbar px-6 py-3 flex items-center gap-3 shrink-0">
-        <span className="text-xs text-muted-foreground flex-1">
-          {selectedCount === 0
-            ? "No versions selected"
-            : `${selectedCount} version${selectedCount !== 1 ? "s" : ""} selected`}
-        </span>
-        <button
-          onClick={handleCompare}
-          disabled={selectedCount < 1}
-          className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
-        >
-          <GitCompareArrows className="h-3.5 w-3.5" />
-          {selectedCount >= 2 ? `Compare (${selectedCount})` : selectedCount === 1 ? "View" : "Select versions"}
-        </button>
-      </div>
     </div>
   );
 }

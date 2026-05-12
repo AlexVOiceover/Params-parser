@@ -104,7 +104,14 @@ export function useConnectedDroneMatch(): DroneMatchResult {
     const droneVersion = scrUser2 ? parseInt(scrUser2.value, 10) : null;
     const droneVersionOut = (droneVersion !== null && Number.isFinite(droneVersion)) ? droneVersion : null;
 
-    const cacheKey = `${wanted}_${droneVersionOut ?? "null"}`;
+    // Include a lightweight checksum of all param values so the drift check
+    // re-runs whenever the drone is re-imported with different values.
+    const paramChecksum = droneParams.reduce((acc, p) => {
+      let h = 0;
+      for (let i = 0; i < p.value.length; i++) h = (Math.imul(31, h) + p.value.charCodeAt(i)) | 0;
+      return (acc ^ h) | 0;
+    }, 0);
+    const cacheKey = `${wanted}_${droneVersionOut ?? "null"}_${paramChecksum}`;
     const forced = forceFetchRef.current;
     forceFetchRef.current = false;
     // Skip re-fetch if key is unchanged and cache entry still exists (not cleared).

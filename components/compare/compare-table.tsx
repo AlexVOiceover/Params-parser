@@ -165,118 +165,120 @@ export function CompareTable({
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-toolbar shrink-0">
-        <span className="text-xs text-muted-foreground">
-          {canDiff ? (
-            <>
-              <span className="text-amber-600 dark:text-amber-400 font-medium">{diffCount}</span>
-              {" param"}
-              {diffCount !== 1 ? "s" : ""} differ · {rows.length} total
-            </>
-          ) : (
-            <>{rows.length} total</>
-          )}
-          {trimmedQuery && (
-            <span className="ml-3 text-primary font-medium">
-              · {visibleRows.length} match{visibleRows.length === 1 ? "" : "es"}
-            </span>
-          )}
-          {writeMode && pendingEdits && pendingEdits.size > 0 && (
-            <span className="ml-3 text-amber-600 dark:text-amber-400 font-medium">
-              · {pendingEdits.size} pending edit{pendingEdits.size === 1 ? "" : "s"}
-            </span>
-          )}
-        </span>
-        <div className="flex-1" />
+      <div className="flex flex-col border-b border-border bg-toolbar shrink-0">
+        <div className="flex items-center gap-2 px-4 py-2">
+          {/* Stats — hidden on very small screens to save space */}
+          <span className="hidden sm:block text-xs text-muted-foreground shrink-0">
+            {canDiff ? (
+              <>
+                <span className="text-amber-600 dark:text-amber-400 font-medium">{diffCount}</span>
+                {" param"}{diffCount !== 1 ? "s" : ""} differ · {rows.length} total
+              </>
+            ) : (
+              <>{rows.length} total</>
+            )}
+            {trimmedQuery && <span className="ml-2 text-primary font-medium">· {visibleRows.length} match{visibleRows.length === 1 ? "" : "es"}</span>}
+            {writeMode && pendingEdits && pendingEdits.size > 0 && (
+              <span className="ml-2 text-amber-600 dark:text-amber-400 font-medium">· {pendingEdits.size} pending</span>
+            )}
+          </span>
 
-        <div className="flex items-center gap-1.5 max-w-xs flex-1">
-          <div className="relative flex-1">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={searchMode === "value" ? "Search value (e.g. 10)" : "Search…"}
-              className="w-full rounded-md border border-border bg-secondary pl-7 pr-7 py-1.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
-            />
-            {searchQuery && (
+          {/* Search */}
+          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={searchMode === "value" ? "Search value…" : "Search…"}
+                className="w-full rounded-md border border-border bg-secondary pl-7 pr-7 py-1.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
+              />
+              {searchQuery && (
+                <button
+                  onMouseDown={(e) => { e.preventDefault(); setSearchQuery(""); }}
+                  title="Clear"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+            <select
+              value={searchMode}
+              onChange={(e) => setSearchMode(e.target.value as "name" | "value" | "both")}
+              className="shrink-0 rounded-md border border-border bg-secondary px-2 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+            >
+              <option value="name">Name</option>
+              <option value="value">Value</option>
+              <option value="both">Both</option>
+            </select>
+          </div>
+
+          {/* Action buttons — icon only on mobile, icon+text on sm+ */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {canDiff && (
               <button
-                onMouseDown={(e) => { e.preventDefault(); setSearchQuery(""); }}
-                title="Clear"
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer"
+                onClick={() => setShowDiffsOnly((v) => !v)}
+                title={showDiffsOnly ? "Show all" : "Show differences only"}
+                className={`flex items-center gap-1.5 rounded-md border px-2 sm:px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                  showDiffsOnly
+                    ? "border-amber-500/50 bg-amber-400/10 text-amber-700 dark:border-amber-400/50 dark:text-amber-300"
+                    : "border-border text-foreground hover:bg-secondary"
+                }`}
               >
-                <X className="h-3 w-3" />
+                <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden sm:inline">{showDiffsOnly ? "Differences only" : "Show differences"}</span>
               </button>
+            )}
+            {writeMode && pendingEdits && pendingEdits.size > 0 && (
+              <>
+                <button
+                  onClick={() => setShowModifiedOnly((v) => !v)}
+                  title={showModifiedOnly ? "Show all" : `Show modified (${pendingEdits.size})`}
+                  className={`flex items-center gap-1.5 rounded-md border px-2 sm:px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                    showModifiedOnly ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground hover:bg-secondary"
+                  }`}
+                >
+                  <GitCompareArrows className="h-3.5 w-3.5 shrink-0" />
+                  <span className="hidden sm:inline">{showModifiedOnly ? `Modified (${pendingEdits.size})` : `Show modified (${pendingEdits.size})`}</span>
+                  <span className="sm:hidden text-xs">{pendingEdits.size}</span>
+                </button>
+                <button
+                  onClick={onClearAllEdits}
+                  title="Discard all pending edits"
+                  className="flex items-center gap-1.5 rounded-md border border-border px-2 sm:px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  <RotateCcw className="h-3.5 w-3.5 shrink-0" />
+                  <span className="hidden sm:inline">Discard</span>
+                </button>
+                {onWriteToDrone && (
+                  <button
+                    onClick={onWriteToDrone}
+                    title={`Write ${pendingEdits.size} params to drone`}
+                    className="flex items-center gap-1.5 rounded-md bg-amber-500 px-2 sm:px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600 transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    <Upload className="h-3.5 w-3.5 shrink-0" />
+                    <span className="hidden sm:inline">Write {pendingEdits.size}</span>
+                    <span className="sm:hidden">{pendingEdits.size}</span>
+                  </button>
+                )}
+                {onSaveCatalog && (
+                  <button
+                    onClick={onSaveCatalog}
+                    disabled={savingCatalog}
+                    title={savingCatalog ? "Saving…" : `Save ${pendingEdits.size} changes`}
+                    className="flex items-center gap-1.5 rounded-md bg-primary px-2 sm:px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
+                  >
+                    <Upload className="h-3.5 w-3.5 shrink-0" />
+                    <span className="hidden sm:inline">{savingCatalog ? "Saving…" : `Save ${pendingEdits.size}`}</span>
+                    <span className="sm:hidden">{pendingEdits.size}</span>
+                  </button>
+                )}
+              </>
             )}
           </div>
-          <select
-            value={searchMode}
-            onChange={(e) => setSearchMode(e.target.value as "name" | "value" | "both")}
-            className="shrink-0 rounded-md border border-border bg-secondary px-2 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer"
-          >
-            <option value="name">Name</option>
-            <option value="value">Value</option>
-            <option value="both">Both</option>
-          </select>
         </div>
-
-        {canDiff && (
-          <button
-            onClick={() => setShowDiffsOnly((v) => !v)}
-            className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-              showDiffsOnly
-                ? "border-amber-500/50 bg-amber-400/10 text-amber-700 dark:border-amber-400/50 dark:text-amber-300"
-                : "border-border text-foreground hover:bg-secondary"
-            }`}
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5" />
-            {showDiffsOnly ? "Differences only" : "Show differences only"}
-          </button>
-        )}
-        {writeMode && pendingEdits && pendingEdits.size > 0 && (
-          <button
-            onClick={() => setShowModifiedOnly((v) => !v)}
-            className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-              showModifiedOnly
-                ? "border-primary bg-primary/10 text-primary"
-                : "border-border text-foreground hover:bg-secondary"
-            }`}
-          >
-            <GitCompareArrows className="h-3.5 w-3.5" />
-            {showModifiedOnly ? `Modified (${pendingEdits.size})` : `Show modified (${pendingEdits.size})`}
-          </button>
-        )}
-        {writeMode && pendingEdits && pendingEdits.size > 0 && (
-          <>
-            <button
-              onClick={onClearAllEdits}
-              title="Discard all pending edits"
-              className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              Discard
-            </button>
-            {onWriteToDrone && (
-              <button
-                onClick={onWriteToDrone}
-                className="flex items-center gap-1.5 rounded-md bg-amber-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600 transition-colors cursor-pointer whitespace-nowrap"
-              >
-                <Upload className="h-3.5 w-3.5" />
-                Write {pendingEdits.size} to drone
-              </button>
-            )}
-            {onSaveCatalog && (
-              <button
-                onClick={onSaveCatalog}
-                disabled={savingCatalog}
-                className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
-              >
-                <Upload className="h-3.5 w-3.5" />
-                {savingCatalog ? "Saving…" : `Save ${pendingEdits.size} change${pendingEdits.size === 1 ? "" : "s"}`}
-              </button>
-            )}
-          </>
-        )}
       </div>
 
       {/* Table */}

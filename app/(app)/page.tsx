@@ -90,25 +90,28 @@ export default async function CatalogPage() {
         <div className="flex items-center gap-2">
           <Link
             href="/compare"
+            title="Compare versions"
             className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
           >
             <Columns2 className="h-3.5 w-3.5" />
-            Compare versions
+            <span className="hidden sm:inline">Compare versions</span>
           </Link>
           <Link
             href="/filter"
+            title="Filter tool"
             className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
           >
             <Filter className="h-3.5 w-3.5" />
-            Filter tool
+            <span className="hidden sm:inline">Filter tool</span>
           </Link>
           {canUpload && (
             <Link
               href="/upload"
+              title="Upload"
               className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
             >
               <Upload className="h-3.5 w-3.5" />
-              Upload
+              <span className="hidden sm:inline">Upload</span>
             </Link>
           )}
         </div>
