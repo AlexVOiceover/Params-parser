@@ -13,9 +13,10 @@ import {
   ChevronDown,
   ClipboardList,
   RefreshCw,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { useDroneParams } from "@/lib/drone-params-context";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/components/auth-provider";
 import { useSerialMode } from "@/lib/use-serial-mode";
 import { WhatsNewDialog } from "@/components/whats-new-dialog";
@@ -35,6 +36,16 @@ export function AppHeader() {
 
   const isAdmin = role === "admin";
   const [reviewCount, setReviewCount] = useState<number>(0);
+  const [isDark, setIsDark] = useState(true);
+  useEffect(() => {
+    setIsDark(document.documentElement.classList.contains("dark"));
+  }, []);
+  function toggleTheme() {
+    const next = !isDark;
+    document.documentElement.classList.toggle("dark", next);
+    localStorage.setItem("theme", next ? "dark" : "light");
+    setIsDark(next);
+  }
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<"idle" | "found" | "latest">("idle");
 
@@ -126,9 +137,6 @@ export function AppHeader() {
         </button>
       )}
 
-      <div className="w-px h-4 bg-border shrink-0 ml-1 hidden sm:block" />
-      <ThemeToggle />
-
       <div ref={userMenuRef} className="relative shrink-0">
         {user ? (
           <button
@@ -196,6 +204,13 @@ export function AppHeader() {
                 </Link>
               </>
             )}
+            <button
+              onClick={() => { toggleTheme(); }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap border-t border-border"
+            >
+              {isDark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+              {isDark ? "Light mode" : "Dark mode"}
+            </button>
             <button
               onClick={() => { setUserMenuOpen(false); handleCheckUpdate(); }}
               disabled={checkingUpdate}
