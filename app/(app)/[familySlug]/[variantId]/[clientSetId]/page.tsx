@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { createSessionClient } from "@/lib/supabase/server";
 import { ParamVersionList } from "@/components/param-version-list";
+import { RUNTIME_PARAMS } from "@/lib/param-engine";
 import type { Family, Variant, ClientSet, ParamVersion } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -57,26 +58,25 @@ async function getData(familySlug: string, variantId: string, clientSetId: strin
   const diffVsPrev = new Map<string, number>();
 
   if (versionList.length > 1) {
-    const versionIds = versionList.map((v) => v.id);
-    const PAGE_SIZE = 1000;
-    const allParamValues: { param_version_id: string; name: string; value: string }[] = [];
-    for (let from = 0; ; from += PAGE_SIZE) {
-      const { data: page } = await supabase
-        .from("param_values")
-        .select("param_version_id, name, value")
-        .in("param_version_id", versionIds)
-        .order("name")
-        .range(from, from + PAGE_SIZE - 1);
-      if (!page || page.length === 0) break;
-      allParamValues.push(...page);
-      if (page.length < PAGE_SIZE) break;
-    }
+    const PAGE_SIZE = 500;
 
-    // Pivot: versionId → paramName → value
+    // Fetch each version separately to avoid pagination boundary issues
+    // that occur when fetching multiple versions together with .in()
     const byVersion = new Map<string, Map<string, string>>();
-    for (const { param_version_id, name, value } of allParamValues) {
-      if (!byVersion.has(param_version_id)) byVersion.set(param_version_id, new Map());
-      byVersion.get(param_version_id)!.set(name, value);
+    for (const v of versionList) {
+      const paramMap = new Map<string, string>();
+      for (let from = 0; ; from += PAGE_SIZE) {
+        const { data: page } = await supabase
+          .from("param_values")
+          .select("name, value")
+          .eq("param_version_id", v.id)
+          .order("name")
+          .range(from, from + PAGE_SIZE - 1);
+        if (!page || page.length === 0) break;
+        for (const { name, value } of page) paramMap.set(name, value);
+        if (page.length < PAGE_SIZE) break;
+      }
+      byVersion.set(v.id, paramMap);
     }
 
     // Sort oldest first, diff each against its predecessor
@@ -89,7 +89,7 @@ async function getData(familySlug: string, variantId: string, clientSetId: strin
       const allNames = new Set([...prev.keys(), ...curr.keys()]);
       let diff = 0;
       for (const name of allNames) {
-        if (name === "SCR_USER2") continue; // version marker, not a config change
+        if (RUNTIME_PARAMS.has(name)) continue;
         if (prev.get(name) !== curr.get(name)) diff++;
       }
       diffVsPrev.set(sorted[i].id, diff);

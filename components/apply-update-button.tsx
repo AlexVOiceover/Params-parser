@@ -110,6 +110,7 @@ export function ApplyUpdateButton({ versionId, className, label = "Apply update"
         type="button"
         onClick={handleClick}
         disabled={loading || !droneParams?.length}
+        title={error ?? undefined}
         className={className ?? "btn-apply-update flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"}
       >
         {loading
@@ -118,9 +119,6 @@ export function ApplyUpdateButton({ versionId, className, label = "Apply update"
         }
         {loading ? "Loading…" : label}
       </button>
-      {error && (
-        <p className="text-xs text-destructive mt-1">{error}</p>
-      )}
       {changes && (
         <WriteDroneDialog
           changes={changes}

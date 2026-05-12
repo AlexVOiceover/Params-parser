@@ -425,15 +425,15 @@ export function ParamVersionList({
                       on drone
                     </span>
                   )}
+                  {hasUpdate && v.is_latest && droneVersion !== null && parseInt(v.version_label, 10) > droneVersion && (
+                    <ApplyUpdateButton versionId={v.id} />
+                  )}
                 </div>
                 <span className="text-xs text-muted-foreground shrink-0">{formatDate(v.created_at)}</span>
               </div>
               {/* Second row: actions left, delete right */}
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {hasUpdate && v.is_latest && droneVersion !== null && parseInt(v.version_label, 10) > droneVersion && (
-                    <ApplyUpdateButton versionId={v.id} />
-                  )}
                   <Link href={`/compare?v=${v.id}`} title="View in Compare"
                     className="rounded-md border border-border bg-secondary hover:bg-secondary/80 p-1.5 text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
                     <Eye className="h-3.5 w-3.5" />
