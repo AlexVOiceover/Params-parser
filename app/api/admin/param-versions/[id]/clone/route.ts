@@ -104,8 +104,8 @@ export async function POST(
     .single();
   if (versionError || !newVersion) return NextResponse.json({ error: versionError?.message ?? "Version insert failed" }, { status: 500 });
 
-  // Copy param_values — paginate to avoid the 1000-row PostgREST cap.
-  const PAGE_SIZE = 1000;
+  // Copy param_values — read and write in chunks well below the PostgREST 1000-row cap.
+  const PAGE_SIZE = 500;
   const allParamValues: { name: string; value: string }[] = [];
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data: page } = await admin
@@ -128,14 +128,15 @@ export async function POST(
     for (const pv of allParamValues) paramMap.set(pv.name, pv.value);
     if (Number.isFinite(newVersionInt)) paramMap.set("SCR_USER2", String(newVersionInt));
 
-    const { error: insertError } = await admin.from("param_values").insert(
-      Array.from(paramMap.entries()).map(([name, value]) => ({
-        param_version_id: newVersion.id,
-        name,
-        value,
-      }))
-    );
-    if (insertError) return NextResponse.json({ error: `Clone succeeded but param copy failed: ${insertError.message}` }, { status: 500 });
+    const rows = Array.from(paramMap.entries()).map(([name, value]) => ({
+      param_version_id: newVersion.id,
+      name,
+      value,
+    }));
+    for (let i = 0; i < rows.length; i += PAGE_SIZE) {
+      const { error: insertError } = await admin.from("param_values").insert(rows.slice(i, i + PAGE_SIZE));
+      if (insertError) return NextResponse.json({ error: `Clone succeeded but param copy failed: ${insertError.message}` }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ ok: true, versionId: newVersion.id, clientSetId: targetClientSetId });

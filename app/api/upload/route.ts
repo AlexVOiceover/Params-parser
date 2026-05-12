@@ -211,7 +211,9 @@ export async function POST(request: NextRequest) {
 
         controller.enqueue(msg(`Indexing ${paramValues.length} parameters…`));
         if (paramValues.length > 0) {
-          await admin.from("param_values").insert(paramValues);
+          for (let i = 0; i < paramValues.length; i += 500) {
+            await admin.from("param_values").insert(paramValues.slice(i, i + 500));
+          }
         }
 
         controller.enqueue(msg(`Done — v${versionLabel} uploaded with ${paramValues.length} params`));

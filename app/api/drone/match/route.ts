@@ -65,10 +65,26 @@ export async function GET(request: NextRequest) {
 
   let catalogVersion: number | null = null;
   let latestVersionId: string | null = null;
+
+  // Secondary lookup: if no client_set found by drone_id, try client_id + variant_id.
+  // This handles the case where drone_id FK was set incorrectly (backfill era data).
+  const clientSetByClient = (!clientSet && drone.client_id) ? await (async () => {
+    const { data } = await supabase
+      .from("client_sets")
+      .select("id")
+      .eq("variant_id", drone.variant_id)
+      .eq("client_id", drone.client_id)
+      .eq("is_default", false)
+      .maybeSingle();
+    return data;
+  })() : null;
+
+  const resolvedNonDefaultClientSet = clientSet ?? clientSetByClient;
+
   // isOrphan: drone has no client_set on this variant — fall back to the
   // variant's Default client_set so orphan drones still get version tracking.
-  const isOrphan = !clientSet;
-  const resolvedClientSet = clientSet ?? await (async () => {
+  const isOrphan = !resolvedNonDefaultClientSet;
+  const resolvedClientSet = resolvedNonDefaultClientSet ?? await (async () => {
     const { data } = await supabase
       .from("client_sets")
       .select("id")
@@ -107,7 +123,7 @@ export async function GET(request: NextRequest) {
       drone_version: droneVersionOut,
       is_orphan: isOrphan,
       drift_count: null, // populated separately via POST /api/drone/drift
-      client_set_id: clientSet?.id ?? null,
+      client_set_id: resolvedNonDefaultClientSet?.id ?? null,
     },
   });
 }

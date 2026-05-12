@@ -87,9 +87,10 @@ export async function POST(
       if (page.length < 1000) break;
     }
     if (pvRows.length) {
-      await admin.from("param_values").insert(
-        pvRows.map((pv) => ({ param_version_id: newVersion.id, name: pv.name, value: pv.value }))
-      );
+      const rows = pvRows.map((pv) => ({ param_version_id: newVersion.id, name: pv.name, value: pv.value }));
+      for (let i = 0; i < rows.length; i += 500) {
+        await admin.from("param_values").insert(rows.slice(i, i + 500));
+      }
     }
   }
 

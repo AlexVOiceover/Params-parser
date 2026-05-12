@@ -441,7 +441,8 @@ export function ParamVersionList({
                   )}
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  {hasUpdate && v.is_latest && droneVersion !== null && (
+                  {hasUpdate && v.is_latest && droneVersion !== null &&
+                    parseInt(v.version_label, 10) > droneVersion && (
                     <ApplyUpdateButton versionId={v.id} />
                   )}
                   {/* Icon-only secondary actions */}

@@ -63,13 +63,20 @@ export async function PATCH(
     return NextResponse.json({ error: upsertError.message }, { status: 500 });
   }
 
-  // Re-fetch all param_values and regenerate the stored .param file
-  const { data: allValues } = await admin
-    .from("param_values")
-    .select("name, value")
-    .eq("param_version_id", id);
+  // Re-fetch all param_values (paginated) and regenerate the stored .param file
+  const allValues: { name: string; value: string }[] = [];
+  for (let from = 0; ; from += 500) {
+    const { data: page } = await admin
+      .from("param_values")
+      .select("name, value")
+      .eq("param_version_id", id)
+      .range(from, from + 499);
+    if (!page || page.length === 0) break;
+    allValues.push(...page);
+    if (page.length < 500) break;
+  }
 
-  if (allValues && version.storage_path) {
+  if (allValues.length > 0 && version.storage_path) {
     const content = writeParamFile(allValues);
     await admin.storage
       .from("param-files")

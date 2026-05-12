@@ -65,6 +65,19 @@ export function useConnectedDroneMatch(): DroneMatchResult {
   const idle: DroneMatchResult = { status: "idle", drone: null, versionStatus: "unknown", droneVersion: null, catalogVersion: null, isOrphan: false, driftCount: null };
   const [result, setResult] = useState<DroneMatchResult>(idle);
   const lastKeyRef = useRef<string | null>(null);
+  // When set to true by the interval below, forces a re-fetch on the next tick
+  // even if the cache key hasn't changed (used after clearDroneMatchCache).
+  const forceFetchRef = useRef(false);
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (lastKeyRef.current !== null && !cache.has(lastKeyRef.current)) {
+        forceFetchRef.current = true;
+        // Trigger re-render by calling a no-op setState so the main effect fires
+        setResult((prev) => ({ ...prev }));
+      }
+    }, 300);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (!droneParams || droneParams.length === 0) {
@@ -92,7 +105,10 @@ export function useConnectedDroneMatch(): DroneMatchResult {
     const droneVersionOut = (droneVersion !== null && Number.isFinite(droneVersion)) ? droneVersion : null;
 
     const cacheKey = `${wanted}_${droneVersionOut ?? "null"}`;
-    if (lastKeyRef.current === cacheKey) return;
+    const forced = forceFetchRef.current;
+    forceFetchRef.current = false;
+    // Skip re-fetch if key is unchanged and cache entry still exists (not cleared).
+    if (lastKeyRef.current === cacheKey && cache.has(cacheKey) && !forced) return;
     lastKeyRef.current = cacheKey;
 
     // When the key changes (e.g. after SCR_USER2 is written), always
