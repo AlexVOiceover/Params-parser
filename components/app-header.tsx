@@ -12,6 +12,7 @@ import {
   LogIn,
   ChevronDown,
   ClipboardList,
+  RefreshCw,
 } from "lucide-react";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -34,6 +35,32 @@ export function AppHeader() {
 
   const isAdmin = role === "admin";
   const [reviewCount, setReviewCount] = useState<number>(0);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<"idle" | "found" | "latest">("idle");
+
+  async function handleCheckUpdate() {
+    if (!("serviceWorker" in navigator)) {
+      setUpdateStatus("latest");
+      return;
+    }
+    setCheckingUpdate(true);
+    setUpdateStatus("idle");
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) { setUpdateStatus("latest"); setCheckingUpdate(false); return; }
+      await reg.update();
+      if (reg.waiting) {
+        setUpdateStatus("found");
+        reg.waiting.postMessage({ type: "SKIP_WAITING" });
+        setTimeout(() => window.location.reload(), 500);
+      } else {
+        setUpdateStatus("latest");
+      }
+    } catch {
+      setUpdateStatus("latest");
+    }
+    setCheckingUpdate(false);
+  }
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -169,6 +196,14 @@ export function AppHeader() {
                 </Link>
               </>
             )}
+            <button
+              onClick={() => { setUserMenuOpen(false); handleCheckUpdate(); }}
+              disabled={checkingUpdate}
+              className="flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap border-t border-border disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${checkingUpdate ? "animate-spin" : ""}`} />
+              {checkingUpdate ? "Checking…" : updateStatus === "found" ? "Update found — reloading" : updateStatus === "latest" ? "Already up to date" : "Check for updates"}
+            </button>
             <button
               onClick={() => {
                 setUserMenuOpen(false);
