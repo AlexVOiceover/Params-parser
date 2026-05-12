@@ -25,7 +25,7 @@ interface Props {
 }
 
 const PARAM_COL_DEFAULT = 200;
-const VERSION_COL_DEFAULT = 160;
+const VERSION_COL_DEFAULT = 100;
 const COL_MIN = 60;
 
 export function CompareTable({
@@ -295,30 +295,24 @@ export function CompareTable({
             </colgroup>
           <thead className="sticky top-0 z-30">
             <tr className="border-b border-border text-xs text-muted-foreground">
-              <th className="sticky left-0 z-20 bg-secondary px-4 py-2.5 text-left font-medium border-r border-border overflow-hidden" style={{ width: colWidths[0] }}>
+              <th className="sticky left-0 z-20 bg-secondary px-4 py-2.5 text-left font-medium overflow-hidden" style={{ width: colWidths[0], boxShadow: "inset -1px 0 0 hsl(var(--border))" }}>
                 Param
                 <ResizeHandle colIndex={0} />
               </th>
               {versions.map((v, i) => (
                 <th
                   key={v.id}
-                  className="relative px-4 py-2.5 text-left font-medium bg-secondary overflow-hidden"
+                  title={`${v.clientName} — ${v.familyName} / ${v.variantName}`}
+                  className="relative px-3 py-2 text-left font-medium bg-secondary overflow-hidden"
                 >
-                  <div className="text-foreground font-semibold truncate text-sm">{v.clientName}</div>
-                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground truncate">
-                    <span className="truncate">{v.familyName}</span>
-                    <span className="opacity-60">/</span>
-                    <span className="truncate">{v.variantName}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-0.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="rounded bg-primary/20 border border-primary/40 px-1.5 py-px font-mono text-[10px] font-bold text-primary shrink-0">v{v.label}</span>
-                    {/* Amber indicator when this column is in write mode */}
                     {writableVersionId === v.id && writeMode && (
-                      <span className="rounded px-1 py-px text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30">
-                        editing
-                      </span>
+                      <span className="rounded px-1 py-px text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 shrink-0">editing</span>
                     )}
                   </div>
+                  <div className="text-foreground font-semibold truncate text-xs mt-0.5">{v.clientName}</div>
+                  <div className="text-[10px] text-muted-foreground truncate">{v.familyName} / {v.variantName}</div>
                   <ResizeHandle colIndex={i + 1} />
                 </th>
               ))}
@@ -334,7 +328,7 @@ export function CompareTable({
                 <React.Fragment key={row.name}>
                   <tr className={!isExpanded && !isLast ? "border-b border-border" : ""}>
                     {/* Frozen param name column */}
-                    <td className="sticky left-0 z-10 bg-card border-r border-border overflow-hidden" style={{ maxWidth: 0 }}>
+                    <td className={`sticky left-0 z-10 overflow-hidden ${i % 2 === 0 ? "bg-card" : "bg-secondary/30"}`} style={{ maxWidth: 0, boxShadow: "inset -1px 0 0 hsl(var(--border))" }}>
                       <div className="flex items-center gap-1 px-4 py-2 group/name">
                         {row.isDiff && (
                           <span className="mr-0.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-500 dark:bg-amber-400 align-middle shrink-0" />
@@ -367,6 +361,7 @@ export function CompareTable({
                       const cellKey = `${row.name}:${vid}`;
                       const isEditing = editingCell === cellKey;
 
+                      const rowBg = i % 2 === 0 ? "" : "bg-secondary/30";
                       let cellClass = "px-4 py-2 font-mono text-xs overflow-hidden whitespace-nowrap transition-colors max-w-0 ";
                       if (hasPending) {
                         cellClass += "bg-amber-500/25 text-amber-900 dark:text-amber-100 font-semibold";
@@ -375,9 +370,9 @@ export function CompareTable({
                       } else if (isDiffCell) {
                         cellClass += "bg-amber-400/15 text-amber-900 dark:text-amber-200";
                       } else if (isMissing) {
-                        cellClass += "text-muted-foreground italic";
+                        cellClass += `${rowBg} text-muted-foreground italic`;
                       } else {
-                        cellClass += "text-foreground";
+                        cellClass += `${rowBg} text-foreground`;
                       }
 
                       if (isEditing) {

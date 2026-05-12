@@ -76,6 +76,12 @@
   --scrollbar-track: #1a1d2a;
 }
 
+/* Smooth theme transition — prevents flash when toggling dark/light.
+   Applied only to structural/layout elements, not interactive ones. */
+body, main, header, nav, aside, section, article, div, td, th, tr, table, p, span, h1, h2, h3, h4, h5, h6, li, ul, ol {
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
 @theme inline {
   --font-sans: var(--font-inter);
   --font-mono: var(--font-jetbrains);

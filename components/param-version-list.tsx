@@ -408,95 +408,73 @@ export function ParamVersionList({
                   : <Square className="h-4 w-4" />}
               </button>
             )}
-            <div className={`flex-1 rounded-lg border border-border bg-card px-5 py-4${isAdmin ? " pr-20" : ""}${compareMode && compareSelected.has(v.id) ? " border-primary/50 bg-primary/5" : ""}`}>
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <span className="text-sm text-foreground">
-                    Version <span className="font-mono font-semibold">{v.version_label}</span>
-                  </span>
+            <div className={`flex-1 rounded-lg border border-border bg-card px-4 py-3${compareMode && compareSelected.has(v.id) ? " border-primary/50 bg-primary/5" : ""}`}>
+              {/* Top row: version + badges left, date right */}
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2 flex-wrap min-w-0">
+                  <span className="text-sm font-semibold text-foreground font-mono shrink-0">v{v.version_label}</span>
                   {v.is_latest && (
-                    <span className="rounded-full bg-emerald-900/50 border border-emerald-700/60 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
-                      latest
-                    </span>
+                    <span className="rounded-full bg-emerald-900/50 border border-emerald-700/60 px-2 py-0.5 text-[10px] font-semibold text-emerald-300 shrink-0">latest</span>
                   )}
                   {v.needs_review && (
-                    <span className="rounded-full bg-amber-900/50 border border-amber-700/60 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
-                      pending review
-                    </span>
+                    <span className="rounded-full bg-amber-900/50 border border-amber-700/60 px-2 py-0.5 text-[10px] font-semibold text-amber-300 shrink-0">pending review</span>
                   )}
                   {droneMatchesThisSet && droneVersion !== null && parseInt(v.version_label, 10) === droneVersion && (
-                    <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 leading-none whitespace-nowrap">
+                    <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 leading-none whitespace-nowrap shrink-0">
                       <Usb className="h-2.5 w-2.5" />
                       on drone
                     </span>
                   )}
-                  <span className="text-xs text-muted-foreground">{formatDate(v.created_at)}</span>
-                  {diffVsPrev && diffVsPrev[v.id] !== undefined && (
-                    <span className="text-[10px] text-muted-foreground">
-                      <span className={diffVsPrev[v.id] > 0 ? "font-semibold text-amber-600 dark:text-amber-400" : "text-muted-foreground"}>
-                        {diffVsPrev[v.id]}
-                      </span>
-                      {" param"}{diffVsPrev[v.id] !== 1 ? "s" : ""} changed
-                    </span>
-                  )}
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {hasUpdate && v.is_latest && droneVersion !== null &&
-                    parseInt(v.version_label, 10) > droneVersion && (
+                <span className="text-xs text-muted-foreground shrink-0">{formatDate(v.created_at)}</span>
+              </div>
+              {/* Second row: actions left, delete right */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {hasUpdate && v.is_latest && droneVersion !== null && parseInt(v.version_label, 10) > droneVersion && (
                     <ApplyUpdateButton versionId={v.id} />
                   )}
-                  {/* Icon-only secondary actions */}
-                  <Link
-                    href={`/compare?v=${v.id}`}
-                    title="View in Compare"
-                    className="rounded-md border border-border bg-secondary hover:bg-secondary/80 p-1.5 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                  >
+                  <Link href={`/compare?v=${v.id}`} title="View in Compare"
+                    className="rounded-md border border-border bg-secondary hover:bg-secondary/80 p-1.5 text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
                     <Eye className="h-3.5 w-3.5" />
                   </Link>
-                  <Link
-                    href={`/filter?load=${encodeURIComponent(storageUrl(v.storage_path))}&family=${encodeURIComponent(familyName)}&variant=${encodeURIComponent(variantName)}&client=${encodeURIComponent(clientSetName)}&version=${encodeURIComponent(v.version_label)}`}
+                  <Link href={`/filter?load=${encodeURIComponent(storageUrl(v.storage_path))}&family=${encodeURIComponent(familyName)}&variant=${encodeURIComponent(variantName)}&client=${encodeURIComponent(clientSetName)}&version=${encodeURIComponent(v.version_label)}`}
                     title="Open in Filter"
-                    className="rounded-md border border-border bg-secondary hover:bg-secondary/80 p-1.5 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                  >
+                    className="rounded-md border border-border bg-secondary hover:bg-secondary/80 p-1.5 text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
                     <Filter className="h-3.5 w-3.5" />
                   </Link>
-                  {/* Primary action with text */}
-                  <button
-                    type="button"
-                    title="Download .param file"
+                  <button type="button" title="Download .param file"
                     onClick={() => downloadParamFile(v.storage_path, `${clientSetName}-v${v.version_label}.param`.replace(/\s+/g, "_"))}
-                    className="flex items-center gap-1.5 rounded-md bg-primary/15 border border-primary/30 hover:bg-primary/25 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors cursor-pointer whitespace-nowrap"
-                  >
+                    className="flex items-center gap-1.5 rounded-md bg-primary/15 border border-primary/30 hover:bg-primary/25 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors cursor-pointer whitespace-nowrap">
                     <Download className="h-3.5 w-3.5" />
                     Download
                   </button>
+                  {isAdmin && (
+                    <button onClick={() => openClone(v)} title={`Clone version ${v.version_label}`}
+                      className="rounded p-1.5 bg-card border border-border text-muted-foreground hover:text-primary hover:border-primary/50 transition-all cursor-pointer">
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  {diffVsPrev && diffVsPrev[v.id] !== undefined && diffVsPrev[v.id] > 0 && (
+                    <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                      {diffVsPrev[v.id]} param{diffVsPrev[v.id] !== 1 ? "s" : ""} changed
+                    </span>
+                  )}
                 </div>
+                {isAdmin && (
+                  <button onClick={() => { setDeleteError(null); setDeleteId(v.id); }} title={`Delete version ${v.version_label}`}
+                    className="rounded p-1.5 bg-card border border-border text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-all cursor-pointer shrink-0">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
               {v.changelog && (
-                <p className="mt-3 text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap border-t border-border/50 pt-3">
+                <p className="mt-2 text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap border-t border-border/50 pt-2">
                   {v.changelog}
                 </p>
               )}
             </div>
 
-            {isAdmin && (
-              <>
-                <button
-                  onClick={() => openClone(v)}
-                  title={`Clone version ${v.version_label}`}
-                  className="absolute top-1/2 -translate-y-1/2 right-10 rounded p-1.5 bg-card border border-border text-muted-foreground hover:text-primary hover:border-primary/50 transition-all cursor-pointer"
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  onClick={() => { setDeleteError(null); setDeleteId(v.id); }}
-                  title={`Delete version ${v.version_label}`}
-                  className="absolute top-1/2 -translate-y-1/2 right-3 rounded p-1.5 bg-card border border-border text-muted-foreground hover:text-destructive hover:border-destructive/50 transition-all cursor-pointer"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </>
-            )}
           </div>
         ))}
 

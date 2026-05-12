@@ -14,6 +14,8 @@
     { "name": "INS_GYR_ID",      "reason": "Hardware ID, set by driver on boot" },
     { "name": "INS_GYR2_ID",     "reason": "Hardware ID, set by driver on boot" },
     { "name": "INS_GYR3_ID",     "reason": "Hardware ID, set by driver on boot" },
-    { "name": "INS_GYR_CAL",     "reason": "Gyro calibration state flag" }
+    { "name": "INS_GYR_CAL",     "reason": "Gyro calibration state flag" },
+    { "name": "SCR_USER1",       "reason": "Drone serial identity marker, always unique per drone" },
+    { "name": "SCR_USER2",       "reason": "Catalog version marker, always differs between versions by design" }
   ]
 }

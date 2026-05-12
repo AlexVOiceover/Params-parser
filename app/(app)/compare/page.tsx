@@ -311,12 +311,9 @@ export default async function ComparePage({
     const totalCount = versions.length + (hasDroneVersion ? 1 : 0);
     return (
       <div className="h-full flex flex-col">
-        <div className="flex items-center gap-1.5 px-6 py-3 border-b border-border text-xs text-muted-foreground shrink-0">
-          <Link href="/" className="hover:text-foreground transition-colors cursor-pointer">
-            Catalog
-          </Link>
-          <ChevronRight className="h-3 w-3" />
-          {/* Back link: if all versions share the same client_set, show the path back */}
+        <div className="flex items-center flex-wrap gap-x-1 gap-y-0.5 px-4 py-2 border-b border-border text-xs text-muted-foreground shrink-0 min-w-0">
+          <Link href="/" className="hover:text-foreground transition-colors cursor-pointer shrink-0">Catalog</Link>
+          <ChevronRight className="h-3 w-3 shrink-0" />
           {(() => {
             const dbV = versions.filter((v) => v.clientSetId && v.familySlug && v.variantId);
             const uniqueClientSets = new Set(dbV.map((v) => v.clientSetId));
@@ -324,25 +321,23 @@ export default async function ComparePage({
               const v = dbV[0];
               return (
                 <>
-                  <Link href={`/${v.familySlug}`} className="hover:text-foreground transition-colors cursor-pointer">{v.familyName}</Link>
-                  <ChevronRight className="h-3 w-3" />
-                  <Link href={`/${v.familySlug}/${v.variantId}`} className="hover:text-foreground transition-colors cursor-pointer">{v.variantName}</Link>
-                  <ChevronRight className="h-3 w-3" />
-                  <Link href={`/${v.familySlug}/${v.variantId}/${v.clientSetId}`} className="hover:text-foreground transition-colors cursor-pointer">{v.clientName}</Link>
-                  <ChevronRight className="h-3 w-3" />
+                  <Link href={`/${v.familySlug}`} className="hover:text-foreground transition-colors cursor-pointer shrink-0">{v.familyName}</Link>
+                  <ChevronRight className="h-3 w-3 shrink-0" />
+                  <Link href={`/${v.familySlug}/${v.variantId}`} className="hover:text-foreground transition-colors cursor-pointer shrink-0">{v.variantName}</Link>
+                  <ChevronRight className="h-3 w-3 shrink-0" />
+                  <Link href={`/${v.familySlug}/${v.variantId}/${v.clientSetId}`} className="hover:text-foreground transition-colors cursor-pointer shrink-0">{v.clientName}</Link>
+                  <ChevronRight className="h-3 w-3 shrink-0" />
                 </>
               );
             }
             return (
               <>
-                <Link href="/compare" className="hover:text-foreground transition-colors cursor-pointer">Compare</Link>
-                <ChevronRight className="h-3 w-3" />
+                <Link href="/compare" className="hover:text-foreground transition-colors cursor-pointer shrink-0">Compare</Link>
+                <ChevronRight className="h-3 w-3 shrink-0" />
               </>
             );
           })()}
-          <span className="text-foreground">
-            {totalCount} version{totalCount !== 1 ? "s" : ""}
-          </span>
+          <span className="text-foreground shrink-0">{totalCount} version{totalCount !== 1 ? "s" : ""}</span>
         </div>
         <div className="flex-1 overflow-hidden">
           <CompareTableWrapper
@@ -358,10 +353,10 @@ export default async function ComparePage({
   const tree = await fetchTree();
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center gap-1.5 px-6 py-3 border-b border-border text-xs text-muted-foreground shrink-0">
-        <Link href="/" className="hover:text-foreground transition-colors cursor-pointer">Catalog</Link>
-        <ChevronRight className="h-3 w-3" />
-        <span className="text-foreground">Compare</span>
+      <div className="flex items-center flex-wrap gap-x-1 gap-y-0.5 px-4 py-2 border-b border-border text-xs text-muted-foreground shrink-0">
+        <Link href="/" className="hover:text-foreground transition-colors cursor-pointer shrink-0">Catalog</Link>
+        <ChevronRight className="h-3 w-3 shrink-0" />
+        <span className="text-foreground shrink-0">Compare</span>
       </div>
       <div className="flex-1 overflow-hidden">
         <VersionTree tree={tree} />
