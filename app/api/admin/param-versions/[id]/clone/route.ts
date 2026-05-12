@@ -112,6 +112,7 @@ export async function POST(
       .from("param_values")
       .select("name, value")
       .eq("param_version_id", id)
+      .order("name")
       .range(from, from + PAGE_SIZE - 1);
     if (!page || page.length === 0) break;
     allParamValues.push(...page);

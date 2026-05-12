@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
       .from("param_values")
       .select("name, value")
       .eq("param_version_id", body.versionId)
+      .order("name")
       .range(from, from + 999);
     if (!page || page.length === 0) break;
     for (const { name, value } of page) catalogParams.set(name, value);

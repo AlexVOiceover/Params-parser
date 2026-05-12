@@ -51,6 +51,7 @@ export function ApplyUpdateButton({ versionId, className, label = "Apply update"
         .from("param_values")
         .select("name, value")
         .eq("param_version_id", versionId)
+        .order("name")
         .range(from, from + 999);
       if (dbErr) { setError(dbErr.message); setLoading(false); return; }
       if (!data || data.length === 0) break;

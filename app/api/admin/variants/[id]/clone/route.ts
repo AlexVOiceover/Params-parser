@@ -96,6 +96,7 @@ export async function POST(
           .from("param_values")
           .select("name, value")
           .eq("param_version_id", v.id)
+          .order("name")
           .range(from, from + 999);
         if (!page || page.length === 0) break;
         pvRows.push(...page);

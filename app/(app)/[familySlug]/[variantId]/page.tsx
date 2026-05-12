@@ -61,6 +61,7 @@ async function getData(familySlug: string, variantId: string) {
         .from("param_values")
         .select("param_version_id, name, value")
         .in("param_version_id", versionIds)
+        .order("name")
         .range(from, from + PAGE_SIZE - 1);
       if (!page || page.length === 0) break;
       paramValues.push(...page);

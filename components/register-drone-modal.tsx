@@ -223,6 +223,7 @@ export function RegisterDroneModal({ onClose }: Props) {
         .from("param_values")
         .select("name, value")
         .eq("param_version_id", latestPV.id)
+        .order("name")
         .range(from, from + 999);
       if (!page || page.length === 0) break;
       for (const { name, value } of page) target.set(name, parseFloat(value));

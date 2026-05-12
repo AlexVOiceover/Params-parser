@@ -70,6 +70,7 @@ export async function PATCH(
       .from("param_values")
       .select("name, value")
       .eq("param_version_id", id)
+      .order("name")
       .range(from, from + 499);
     if (!page || page.length === 0) break;
     allValues.push(...page);
