@@ -68,7 +68,7 @@ export default async function FamilySlugPage({
   return (
     <div className="max-w-4xl mx-auto px-6 py-10">
       <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-6">
-        <Link href="/" className="hover:text-foreground transition-colors cursor-pointer">Catalog</Link>
+        <Link href="/" className="text-primary hover:underline cursor-pointer">Catalog</Link>
         <ChevronRight className="h-3 w-3" />
         <span className="text-foreground">{family.name}</span>
       </nav>

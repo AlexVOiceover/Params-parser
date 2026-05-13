@@ -22,10 +22,17 @@ export function DroneStatusBanner() {
 
   const identified = match.status === "matched" && match.drone !== null;
   const { drone, versionStatus, droneVersion, catalogVersion } = match;
-  // Show register prompt when drone is not in the catalog (unmatched)
-  // or when it's matched but unversioned (SCR_USER2=0)
-  const needsRegistration = match.status === "unmatched" ||
-    (match.droneVersion === null && match.status === "matched" && match.drone !== null);
+  // Show register prompt when drone is not in the catalog (unmatched),
+  // matched but unversioned (SCR_USER2=0), or SCR_ENABLE=0 (fresh drone)
+  const scrEnable = droneParams?.find((p) => p.name === "SCR_ENABLE");
+  const isFreshDrone = scrEnable ? parseInt(scrEnable.value, 10) === 0 : false;
+  // Don't show Register while the match is loading or already matched —
+  // registration may have just completed and the re-fetch is in flight.
+  const needsRegistration = match.status !== "loading" && match.status !== "matched" && (
+    isFreshDrone ||
+    match.status === "unmatched" ||
+    (match.droneVersion === null && match.drone !== null)
+  );
 
   return (
     <>
@@ -113,7 +120,9 @@ export function DroneStatusBanner() {
           className="flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 hover:bg-primary/20 px-2.5 py-1 text-xs font-medium text-primary transition-colors cursor-pointer whitespace-nowrap shrink-0 ml-auto"
         >
           <ClipboardList className="h-3.5 w-3.5" />
-          Register drone
+          {match.status === "matched" && match.droneVersion === null
+            ? "Complete setup"
+            : "Register drone"}
         </button>
       )}
     </div>

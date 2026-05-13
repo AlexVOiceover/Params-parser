@@ -10,6 +10,11 @@ export type SerialMode = "native" | "polyfill" | "unsupported";
 let installed = false;
 let cachedMode: SerialMode | null = null;
 
+/** The port most recently used for a drone connection — reused for writes. */
+let lastUsedPort: unknown = null;
+export function setLastUsedPort(port: unknown) { lastUsedPort = port; }
+export function getLastUsedPort(): unknown { return lastUsedPort; }
+
 function isAndroid(): boolean {
   if (typeof navigator === "undefined") return false;
   return /Android/i.test(navigator.userAgent);

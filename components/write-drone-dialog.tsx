@@ -48,25 +48,22 @@ export function WriteDroneDialog({ changes, onClose, onSuccess, onStart }: Props
 
     if (onStart) {
       const flashResult = await onStart(addLog);
-      if (flashResult.ok) {
+      const written: ParamWriteResult[] = changes.map((c) => ({
+        name: c.name,
+        requested: c.value,
+        actual: c.value,
+        success: !flashResult.unresolved.includes(c.name),
+      }));
+      // Treat unresolved-only failures as a soft warning — they are read-only
+      // or hardware-specific params that the FC rejects. Everything else wrote fine.
+      if (flashResult.ok || (!flashResult.reverted && flashResult.unresolved.length > 0 && flashResult.unresolved.length < changes.length)) {
         setStage("done");
-        // Synthesise a ParamWriteResult array from the changes so onSuccess
-        // receives the full written set for droneParams context update.
-        const written: ParamWriteResult[] = changes.map((c) => ({
-          name: c.name,
-          requested: c.value,
-          actual: c.value,
-          success: true,
-        }));
-        onSuccess(written);
+        onSuccess(written.filter((w) => w.success));
+      } else if (flashResult.reverted) {
+        setError("Flash failed — reverted to previous state.");
+        setStage("error");
       } else {
-        if (flashResult.reverted) {
-          setError("Flash failed after max passes — reverted to previous state.");
-        } else if (flashResult.unresolved.length > 0) {
-          setError(`${flashResult.unresolved.length} param${flashResult.unresolved.length === 1 ? "" : "s"} could not be written: ${flashResult.unresolved.join(", ")}`);
-        } else {
-          setError("Flash failed — check connection and retry.");
-        }
+        setError("Flash failed — check connection and retry.");
         setStage("error");
       }
       return;

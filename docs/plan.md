@@ -1,26 +1,34 @@
-# 15 Fleet Bring-Up
+# 16 Drone Initialisation Status
 
-> Wire the flash engine into RegisterDroneModal and close the remaining gaps found during audit.
+> Add `initialised_at` to drones so admins can see which physical drones have been set up vs just created in the DB. Surface as badges in Clients & Drones.
 
 ## Tasks
 
-1. [ ] **Wire flash engine into RegisterDroneModal**
-   - [ ] 1.1 Import `flashParamsToDrone` from `lib/drone-flash-engine`
-   - [ ] 1.2 Pass `onStart` to `WriteDroneDialog`: build the current drone map from `droneParams` and call `flashParamsToDrone(target, current, addLog)`
-   - [ ] 1.3 On `FlashResult.ok === false` set stage to "error" with the unresolved/revert message from the result
+1. [ ] **DB migration**
+   - [ ] 1.1 Create migration `20260513093113_drones_initialised_at.sql`: `ALTER TABLE drones ADD COLUMN IF NOT EXISTS initialised_at TIMESTAMPTZ;`
+   - [ ] 1.2 Push migration with `npx supabase db push`
 
-2. [ ] **Ensure SCR_USER2 is in the flash target**
-   - [ ] 2.1 After building the `target` map from `param_values`, explicitly set `target.set("SCR_USER2", parseInt(latestPV.version_label, 10))` so the version marker is always written regardless of whether it was injected at upload time
+2. [ ] **Extend PATCH /api/admin/drones/[id]**
+   - [ ] 2.1 Accept `initialisedAt: boolean` in body — when true, set `initialised_at = now()`
+   - [ ] 2.2 Write `initialised_at: new Date().toISOString()` to the update object when flag is set
 
-3. [ ] **Fix done screen version label**
-   - [ ] 3.1 Store `latestPV.version_label` in state (e.g. `flashedVersion`) after fetching it
-   - [ ] 3.2 Replace the hardcoded `"v1"` in the done screen with `v{flashedVersion}`
+3. [ ] **Register wizard sets initialised_at on success**
+   - [ ] 3.1 In `handleWriteSuccess` in `register-drone-modal.tsx`, after successful flash, PATCH `/api/admin/drones/${newDroneId}` with `{ initialisedAt: true }` when `newDroneId` is set
 
-4. [ ] **Typecheck**
-   - [ ] 4.1 `npx tsc --noEmit` — fix any errors
+4. [ ] **Clients & Drones page — show initialisation status**
+   - [ ] 4.1 Add `initialised_at: string | null` to `ClientWithDrones.drones` type in `clients-table.tsx`
+   - [ ] 4.2 Update `admin/clients/page.tsx` query to select `initialised_at` on drones
+   - [ ] 4.3 Render "Ready" (emerald) or "Pending setup" (amber) badge next to each drone serial in the table
+
+5. [ ] **Connect modal — contextual button label**
+   - [ ] 5.1 In `connect-drone-dialog.tsx`, when `match.status === "matched"` and `match.droneVersion === null`, show "Complete setup" instead of "Register this drone & flash defaults"
+   - [ ] 5.2 Same change in `drone-status-banner.tsx` for the Register button
+
+6. [ ] **Typecheck**
+   - [ ] 6.1 `npx tsc --noEmit` — fix any errors
 
 ## Notes
 
-- The `target` map is built inside `handleFlash` and is in scope when `setWriteChanges(diff)` is called — pass it through to the `onStart` callback via a ref or state to avoid stale closure
-- `flashParamsToDrone` takes `(target: FlashTarget, current: Map<string, number>, onLog)` — `current` is built from `droneParams` the same way the diff already builds `droneMap`
-- The existing `handleWriteSuccess` updates `droneParams` context from `written[]` — with the flash engine, `onSuccess` is called with synthesised results (all changes marked success); this is the same pattern as `ApplyUpdateButton`
+- `newDroneId` is already in state in `register-drone-modal.tsx` — it's set in `handleFlash` before the WriteDroneDialog opens
+- The PATCH should fire after `handleWriteSuccess` returns — not inside it, since it's a fire-and-forget (no need to block the UI)
+- "Complete setup" vs "Register" only changes the label — the wizard flow is identical

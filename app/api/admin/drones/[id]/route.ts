@@ -16,7 +16,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const body = await request.json() as { serial?: string; variantId?: string };
+  const body = await request.json() as { serial?: string; variantId?: string; initialisedAt?: boolean };
   const update: Record<string, unknown> = {};
   if (body.serial !== undefined) {
     if (!body.serial.trim()) return NextResponse.json({ error: "Serial cannot be empty" }, { status: 400 });
@@ -25,6 +25,9 @@ export async function PATCH(
   if (body.variantId !== undefined) {
     if (!body.variantId) return NextResponse.json({ error: "Variant cannot be empty" }, { status: 400 });
     update.variant_id = body.variantId;
+  }
+  if (body.initialisedAt === true) {
+    update.initialised_at = new Date().toISOString();
   }
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: "Nothing to update" }, { status: 400 });

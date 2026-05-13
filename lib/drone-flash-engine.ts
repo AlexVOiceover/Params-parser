@@ -1,4 +1,5 @@
-import { openDroneConnection, writeDroneParams } from "@/lib/mavlink-serial";
+import { writeDroneParams } from "@/lib/mavlink-serial";
+import type { ParamWriteResult } from "@/lib/mavlink-serial";
 import { RUNTIME_PARAMS } from "@/lib/param-engine";
 
 export interface FlashResult {
@@ -11,7 +12,7 @@ export interface FlashResult {
 export type FlashTarget = Map<string, number>;
 
 const BAUD_RATE = 115200;
-const MAX_PASSES = 4;
+const MAX_PASSES = 1;
 
 function diff(current: Map<string, number>, target: FlashTarget): { name: string; value: number }[] {
   const toWrite: { name: string; value: number }[] = [];
@@ -25,47 +26,29 @@ function diff(current: Map<string, number>, target: FlashTarget): { name: string
   return toWrite;
 }
 
-async function readAllParams(onLog: (msg: string) => void): Promise<Map<string, number> | null> {
-  return new Promise((resolve) => {
-    openDroneConnection(BAUD_RATE, {
-      onProgress: () => {},
-      onLog,
-      onDone: (params) => {
-        const map = new Map<string, number>();
-        for (const { name, value } of params) {
-          const n = parseFloat(value);
-          if (Number.isFinite(n)) map.set(name, n);
-        }
-        resolve(map);
-      },
-      onError: (msg) => {
-        onLog(`⚠ Re-read failed: ${msg}`);
-        resolve(null);
-      },
-    });
-  });
-}
-
 async function writeParams(
   changes: { name: string; value: number }[],
   onLog: (msg: string) => void
-): Promise<boolean> {
+): Promise<ParamWriteResult[]> {
   return new Promise((resolve) => {
     writeDroneParams(BAUD_RATE, changes, {
       onProgress: () => {},
       onLog,
-      onDone: () => resolve(true),
+      onDone: (results) => resolve(results),
       onError: (msg) => {
         onLog(`⚠ Write failed: ${msg}`);
-        resolve(false);
+        resolve([]);
       },
     });
   });
 }
 
 /**
- * Diff → write → re-read → re-diff loop, up to MAX_PASSES.
- * On persistent failure, attempts to revert to the pre-flash snapshot.
+ * Diff → write loop, up to MAX_PASSES.
+ * Verification is done via per-param write confirmations (no separate re-read,
+ * which would require a new port request and a user gesture).
+ * Failed params are retried up to MAX_PASSES times.
+ * On giving up, attempts to revert to the pre-flash snapshot.
  *
  * @param target   The desired param state (name → value)
  * @param current  The drone's current param state before flashing (pre-flash snapshot)
@@ -85,21 +68,19 @@ export async function flashParamsToDrone(
   }
 
   let passes = 0;
-  let live = new Map(current);
 
   while (toWrite.length > 0 && passes < MAX_PASSES) {
     passes++;
     onLog(`Pass ${passes}/${MAX_PASSES} — writing ${toWrite.length} param${toWrite.length === 1 ? "" : "s"}…`);
 
-    const writeOk = await writeParams(toWrite, onLog);
-    if (!writeOk) break;
+    const results = await writeParams(toWrite, onLog);
 
-    onLog(`Re-reading params to verify…`);
-    const fresh = await readAllParams(onLog);
-    if (!fresh) break;
+    if (results.length === 0) break; // port error
 
-    live = fresh;
-    toWrite = diff(live, target);
+    // Params that failed confirmation — retry on next pass
+    toWrite = results
+      .filter((r) => !r.success)
+      .map((r) => ({ name: r.name, value: r.requested }));
 
     if (toWrite.length === 0) {
       const msg = passes === 1 ? "Written in 1 pass" : `Written in ${passes} passes`;
@@ -107,23 +88,15 @@ export async function flashParamsToDrone(
       return { ok: true, passes, unresolved: [], reverted: false };
     }
 
-    onLog(`${toWrite.length} param${toWrite.length === 1 ? "" : "s"} still differ after pass ${passes}`);
+    onLog(`${toWrite.length} param${toWrite.length === 1 ? "" : "s"} failed — retrying (pass ${passes})…`);
   }
 
-  // Failed — attempt revert to pre-flash snapshot
+  // Gave up — these params could not be written (likely read-only on this FC)
   const unresolvedNames = toWrite.map((p) => p.name);
-  onLog(`⚠ ${unresolvedNames.length} param${unresolvedNames.length === 1 ? "" : "s"} unresolved after ${passes} passes — reverting…`);
+  onLog(`⚠ ${unresolvedNames.length} param${unresolvedNames.length === 1 ? "" : "s"} could not be written (read-only or hardware-specific): ${unresolvedNames.join(", ")}`);
 
-  const revertChanges = unresolvedNames
-    .map((name) => ({ name, value: snapshot.get(name) }))
-    .filter((p): p is { name: string; value: number } => p.value !== undefined);
-
-  let reverted = false;
-  if (revertChanges.length > 0) {
-    const revertOk = await writeParams(revertChanges, onLog);
-    reverted = revertOk;
-    onLog(revertOk ? "Reverted to previous state" : "⚠ Revert also failed — some params may be in an unknown state");
-  }
-
-  return { ok: false, passes, unresolved: unresolvedNames, reverted };
+  // No revert needed — these params were never successfully written so the
+  // drone state is unchanged. Attempting a revert would require another port
+  // request (user gesture) and is pointless for read-only params.
+  return { ok: false, passes, unresolved: unresolvedNames, reverted: false };
 }

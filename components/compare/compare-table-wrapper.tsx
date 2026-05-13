@@ -50,8 +50,11 @@ export function CompareTableWrapper({ versions, rows, hasDroneVersion }: Props) 
       rowMap.get(name)![DRONE_VERSION_ID] = value;
     }
 
+    // Only filter runtime/volatile params when comparing against catalog versions.
+    // When viewing a single drone live, show all params including SCR_USER1/2.
+    const filterRuntime = versions.length > 0;
     const allRows: CompareRow[] = Array.from(rowMap.entries())
-      .filter(([name]) => !RUNTIME_PARAMS.has(name))
+      .filter(([name]) => !filterRuntime || !RUNTIME_PARAMS.has(name))
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([name, values]) => ({ name, values }));
 
