@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
   const supabase = await createSessionClient();
   const { data: drones } = await supabase
     .from("drones")
-    .select("id, serial, client_id, variant_id");
+    .select("id, serial, client_id, variant_id, initialised_at");
 
   const matches = (drones ?? []).filter((d) => parseSerialId(d.serial) === wanted);
   if (matches.length !== 1) return NextResponse.json({ drone: null });
@@ -124,6 +124,7 @@ export async function GET(request: NextRequest) {
       is_orphan: isOrphan,
       drift_count: null, // populated separately via POST /api/drone/drift
       client_set_id: resolvedNonDefaultClientSet?.id ?? null,
+      initialised_at: (drone as { initialised_at?: string | null }).initialised_at ?? null,
     },
   });
 }

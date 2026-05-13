@@ -167,29 +167,7 @@ export function RegisterDroneModal({ onClose }: Props) {
     }
     setNewDroneId(droneId);
 
-    // 2. Create client_set if client selected
-    if (clientId !== "__orphan__" && droneId) {
-      const csRes = await fetch("/api/admin/client-sets", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          variantId,
-          clientId,
-          droneId,
-          clientName: clients.find((c) => c.id === clientId)?.name ?? "",
-          serial: serial.trim(),
-        }),
-      });
-      if (!csRes.ok) {
-        const b = await csRes.json();
-        // 409 = already exists, that's fine
-        if (csRes.status !== 409) {
-          setErrorMsg(b?.error ?? "Failed to create param set"); setStage("error"); return;
-        }
-      }
-    }
-
-    // 3. Fetch Default param_values for the variant
+    // 2. Fetch Default param set for the variant (needed for both cloning and flashing)
     const { data: defaultCS } = await supabase
       .from("client_sets")
       .select("id")
@@ -216,6 +194,60 @@ export function RegisterDroneModal({ onClose }: Props) {
       return;
     }
 
+    // 3. Always create a client_set for this drone (even orphans get one so they
+    //    have their own param history), then clone Default v1 into it.
+    if (droneId) {
+      const isOrphanDrone = clientId === "__orphan__";
+      const csRes = await fetch("/api/admin/client-sets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          variantId,
+          clientId: isOrphanDrone ? null : clientId,
+          droneId,
+          clientName: isOrphanDrone ? (serial.trim()) : (clients.find((c) => c.id === clientId)?.name ?? ""),
+          serial: serial.trim(),
+        }),
+      });
+      let targetClientSetId: string | null = null;
+      if (csRes.ok) {
+        const newCs = await csRes.json() as { id?: string };
+        targetClientSetId = newCs.id ?? null;
+      } else if (csRes.status === 409) {
+        // client_set already exists — look it up by drone_id
+        const { data: existing } = await supabase
+          .from("client_sets")
+          .select("id")
+          .eq("drone_id", droneId)
+          .eq("is_default", false)
+          .maybeSingle();
+        targetClientSetId = existing?.id ?? null;
+      } else {
+        const b = await csRes.json();
+        setErrorMsg(b?.error ?? "Failed to create param set"); setStage("error"); return;
+      }
+
+      // Clone Default v1 into the client_set if it has no versions yet
+      if (targetClientSetId) {
+        const { data: existingVersions } = await supabase
+          .from("param_versions")
+          .select("id")
+          .eq("client_set_id", targetClientSetId)
+          .limit(1);
+        if (!existingVersions || existingVersions.length === 0) {
+          await fetch(`/api/admin/param-versions/${latestPV.id}/clone`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              variantId,
+              clientSetId: targetClientSetId,
+              versionLabel: latestPV.version_label,
+            }),
+          });
+        }
+      }
+    }
+
     // 4. Build diff (Default params vs current drone params)
     const target = new Map<string, number>();
     for (let from = 0; ; from += 1000) {
@@ -230,6 +262,9 @@ export function RegisterDroneModal({ onClose }: Props) {
       if (page.length < 1000) break;
     }
 
+    // Always enable scripting — required for SCR_USER1/2 to persist
+    target.set("SCR_ENABLE", 1);
+
     // Override SCR_USER1 with the drone's correct serial trailing-int
     const serialInt = parseSerialId(serial.trim());
     if (serialInt !== null) target.set("SCR_USER1", serialInt);
@@ -243,8 +278,11 @@ export function RegisterDroneModal({ onClose }: Props) {
 
     const droneMap = new Map((droneParams ?? []).map((p) => [p.name, parseFloat(p.value)]));
     const diff: WriteChange[] = [];
+    // SCR_ENABLE, SCR_USER1, SCR_USER2 must always be written during registration
+    // even though they are in RUNTIME_PARAMS (excluded from normal diffs).
+    const REGISTRATION_REQUIRED = new Set(["SCR_ENABLE", "SCR_USER1", "SCR_USER2"]);
     for (const [name, targetVal] of target.entries()) {
-      if (RUNTIME_PARAMS.has(name)) continue;
+      if (RUNTIME_PARAMS.has(name) && !REGISTRATION_REQUIRED.has(name)) continue;
       const droneVal = droneMap.get(name);
       if (droneVal === undefined || droneVal !== targetVal) {
         diff.push({ name, value: targetVal });
@@ -273,6 +311,14 @@ export function RegisterDroneModal({ onClose }: Props) {
     clearDroneMatchCache();
     setStage("done");
     startTransition(() => router.refresh());
+    // Fire-and-forget: mark drone as initialised in the DB
+    if (newDroneId) {
+      fetch(`/api/admin/drones/${newDroneId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ initialisedAt: true }),
+      }).catch(() => {});
+    }
   }
 
   const selectedClient = clients.find((c) => c.id === clientId);

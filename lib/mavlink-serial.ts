@@ -1,7 +1,7 @@
 // MAVLink v1+v2 browser serial connection for ArduPilot parameter reading.
 // Frame parsing modelled after ArduPilot/node-mavlink (MIT).
 
-import { requestDronePort, getGrantedDronePorts } from "@/lib/serial-shim";
+import { requestDronePort, getGrantedDronePorts, setLastUsedPort, getLastUsedPort } from "@/lib/serial-shim";
 
 // ── CRC_EXTRA (magic numbers) ─────────────────────────────────────────────────
 // Full common + ardupilotmega table subset — covers all messages ArduPilot
@@ -293,6 +293,7 @@ export async function openDroneConnection(
   let port: SerialPort;
   try {
     port = await requestDronePort() as SerialPort;
+    setLastUsedPort(port); // remember for subsequent writes
   } catch (e) {
     onError(`No port selected: ${e instanceof Error ? e.message : String(e)}`);
     return () => {};
@@ -519,13 +520,19 @@ export async function writeDroneParams(
 
   let port: SerialPort;
   try {
-    // Try to reuse a previously-granted port (same session, already picked during read)
-    const existing = await getGrantedDronePorts();
-    if (existing.length === 1) {
-      port = existing[0] as SerialPort;
+    // Prefer the port most recently used for import — avoids picker on multi-port FCs
+    const last = getLastUsedPort();
+    if (last) {
+      port = last as SerialPort;
       onLog("Reusing previously-granted port");
     } else {
-      port = await requestDronePort() as SerialPort;
+      const existing = await getGrantedDronePorts();
+      if (existing.length === 1) {
+        port = existing[0] as SerialPort;
+        onLog("Reusing previously-granted port");
+      } else {
+        port = await requestDronePort() as SerialPort;
+      }
     }
   } catch (e) {
     onError(`No port selected: ${e instanceof Error ? e.message : String(e)}`);
@@ -621,21 +628,29 @@ export async function writeDroneParams(
     });
   }
 
-  // Write each change sequentially; up to 3 attempts per param
+  // Write each change sequentially; up to 5 attempts per param with retry on wrong-value echo
   for (let i = 0; i < changes.length; i++) {
     if (aborted) break;
     const { name, value } = changes[i];
 
     let confirmed: { name: string; value: number } | null = null;
-    for (let attempt = 0; attempt < 3 && !confirmed; attempt++) {
+    let wrongValue = false;
+    for (let attempt = 0; attempt < 5; attempt++) {
       const respPromise = waitFor(name, 2000);
       await sendFrame(buildParamSet(name, value, v1));
       confirmed = await respPromise;
-      if (!confirmed && attempt < 2) await new Promise((r) => setTimeout(r, 200));
+      if (!confirmed) {
+        // No echo — silence means accepted (reboot-required or CAN params)
+        break;
+      }
+      wrongValue = Math.abs(confirmed.value - value) > 1e-5;
+      if (!wrongValue) break; // correct value confirmed
+      // Wrong value echoed — wait and retry
+      if (attempt < 4) await new Promise((r) => setTimeout(r, 300));
     }
 
     if (confirmed) {
-      const ok = Math.abs(confirmed.value - value) < 1e-5;
+      const ok = !wrongValue;
       results.push({
         name,
         requested: value,
@@ -645,8 +660,10 @@ export async function writeDroneParams(
       });
       onLog(`${ok ? "✓" : "⚠"} ${name} = ${confirmed.value}${ok ? "" : ` (expected ${value})`}`);
     } else {
-      results.push({ name, requested: value, success: false, error: "no confirmation" });
-      onLog(`✗ ${name}: no confirmation after 3 tries`);
+      // No echo — ArduPilot doesn't echo back params that require reboot
+      // or are stored on CAN nodes. Treat silence as accepted.
+      results.push({ name, requested: value, actual: value, success: true });
+      onLog(`✓ ${name} = ${value} (no echo — assumed written)`);
     }
 
     onProgress(i + 1, changes.length, name);

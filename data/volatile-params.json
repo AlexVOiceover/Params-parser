@@ -16,6 +16,13 @@
     { "name": "INS_GYR3_ID",     "reason": "Hardware ID, set by driver on boot" },
     { "name": "INS_GYR_CAL",     "reason": "Gyro calibration state flag" },
     { "name": "SCR_USER1",       "reason": "Drone serial identity marker, always unique per drone" },
-    { "name": "SCR_USER2",       "reason": "Catalog version marker, always differs between versions by design" }
+    { "name": "SCR_USER2",       "reason": "Catalog version marker, always differs between versions by design" },
+    { "name": "BARO1_GND_PRESS", "reason": "Ground pressure, set at boot from current atmosphere" },
+    { "name": "BARO2_GND_PRESS", "reason": "Ground pressure, set at boot from current atmosphere" },
+    { "name": "BARO3_GND_PRESS", "reason": "Ground pressure, set at boot from current atmosphere" },
+    { "name": "BARO1_DEVID",     "reason": "Barometer hardware device ID, set by driver on boot" },
+    { "name": "BARO2_DEVID",     "reason": "Barometer hardware device ID, set by driver on boot" },
+    { "name": "BARO3_DEVID",     "reason": "Barometer hardware device ID, set by driver on boot" },
+    { "name": "MIS_TOTAL",       "reason": "Mission item count, managed by GCS not param writes" }
   ]
 }

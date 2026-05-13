@@ -128,14 +128,14 @@ export default async function ClientSetPage({
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-10">
-      <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-6 flex-wrap">
-        <Link href="/" className="hover:text-foreground transition-colors cursor-pointer">Catalog</Link>
-        <ChevronRight className="h-3 w-3" />
-        <Link href={`/${familySlug}`} className="hover:text-foreground transition-colors cursor-pointer">{family.name}</Link>
-        <ChevronRight className="h-3 w-3" />
-        <Link href={`/${familySlug}/${variantId}`} className="hover:text-foreground transition-colors cursor-pointer">{variant.name}</Link>
-        <ChevronRight className="h-3 w-3" />
-        <span className="text-foreground">{clientSet.client_name}</span>
+      <nav className="flex items-center gap-1.5 text-xs mb-6 flex-wrap">
+        <Link href="/" className="text-primary hover:underline cursor-pointer">Catalog</Link>
+        <ChevronRight className="h-3 w-3 text-muted-foreground" />
+        <Link href={`/${familySlug}`} className="text-primary hover:underline cursor-pointer">{family.name}</Link>
+        <ChevronRight className="h-3 w-3 text-muted-foreground" />
+        <Link href={`/${familySlug}/${variantId}`} className="text-primary hover:underline cursor-pointer">{variant.name}</Link>
+        <ChevronRight className="h-3 w-3 text-muted-foreground" />
+        <span className="text-foreground font-medium">{clientSet.client_name}</span>
         {clientSet.serial && (
           <span className="font-mono text-muted-foreground">· {clientSet.serial}</span>
         )}

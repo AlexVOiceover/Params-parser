@@ -182,7 +182,12 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
                   <p>Tap your drone in the device picker. Keep the screen on while reading.</p>
                 </>
               ) : (
-                <p>Connect your flight controller via USB. Chrome will show a COM port picker.</p>
+                <>
+                  <p>Connect your flight controller via USB. Chrome will show a COM port picker.</p>
+                  <p className="text-[10px] text-muted-foreground/70">
+                    Some boards expose multiple ports (e.g. Cube Orange shows SLCAN + MAVLink). If you get no data, retry and pick the other port — the MAVLink port is usually the one with the higher COM number.
+                  </p>
+                </>
               )}
               {serialMode === "polyfill" && (
                 <p className="text-[10px] text-muted-foreground/70 italic">
@@ -284,25 +289,36 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
                     </>
                   )}
                   {match.status === "unmatched" && (
-                    <p className="flex items-center gap-2 text-xs text-amber-400">
-                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                      Drone not registered in the catalog.
+                    <p className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+                      <AlertCircle className="h-3 w-3 shrink-0" />
+                      Not registered in the catalog
                     </p>
                   )}
                 </div>
               )}
-              {/* Register prompt: unmatched (not in catalog) or unversioned (SCR_USER2=0) */}
-              {(match.status === "unmatched" || match.droneVersion === null) &&
-                (match.status === "matched" || match.status === "unmatched") && (
-                <button
-                  type="button"
-                  onClick={() => setShowRegister(true)}
-                  className="flex items-center gap-2 rounded-md border border-primary/40 bg-primary/10 hover:bg-primary/20 px-3 py-2 text-xs font-medium text-primary transition-colors cursor-pointer w-full"
-                >
-                  <ClipboardList className="h-3.5 w-3.5 shrink-0" />
-                  Register this drone &amp; flash defaults
-                </button>
-              )}
+              {/* Register prompt: unmatched, unversioned, or SCR_ENABLE=0 (fresh drone) */}
+              {(() => {
+                const scrEnable = droneParams?.find((p) => p.name === "SCR_ENABLE");
+                const isFreshDrone = scrEnable ? parseInt(scrEnable.value, 10) === 0 : false;
+                const ms = match.status as string;
+                const shouldShowRegister =
+                  isFreshDrone ||
+                  ms === "unmatched" ||
+                  (match.droneVersion === null && (ms === "matched" || ms === "unmatched"));
+                if (!shouldShowRegister) return null;
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setShowRegister(true)}
+                    className="flex items-center justify-center gap-2 rounded-md bg-primary hover:bg-primary/90 px-3 py-2 text-xs font-medium text-primary-foreground transition-colors cursor-pointer w-full mt-1"
+                  >
+                    <ClipboardList className="h-3.5 w-3.5 shrink-0" />
+                    {match.status === "matched" && match.droneVersion === null
+                      ? "Complete setup — flash defaults"
+                      : "Register this drone & flash defaults"}
+                  </button>
+                );
+              })()}
             </>
           )}
 

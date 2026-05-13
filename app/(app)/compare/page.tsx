@@ -312,7 +312,7 @@ export default async function ComparePage({
     return (
       <div className="h-full flex flex-col">
         <div className="flex items-center flex-wrap gap-x-1 gap-y-0.5 px-4 py-2 border-b border-border text-xs text-muted-foreground shrink-0 min-w-0">
-          <Link href="/" className="hover:text-foreground transition-colors cursor-pointer shrink-0">Catalog</Link>
+          <Link href="/" className="text-primary hover:underline cursor-pointer shrink-0">Catalog</Link>
           <ChevronRight className="h-3 w-3 shrink-0" />
           {(() => {
             const dbV = versions.filter((v) => v.clientSetId && v.familySlug && v.variantId);
@@ -321,18 +321,18 @@ export default async function ComparePage({
               const v = dbV[0];
               return (
                 <>
-                  <Link href={`/${v.familySlug}`} className="hover:text-foreground transition-colors cursor-pointer shrink-0">{v.familyName}</Link>
+                  <Link href={`/${v.familySlug}`} className="text-primary hover:underline cursor-pointer shrink-0">{v.familyName}</Link>
                   <ChevronRight className="h-3 w-3 shrink-0" />
-                  <Link href={`/${v.familySlug}/${v.variantId}`} className="hover:text-foreground transition-colors cursor-pointer shrink-0">{v.variantName}</Link>
+                  <Link href={`/${v.familySlug}/${v.variantId}`} className="text-primary hover:underline cursor-pointer shrink-0">{v.variantName}</Link>
                   <ChevronRight className="h-3 w-3 shrink-0" />
-                  <Link href={`/${v.familySlug}/${v.variantId}/${v.clientSetId}`} className="hover:text-foreground transition-colors cursor-pointer shrink-0">{v.clientName}</Link>
+                  <Link href={`/${v.familySlug}/${v.variantId}/${v.clientSetId}`} className="text-primary hover:underline cursor-pointer shrink-0">{v.clientName}</Link>
                   <ChevronRight className="h-3 w-3 shrink-0" />
                 </>
               );
             }
             return (
               <>
-                <Link href="/compare" className="hover:text-foreground transition-colors cursor-pointer shrink-0">Compare</Link>
+                <Link href="/compare" className="text-primary hover:underline cursor-pointer shrink-0">Compare</Link>
                 <ChevronRight className="h-3 w-3 shrink-0" />
               </>
             );
@@ -354,7 +354,7 @@ export default async function ComparePage({
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center flex-wrap gap-x-1 gap-y-0.5 px-4 py-2 border-b border-border text-xs text-muted-foreground shrink-0">
-        <Link href="/" className="hover:text-foreground transition-colors cursor-pointer shrink-0">Catalog</Link>
+        <Link href="/" className="text-primary hover:underline cursor-pointer shrink-0">Catalog</Link>
         <ChevronRight className="h-3 w-3 shrink-0" />
         <span className="text-foreground shrink-0">Compare</span>
       </div>

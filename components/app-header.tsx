@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
-  Library,
   Settings,
   Building2,
   Usb,
@@ -108,7 +107,6 @@ export function AppHeader() {
         href="/"
         className="flex items-center gap-2 text-sm font-semibold text-foreground hover:text-primary transition-colors cursor-pointer shrink-0"
       >
-        <Library className="h-4 w-4 text-primary" />
         AIR6 Params
       </Link>
       <button

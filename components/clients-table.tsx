@@ -2,18 +2,21 @@
 
 import { Fragment, useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ChevronDown, ChevronRight, Trash2, Plus, X, Pencil, Check } from "lucide-react";
+// Plus is still used for the Add client button below
 import { WriteNFCButton } from "@/components/write-nfc-button";
 
 export interface ClientWithDrones {
   id: string;
   name: string;
-  drones: { id: string; serial: string; variant_id: string }[];
+  drones: { id: string; serial: string; variant_id: string; client_set_id: string | null }[];
 }
 
 export interface FamilyOption {
   id: string;
   name: string;
+  slug: string;
 }
 
 export interface VariantOption {
@@ -126,45 +129,6 @@ export function ClientsTable({ clients, families, variants }: Props) {
     }
   }
 
-  // ── Add drone (per client) ───────────────────────────────
-  const [addingDroneFor, setAddingDroneFor] = useState<string | null>(null);
-  const [newDroneSerial, setNewDroneSerial] = useState("");
-  const [newDroneFamilyId, setNewDroneFamilyId] = useState("");
-  const [newDroneVariantId, setNewDroneVariantId] = useState("");
-  const [submittingDrone, setSubmittingDrone] = useState(false);
-  const [addDroneErrors, setAddDroneErrors] = useState<Record<string, string>>({});
-
-  function startAddDrone(clientId: string) {
-    setAddingDroneFor(clientId);
-    setNewDroneSerial("");
-    setNewDroneFamilyId("");
-    setNewDroneVariantId("");
-    setAddDroneErrors((prev) => { const n = { ...prev }; delete n[clientId]; return n; });
-  }
-
-  async function handleAddDrone(clientId: string, e: React.FormEvent) {
-    e.preventDefault();
-    if (!newDroneSerial.trim() || !newDroneVariantId) return;
-    setSubmittingDrone(true);
-    setAddDroneErrors((prev) => { const n = { ...prev }; delete n[clientId]; return n; });
-    const res = await fetch(`/api/admin/clients/${clientId}/drones`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ serial: newDroneSerial.trim(), variantId: newDroneVariantId }),
-    });
-    setSubmittingDrone(false);
-    if (res.ok) {
-      setAddingDroneFor(null);
-      setNewDroneSerial("");
-      setNewDroneFamilyId("");
-      setNewDroneVariantId("");
-      startTransition(() => router.refresh());
-    } else {
-      const msg = await res.json().then((b) => b?.error).catch(() => null);
-      setAddDroneErrors((prev) => ({ ...prev, [clientId]: msg ?? "Add failed" }));
-    }
-  }
-
   // ── Edit drone (serial + variant) ────────────────────────
   const [editingDroneId, setEditingDroneId] = useState<string | null>(null);
   const [editDroneSerial, setEditDroneSerial] = useState("");
@@ -237,10 +201,8 @@ export function ClientsTable({ clients, families, variants }: Props) {
           {clients.map((c) => {
             const isExpanded = expanded.has(c.id);
             const isEditing = editingClientId === c.id;
-            const isAdding = addingDroneFor === c.id;
             const editError = editClientErrors[c.id];
             const deleteError = deleteClientErrors[c.id];
-            const addError = addDroneErrors[c.id];
 
             return (
               <Fragment key={c.id}>
@@ -409,7 +371,20 @@ export function ClientsTable({ clients, families, variants }: Props) {
                             <tr className="border-b border-border bg-secondary/15 group/drone">
                               <td className="px-3 py-1.5"></td>
                               <td className="px-3 py-1.5 pl-8">
-                                <span className="font-mono text-xs text-foreground">{d.serial}</span>
+                                {(() => {
+                                  const variant = variantById.get(d.variant_id);
+                                  const family = variant ? familyById.get(variant.family_id) : null;
+                                  const url = family?.slug && d.client_set_id
+                                    ? `/${family.slug}/${d.variant_id}/${d.client_set_id}`
+                                    : null;
+                                  return url ? (
+                                    <Link href={url} className="font-mono text-xs text-primary hover:underline cursor-pointer">
+                                      {d.serial}
+                                    </Link>
+                                  ) : (
+                                    <span className="font-mono text-xs text-foreground">{d.serial}</span>
+                                  );
+                                })()}
                                 <span className="ml-2 text-[11px] text-muted-foreground">
                                   — {variantLabel(d.variant_id)}
                                 </span>
@@ -449,83 +424,15 @@ export function ClientsTable({ clients, families, variants }: Props) {
                       );
                     })}
 
-                    {/* Add drone row */}
-                    {isAdding ? (
-                      <tr className="border-b border-border bg-secondary/15">
-                        <td className="px-3 py-1.5"></td>
-                        <td colSpan={3} className="px-3 py-1.5 pl-8">
-                          <form
-                            onSubmit={(e) => handleAddDrone(c.id, e)}
-                            className="flex flex-wrap items-center gap-2"
-                          >
-                            <input
-                              required
-                              autoFocus
-                              value={newDroneSerial}
-                              onChange={(e) => setNewDroneSerial(e.target.value)}
-                              disabled={submittingDrone}
-                              placeholder="Serial (e.g. SN-12345)"
-                              className="w-40 rounded-md border border-primary/40 bg-card px-2.5 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
-                            />
-                            <select
-                              required
-                              value={newDroneFamilyId}
-                              onChange={(e) => { setNewDroneFamilyId(e.target.value); setNewDroneVariantId(""); }}
-                              disabled={submittingDrone}
-                              className="rounded-md border border-primary/40 bg-card px-2 py-1 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer disabled:opacity-40"
-                            >
-                              <option value="">Family…</option>
-                              {families.map((f) => (
-                                <option key={f.id} value={f.id}>{f.name}</option>
-                              ))}
-                            </select>
-                            <select
-                              required
-                              value={newDroneVariantId}
-                              onChange={(e) => setNewDroneVariantId(e.target.value)}
-                              disabled={submittingDrone || !newDroneFamilyId}
-                              className="rounded-md border border-primary/40 bg-card px-2 py-1 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer disabled:opacity-40"
-                            >
-                              <option value="">Variant…</option>
-                              {variants.filter((v) => v.family_id === newDroneFamilyId).map((v) => (
-                                <option key={v.id} value={v.id}>{v.name}</option>
-                              ))}
-                            </select>
-                            <button
-                              type="submit"
-                              disabled={submittingDrone || !newDroneSerial.trim() || !newDroneVariantId}
-                              className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed"
-                            >
-                              {submittingDrone ? "Adding…" : "Add"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setAddingDroneFor(null)}
-                              disabled={submittingDrone}
-                              className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-secondary transition-colors cursor-pointer disabled:opacity-40"
-                            >
-                              Cancel
-                            </button>
-                          </form>
-                          {addError && (
-                            <p className="text-xs text-destructive mt-1.5">{addError}</p>
-                          )}
-                        </td>
-                      </tr>
-                    ) : (
-                      <tr className="border-b border-border bg-secondary/15">
-                        <td className="px-3 py-1.5"></td>
-                        <td colSpan={3} className="px-3 py-1.5 pl-8">
-                          <button
-                            onClick={() => startAddDrone(c.id)}
-                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                          >
-                            <Plus className="h-3 w-3" />
-                            Add drone
-                          </button>
-                        </td>
-                      </tr>
-                    )}
+                    {/* Register hint */}
+                    <tr className="border-b border-border bg-secondary/15">
+                      <td className="px-3 py-1.5"></td>
+                      <td colSpan={3} className="px-3 py-1.5 pl-8">
+                        <span className="text-[11px] text-muted-foreground italic">
+                          To add a drone, connect it via USB and use the Import button.
+                        </span>
+                      </td>
+                    </tr>
                   </>
                 )}
               </Fragment>

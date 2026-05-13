@@ -18,6 +18,7 @@ export interface MatchedDrone {
   is_orphan: boolean;
   drift_count: number | null;
   client_set_id: string | null;
+  initialised_at: string | null;
 }
 
 export type DroneMatchStatus = "idle" | "loading" | "matched" | "unmatched";
@@ -86,17 +87,32 @@ export function useConnectedDroneMatch(): DroneMatchResult {
       return;
     }
 
+    // SCR_USER1/2 require SCR_ENABLE=1. On a factory-fresh drone SCR_ENABLE=0
+    // and the SCR_ params may be absent entirely. Treat missing or zero SCR_USER1
+    // as a blank drone (wanted=0) so the match returns "unmatched" and the
+    // Register button appears — rather than returning idle and showing nothing.
+    const scrEnable = droneParams.find((p) => p.name === "SCR_ENABLE");
     const scrUser1 = droneParams.find((p) => p.name === "SCR_USER1");
-    if (!scrUser1) {
-      lastKeyRef.current = null;
-      setResult(idle);
-      return;
-    }
+    const scrEnabled = scrEnable ? parseInt(scrEnable.value, 10) !== 0 : false;
 
-    const wanted = parseInt(scrUser1.value, 10);
-    if (!Number.isFinite(wanted)) {
-      lastKeyRef.current = null;
-      setResult(idle);
+    // If scripting is disabled and SCR_USER1 is absent, this is a blank drone.
+    // Use wanted=0 so the match API returns null → status "unmatched" → Register shows.
+    const rawWanted = scrUser1 ? parseInt(scrUser1.value, 10) : 0;
+    const wanted = Number.isFinite(rawWanted) ? rawWanted : 0;
+
+    // If SCR_ENABLE=0 and SCR_USER1 is missing/0, skip the network fetch entirely —
+    // we know it won't match anything. Set unmatched directly so Register shows immediately.
+    if (!scrEnabled && wanted === 0) {
+      lastKeyRef.current = `unscripted_${droneParams.length}`;
+      setResult({
+        status: "unmatched",
+        drone: null,
+        versionStatus: "unknown",
+        droneVersion: null,
+        catalogVersion: null,
+        isOrphan: false,
+        driftCount: null,
+      });
       return;
     }
 
@@ -178,6 +194,17 @@ export function useConnectedDroneMatch(): DroneMatchResult {
 
         if (cancelled) return;
         cache.set(cacheKey, drone);
+
+        // If the drone has SCR_USER2 > 0 it has been physically initialised —
+        // mark it in the DB if not already set, so Clients & Drones reflects reality.
+        if (drone && drone.drone_version !== null && drone.drone_version > 0 && !drone.initialised_at) {
+          fetch(`/api/admin/drones/${drone.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ initialisedAt: true }),
+          }).catch(() => {});
+        }
+
         setResult({
           status: drone ? "matched" : "unmatched",
           drone,

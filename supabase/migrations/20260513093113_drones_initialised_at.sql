@@ -1,0 +1,1 @@
+ALTER TABLE public.drones ADD COLUMN IF NOT EXISTS initialised_at TIMESTAMPTZ;

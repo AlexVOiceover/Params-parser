@@ -54,7 +54,13 @@ export async function DELETE(
 
   const admin = createAdminClient();
 
-  // Get storage paths before deleting so we can clean up the bucket.
+  // Get storage paths and drone_id before deleting
+  const { data: clientSet } = await admin
+    .from("client_sets")
+    .select("drone_id")
+    .eq("id", id)
+    .maybeSingle();
+
   const { data: versions } = await admin
     .from("param_versions")
     .select("storage_path")
@@ -65,6 +71,18 @@ export async function DELETE(
 
   if (versions?.length) {
     await admin.storage.from("param-files").remove(versions.map((v) => v.storage_path));
+  }
+
+  // If this client_set had a drone FK, check if the drone has any remaining
+  // client_sets. If not, delete the drone row so it can be re-registered cleanly.
+  if (clientSet?.drone_id) {
+    const { count } = await admin
+      .from("client_sets")
+      .select("id", { count: "exact", head: true })
+      .eq("drone_id", clientSet.drone_id);
+    if (!count || count === 0) {
+      await admin.from("drones").delete().eq("id", clientSet.drone_id);
+    }
   }
 
   return NextResponse.json({ ok: true });

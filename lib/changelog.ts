@@ -6,6 +6,17 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.17.0",
+    date: "2026-05-13",
+    items: [
+      "Drone registration fully connect-first — plug in via USB and the wizard handles everything",
+      "Registration now creates a param set pre-loaded with Default v1, so every drone has version history from day one",
+      "Deleting a param set also removes the drone record, keeping the catalog clean",
+      "Port selection remembered across import and flash — no repeated COM picker",
+      "Drone serial in Clients links directly to its param set page",
+    ],
+  },
+  {
     version: "0.16.0",
     date: "2026-05-11",
     items: [

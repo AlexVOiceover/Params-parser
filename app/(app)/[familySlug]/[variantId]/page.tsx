@@ -168,9 +168,9 @@ export default async function VariantPage({
   return (
     <div className="max-w-4xl mx-auto px-6 py-10">
       <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-6 flex-wrap">
-        <Link href="/" className="hover:text-foreground transition-colors cursor-pointer">Catalog</Link>
+        <Link href="/" className="text-primary hover:underline cursor-pointer">Catalog</Link>
         <ChevronRight className="h-3 w-3" />
-        <Link href={`/${familySlug}`} className="hover:text-foreground transition-colors cursor-pointer">{family.name}</Link>
+        <Link href={`/${familySlug}`} className="text-primary hover:underline cursor-pointer">{family.name}</Link>
         <ChevronRight className="h-3 w-3" />
         <span className="text-foreground">{variant.name}</span>
       </nav>
