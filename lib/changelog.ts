@@ -6,6 +6,16 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.18.0",
+    date: "2026-05-14",
+    items: [
+      "Fleet overview page — see all registered drones across all clients in one table, with delete",
+      "Compare table now exports CSV with live preview and clipboard copy",
+      "Float precision differences (32-bit MAVLink vs catalog) no longer show as false diffs",
+      "Locked params (SCR_ENABLE, system IDs) are visible but cannot be accidentally edited",
+    ],
+  },
+  {
     version: "0.17.0",
     date: "2026-05-13",
     items: [
