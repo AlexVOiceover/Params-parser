@@ -237,7 +237,7 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
               {!c.isDefault && c.serial && (
                 <span className="font-mono text-xs text-muted-foreground truncate">· {c.serial}</span>
               )}
-              {(isConnected || isOrphanOnDefault) && (
+                      {(isConnected || isOrphanOnDefault) && (
                 <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 leading-none whitespace-nowrap">
                   <Usb className="h-2.5 w-2.5" />
                   {isOrphanOnDefault ? "your drone (no client)" : "this drone"}
@@ -573,7 +573,9 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
             <div className="flex items-center justify-between border-b border-border bg-toolbar px-5 py-3.5">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-destructive" />
-                <h2 className="text-sm font-bold text-foreground">Delete client + drone</h2>
+                <h2 className="text-sm font-bold text-foreground">
+                  {confirmTarget.isDefault ? "Delete Default param set" : "Delete client + drone"}
+                </h2>
               </div>
               <button
                 onClick={() => setConfirmId(null)}
@@ -588,9 +590,17 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
               <p className="text-sm text-foreground">
                 Delete <span className="font-semibold">{confirmTarget.client_name}{confirmTarget.serial ? ` · ${confirmTarget.serial}` : ""}</span>?
               </p>
-              <p className="text-xs text-muted-foreground">
-                All versions and uploaded files for this drone will be permanently removed. This cannot be undone.
-              </p>
+              {confirmTarget.isDefault ? (
+                <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                  <p>All versions and uploaded files for this Default will be permanently removed.</p>
+                  <p>Existing client param sets cloned from this Default <span className="text-foreground font-medium">will not be affected</span> — they are independent copies.</p>
+                  <p className="text-amber-600 dark:text-amber-400 font-medium">New drone registrations for this variant will fail until a new Default is uploaded.</p>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  All versions and uploaded files for this drone will be permanently removed. This cannot be undone.
+                </p>
+              )}
               {deleteError && (
                 <p className="text-xs text-destructive bg-destructive/15 border border-destructive/40 rounded-md px-3 py-2">
                   {deleteError}

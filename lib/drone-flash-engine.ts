@@ -19,7 +19,7 @@ function diff(current: Map<string, number>, target: FlashTarget): { name: string
   for (const [name, targetVal] of target.entries()) {
     if (RUNTIME_PARAMS.has(name)) continue;
     const currentVal = current.get(name);
-    if (currentVal === undefined || Math.abs(currentVal - targetVal) > 1e-5) {
+    if (currentVal === undefined || Math.abs(currentVal - targetVal) / Math.max(Math.abs(targetVal), 1e-10) >= 1e-5) {
       toWrite.push({ name, value: targetVal });
     }
   }
@@ -57,11 +57,13 @@ async function writeParams(
 export async function flashParamsToDrone(
   target: FlashTarget,
   current: Map<string, number>,
-  onLog: (msg: string) => void
+  onLog: (msg: string) => void,
+  /** Pre-computed changes — skips the internal diff (use when caller needs to bypass RUNTIME_PARAMS filter). */
+  initialChanges?: { name: string; value: number }[]
 ): Promise<FlashResult> {
   const snapshot = new Map(current);
 
-  let toWrite = diff(current, target);
+  let toWrite = initialChanges ?? diff(current, target);
 
   if (toWrite.length === 0) {
     return { ok: true, passes: 0, unresolved: [], reverted: false };
