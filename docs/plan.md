@@ -1,34 +1,26 @@
-# 16 Drone Initialisation Status
+# 17 Fleet Overview
 
-> Add `initialised_at` to drones so admins can see which physical drones have been set up vs just created in the DB. Surface as badges in Clients & Drones.
+> New `/admin/drones` page showing all registered drones across all clients in one table — serial, client, family/variant, catalog version, link to param set.
 
 ## Tasks
 
-1. [ ] **DB migration**
-   - [ ] 1.1 Create migration `20260513093113_drones_initialised_at.sql`: `ALTER TABLE drones ADD COLUMN IF NOT EXISTS initialised_at TIMESTAMPTZ;`
-   - [ ] 1.2 Push migration with `npx supabase db push`
+1. [ ] **Create `/admin/drones` page**
+   - [ ] 1.1 Create `app/(app)/admin/drones/page.tsx` — server component, admin-only (redirect to `/` if not admin)
+   - [ ] 1.2 Query: fetch all drones joined with `client_sets` (latest version), `variants`, `families`, `clients`
+   - [ ] 1.3 Render a table: serial, client name, family/variant, catalog version (v1/v2/…), link to param set
+   - [ ] 1.4 Sort by client name then serial; show "No client" for orphan drones
+   - [ ] 1.5 Add breadcrumb: Catalog → Fleet
 
-2. [ ] **Extend PATCH /api/admin/drones/[id]**
-   - [ ] 2.1 Accept `initialisedAt: boolean` in body — when true, set `initialised_at = now()`
-   - [ ] 2.2 Write `initialised_at: new Date().toISOString()` to the update object when flag is set
+2. [ ] **Add Fleet link to admin user menu**
+   - [ ] 2.1 In `app-header.tsx`, add a "Fleet" `<Link>` inside the `{isAdmin && ...}` block, between "Clients & Drones" and "Review queue"
+   - [ ] 2.2 Use an appropriate icon (e.g. `Radio` or `Layers` from lucide-react)
 
-3. [ ] **Register wizard sets initialised_at on success**
-   - [ ] 3.1 In `handleWriteSuccess` in `register-drone-modal.tsx`, after successful flash, PATCH `/api/admin/drones/${newDroneId}` with `{ initialisedAt: true }` when `newDroneId` is set
-
-4. [ ] **Clients & Drones page — show initialisation status**
-   - [ ] 4.1 Add `initialised_at: string | null` to `ClientWithDrones.drones` type in `clients-table.tsx`
-   - [ ] 4.2 Update `admin/clients/page.tsx` query to select `initialised_at` on drones
-   - [ ] 4.3 Render "Ready" (emerald) or "Pending setup" (amber) badge next to each drone serial in the table
-
-5. [ ] **Connect modal — contextual button label**
-   - [ ] 5.1 In `connect-drone-dialog.tsx`, when `match.status === "matched"` and `match.droneVersion === null`, show "Complete setup" instead of "Register this drone & flash defaults"
-   - [ ] 5.2 Same change in `drone-status-banner.tsx` for the Register button
-
-6. [ ] **Typecheck**
-   - [ ] 6.1 `npx tsc --noEmit` — fix any errors
+3. [ ] **Typecheck**
+   - [ ] 3.1 `npx tsc --noEmit` — fix any errors
 
 ## Notes
 
-- `newDroneId` is already in state in `register-drone-modal.tsx` — it's set in `handleFlash` before the WriteDroneDialog opens
-- The PATCH should fire after `handleWriteSuccess` returns — not inside it, since it's a fire-and-forget (no need to block the UI)
-- "Complete setup" vs "Register" only changes the label — the wizard flow is identical
+- The query needs: drones → client_sets (drone_id FK, non-default) → param_versions (is_latest) → variants → families; plus clients for live name
+- Orphan drones have no client_set linked by drone_id — show serial and variant but "No client" and "—" for version
+- The param set link URL is `/${family.slug}/${variant.id}/${client_set.id}` — only show when client_set exists
+- Use the same admin auth pattern as other admin pages (check profile.role)

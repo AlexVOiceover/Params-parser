@@ -128,6 +128,7 @@ export async function POST(
     const paramMap = new Map<string, string>();
     for (const pv of allParamValues) paramMap.set(pv.name, pv.value);
     if (Number.isFinite(newVersionInt)) paramMap.set("SCR_USER2", String(newVersionInt));
+    paramMap.set("SCR_ENABLE", "1");
 
     const rows = Array.from(paramMap.entries()).map(([name, value]) => ({
       param_version_id: newVersion.id,

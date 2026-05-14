@@ -40,9 +40,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: versionError?.message ?? "Insert failed" }, { status: 500 });
   }
 
+  // Enforce SCR_ENABLE=1 — required for versioning to work
+  const paramMap = new Map(body.params.map((p) => [p.name, p.value]));
+  paramMap.set("SCR_ENABLE", "1");
+  const allParams = Array.from(paramMap.entries()).map(([name, value]) => ({ name, value }));
+
   const CHUNK = 500;
-  for (let i = 0; i < body.params.length; i += CHUNK) {
-    const chunk = body.params.slice(i, i + CHUNK).map(({ name, value }) => ({
+  for (let i = 0; i < allParams.length; i += CHUNK) {
+    const chunk = allParams.slice(i, i + CHUNK).map(({ name, value }) => ({
       param_version_id: version.id,
       name,
       value,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSessionClient } from "@/lib/supabase/server";
-import { RUNTIME_PARAMS } from "@/lib/param-engine";
+import { RUNTIME_PARAMS, paramValuesEqual } from "@/lib/param-engine";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
   for (const [name, catalogVal] of catalogParams.entries()) {
     if (RUNTIME_PARAMS.has(name) || name === "SCR_USER1" || name === "SCR_USER2") continue;
     const droneVal = body.params[name];
-    if (droneVal !== undefined && droneVal !== catalogVal) diff++;
+    if (droneVal !== undefined && !paramValuesEqual(droneVal, catalogVal)) diff++;
   }
 
   return NextResponse.json({ drift_count: diff });

@@ -1,6 +1,7 @@
 import type { Param, Rule, ProtectionList, ParamGroup, ParamDefinition } from "./types";
 import defaultListsJson from "@/data/protection-lists.json";
 import volatileParamsJson from "@/data/volatile-params.json";
+import lockedParamsJson from "@/data/locked-params.json";
 
 /**
  * ArduPilot runtime/volatile params excluded from version diffs and drone
@@ -9,6 +10,14 @@ import volatileParamsJson from "@/data/volatile-params.json";
  */
 export const RUNTIME_PARAMS = new Set(
   (volatileParamsJson as { params: { name: string }[] }).params.map((p) => p.name)
+);
+
+/**
+ * Params that are shown in diffs and compare but cannot be manually edited.
+ * Managed automatically by the app or system-critical.
+ */
+export const LOCKED_PARAMS = new Set(
+  (lockedParamsJson as { params: { name: string }[] }).params.map((p) => p.name)
 );
 
 /**
@@ -163,4 +172,27 @@ export function validateParam(value: string, def: ParamDefinition): string | nul
   }
 
   return null;
+}
+
+/**
+ * Compare two ArduPilot param values for equivalence, accounting for the
+ * 32-bit float precision loss that occurs when values transit MAVLink.
+ *
+ * ArduPilot stores params as 32-bit IEEE 754 floats. When transmitted over
+ * MAVLink and then printed to full double precision they gain spurious digits
+ * (e.g. 0.3 → 0.30000001192092896). Our catalog stores the human-readable
+ * value (e.g. "0.3"). A relative tolerance of 1e-5 treats these as equal
+ * while still detecting genuine configuration differences.
+ *
+ * For non-numeric values (e.g. empty string) falls back to strict equality.
+ */
+export function paramValuesEqual(a: string, b: string): boolean {
+  if (a === b) return true;
+  const na = parseFloat(a);
+  const nb = parseFloat(b);
+  if (!Number.isFinite(na) || !Number.isFinite(nb)) return false;
+  if (na === 0 && nb === 0) return true;
+  // Relative tolerance: handles both large and small values correctly
+  const rel = Math.abs(na - nb) / Math.max(Math.abs(na), Math.abs(nb));
+  return rel < 1e-5;
 }

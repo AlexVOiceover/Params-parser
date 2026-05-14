@@ -284,7 +284,7 @@ export function RegisterDroneModal({ onClose }: Props) {
     for (const [name, targetVal] of target.entries()) {
       if (RUNTIME_PARAMS.has(name) && !REGISTRATION_REQUIRED.has(name)) continue;
       const droneVal = droneMap.get(name);
-      if (droneVal === undefined || droneVal !== targetVal) {
+      if (droneVal === undefined || Math.abs(droneVal - targetVal) / Math.max(Math.abs(targetVal), 1e-10) >= 1e-5) {
         diff.push({ name, value: targetVal });
       }
     }
@@ -551,7 +551,9 @@ export function RegisterDroneModal({ onClose }: Props) {
             const current = new Map(
               (droneParams ?? []).map((p) => [p.name, parseFloat(p.value)])
             );
-            return flashParamsToDrone(flashTarget, current, addLog);
+            // Pass the pre-computed diff so the engine doesn't re-diff and
+            // strip SCR_USER1/SCR_USER2/SCR_ENABLE via RUNTIME_PARAMS filter.
+            return flashParamsToDrone(flashTarget, current, addLog, writeChanges ?? undefined);
           }}
         />
       )}

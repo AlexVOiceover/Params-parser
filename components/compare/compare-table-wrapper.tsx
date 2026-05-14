@@ -6,7 +6,7 @@ import { useDroneParams, DRONE_VERSION_ID } from "@/lib/drone-params-context";
 import { clearDroneMatchCache } from "@/lib/use-connected-drone-match";
 import { CompareTable } from "@/components/compare/compare-table";
 import { WriteDroneDialog, type WriteChange } from "@/components/write-drone-dialog";
-import { RUNTIME_PARAMS } from "@/lib/param-engine";
+import { RUNTIME_PARAMS, LOCKED_PARAMS } from "@/lib/param-engine";
 import type { CompareVersion, CompareRow } from "@/lib/types";
 import type { ParamWriteResult } from "@/lib/mavlink-serial";
 
@@ -62,6 +62,7 @@ export function CompareTableWrapper({ versions, rows, hasDroneVersion }: Props) 
   }, [hasDroneVersion, droneParams, versions, rows]);
 
   const handleEditParam = useCallback((name: string, value: number) => {
+    if (LOCKED_PARAMS.has(name)) return; // silently reject edits to locked params
     setPendingEdits((prev) => {
       const next = new Map(prev);
       if (writableVersionId === DRONE_VERSION_ID) {

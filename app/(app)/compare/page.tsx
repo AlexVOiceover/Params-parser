@@ -172,21 +172,23 @@ async function fetchCompareData(
   const supabase = await createSessionClient().catch(() => createClient());
   const admin = createAdminClient();
 
-  // PostgREST caps each response at 1000 rows; param_values can run over
-  // 1000 per version, so paginate to avoid silently dropping params.
+  // Fetch param_values per version independently to avoid pagination boundary
+  // issues that occur when using .in() across multiple large versions.
   async function fetchAllParamValues(ids: string[]) {
-    const PAGE_SIZE = 1000;
+    const PAGE_SIZE = 500;
     const out: { param_version_id: string; name: string; value: string }[] = [];
-    for (let from = 0; ; from += PAGE_SIZE) {
-      const { data: page } = await supabase
-        .from("param_values")
-        .select("param_version_id, name, value")
-        .in("param_version_id", ids)
-        .order("name")
-        .range(from, from + PAGE_SIZE - 1);
-      if (!page || page.length === 0) break;
-      out.push(...page);
-      if (page.length < PAGE_SIZE) break;
+    for (const id of ids) {
+      for (let from = 0; ; from += PAGE_SIZE) {
+        const { data: page } = await supabase
+          .from("param_values")
+          .select("name, value")
+          .eq("param_version_id", id)
+          .order("name")
+          .range(from, from + PAGE_SIZE - 1);
+        if (!page || page.length === 0) break;
+        out.push(...page.map((p) => ({ param_version_id: id, ...p })));
+        if (page.length < PAGE_SIZE) break;
+      }
     }
     return out;
   }

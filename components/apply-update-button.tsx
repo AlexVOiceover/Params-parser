@@ -68,7 +68,7 @@ export function ApplyUpdateButton({ versionId, className, label = "Apply update"
     for (const [name, targetVal] of target.entries()) {
       if (RUNTIME_PARAMS.has(name)) continue;
       const droneVal = droneMap.get(name);
-      if (droneVal === undefined || droneVal !== targetVal) {
+      if (droneVal === undefined || Math.abs(droneVal - targetVal) / Math.max(Math.abs(targetVal), 1e-10) >= 1e-5) {
         diff.push({ name, value: targetVal });
       }
     }

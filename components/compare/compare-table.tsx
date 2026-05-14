@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { SlidersHorizontal, Info, Upload, X, RotateCcw, Search, GitCompareArrows } from "lucide-react";
-import { validateParam } from "@/lib/param-engine";
+import { SlidersHorizontal, Info, Upload, X, RotateCcw, Search, GitCompareArrows, FileDown, Copy, Check } from "lucide-react";
+import { validateParam, paramValuesEqual, LOCKED_PARAMS } from "@/lib/param-engine";
 import type { CompareVersion, CompareRow, ParamDefinition } from "@/lib/types";
 
 interface Props {
@@ -44,6 +44,8 @@ export function CompareTable({
   hasDroneVersion = false,
 }: Props) {
   const [showDiffsOnly, setShowDiffsOnly] = useState(false);
+  const [showCsvModal, setShowCsvModal] = useState(false);
+  const [csvCopied, setCsvCopied] = useState(false);
   const [paramDefs, setParamDefs] = useState<Record<string, ParamDefinition> | null>(null);
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [editInput, setEditInput] = useState("");
@@ -112,9 +114,17 @@ export function CompareTable({
   const versionIds = versions.map((v) => v.id);
 
   const processedRows = rows.map((row) => {
-    // Treat missing as a distinct state: present-vs-missing counts as a difference.
-    const states = versionIds.map((id) => row.values[id] ?? "\0missing");
-    const isDiff = new Set(states).size > 1;
+    const vals = versionIds.map((id) => row.values[id]);
+    // A row is a diff if any two non-missing values differ (with float tolerance)
+    // or if some versions have the value and others don't.
+    let isDiff = false;
+    for (let i = 1; i < vals.length; i++) {
+      const a = vals[0];
+      const b = vals[i];
+      if (a === undefined && b === undefined) continue;
+      if (a === undefined || b === undefined) { isDiff = true; break; }
+      if (!paramValuesEqual(a, b)) { isDiff = true; break; }
+    }
     return { ...row, isDiff };
   });
 
@@ -163,6 +173,7 @@ export function CompareTable({
   }
 
   return (
+    <>
     <div className="flex flex-col h-full">
       {/* Toolbar */}
       <div className="flex flex-col border-b border-border bg-toolbar shrink-0">
@@ -217,6 +228,14 @@ export function CompareTable({
 
           {/* Action buttons — icon only on mobile, icon+text on sm+ */}
           <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={() => setShowCsvModal(true)}
+              title="Export as CSV"
+              className="flex items-center gap-1.5 rounded-md border border-border px-2 sm:px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
+            >
+              <FileDown className="h-3.5 w-3.5 shrink-0" />
+              <span className="hidden sm:inline">Export CSV</span>
+            </button>
             {canDiff && (
               <button
                 onClick={() => setShowDiffsOnly((v) => !v)}
@@ -336,6 +355,9 @@ export function CompareTable({
                         <span className="font-mono text-xs text-foreground truncate min-w-0">
                           {row.name}
                         </span>
+                        {LOCKED_PARAMS.has(row.name) && (
+                          <span className="ml-1 text-[9px] text-muted-foreground/60 shrink-0" title="Managed by app — cannot be edited manually">🔒</span>
+                        )}
                         <button
                           onClick={() => setExpandedParam(isExpanded ? null : row.name)}
                           className={`ml-1 shrink-0 transition-colors cursor-pointer opacity-0 group-hover/name:opacity-100 ${
@@ -352,7 +374,7 @@ export function CompareTable({
                     {versionIds.map((vid) => {
                       const rawValue = row.values[vid];
                       const isMissing = rawValue === undefined;
-                      const isWritable = writeMode && vid === writableVersionId && !isMissing;
+                      const isWritable = writeMode && vid === writableVersionId && !isMissing && !LOCKED_PARAMS.has(row.name);
                       const pendingValue = pendingEdits?.get(row.name);
                       const hasPending = isWritable && pendingValue !== undefined;
                       const displayValue = hasPending ? String(pendingValue) : rawValue;
@@ -429,7 +451,8 @@ export function CompareTable({
 
                       // Cells in editable columns: clicking activates write mode
                       // for that column and immediately opens the input.
-                      const isEditable = onToggleWriteMode && vid !== "live" && !isMissing;
+                      const isLocked = LOCKED_PARAMS.has(row.name);
+                      const isEditable = onToggleWriteMode && vid !== "live" && !isMissing && !isLocked;
                       return (
                         <td
                           key={vid}
@@ -445,7 +468,7 @@ export function CompareTable({
                               setEditingCell(cellKey);
                             }
                           }}
-                          title={isWritable || isEditable ? "Click to edit" : undefined}
+                          title={isLocked ? "Managed by app — cannot be edited" : isWritable || isEditable ? "Click to edit" : undefined}
                         >
                           {isMissing ? "—" : displayValue}
                         </td>
@@ -526,6 +549,103 @@ export function CompareTable({
             )}
           </tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    {showCsvModal && <CsvModal
+      versions={versions}
+      visibleRows={visibleRows}
+      showDiffsOnly={showDiffsOnly}
+      csvCopied={csvCopied}
+      setCsvCopied={setCsvCopied}
+      onClose={() => setShowCsvModal(false)}
+    />}
+    </>
+  );
+}
+
+function CsvModal({
+  versions,
+  visibleRows,
+  showDiffsOnly,
+  csvCopied,
+  setCsvCopied,
+  onClose,
+}: {
+  versions: import("@/lib/types").CompareVersion[];
+  visibleRows: { name: string; values: Record<string, string>; isDiff: boolean }[];
+  showDiffsOnly: boolean;
+  csvCopied: boolean;
+  setCsvCopied: (v: boolean) => void;
+  onClose: () => void;
+}) {
+  const header = ["Param", ...versions.map((v) => `${v.clientName} v${v.label}`)].join(",");
+  const csvRows = visibleRows.map((row) => {
+    const cells = [
+      row.name,
+      ...versions.map((v) => {
+        const val = row.values[v.id];
+        return val === undefined ? "" : val;
+      }),
+    ].map((c) => (String(c).includes(",") || String(c).includes('"') ? `"${String(c).replace(/"/g, '""')}"` : c));
+    return cells.join(",");
+  });
+  const csv = [header, ...csvRows].join("\n");
+  const label = showDiffsOnly ? `differences only (${visibleRows.length} rows)` : `all params (${visibleRows.length} rows)`;
+
+  function downloadCsv() {
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `compare-${versions.map((v) => `${v.clientName}-v${v.label}`).join("-vs-")}.csv`.replace(/\s+/g, "_");
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function copyCsv() {
+    navigator.clipboard.writeText(csv).then(() => {
+      setCsvCopied(true);
+      setTimeout(() => setCsvCopied(false), 2000);
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-lg rounded-xl border border-border bg-card shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+        <div className="flex items-center justify-between border-b border-border bg-toolbar px-5 py-3.5 shrink-0">
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Export CSV</h2>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Exporting {label}</p>
+          </div>
+          <button onClick={onClose} className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-auto px-5 py-3">
+          <pre className="text-[11px] font-mono text-muted-foreground bg-secondary/50 rounded-md p-3 whitespace-pre overflow-x-auto leading-relaxed">
+            {csv.slice(0, 2000)}{csv.length > 2000 ? `\n… (${csvRows.length} rows total)` : ""}
+          </pre>
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-border bg-toolbar px-5 py-3 shrink-0">
+          <button
+            onClick={copyCsv}
+            className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
+          >
+            {csvCopied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+            {csvCopied ? "Copied!" : "Copy to clipboard"}
+          </button>
+          <button
+            onClick={downloadCsv}
+            className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer whitespace-nowrap"
+          >
+            <FileDown className="h-3.5 w-3.5" />
+            Download CSV
+          </button>
         </div>
       </div>
     </div>

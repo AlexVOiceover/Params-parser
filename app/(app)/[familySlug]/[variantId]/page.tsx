@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { createSessionClient } from "@/lib/supabase/server";
 import { ClientSetList, type ClientSetCard } from "@/components/client-set-list";
+import { paramValuesEqual } from "@/lib/param-engine";
 import type { Family, Variant, ClientSet } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -51,32 +52,25 @@ async function getData(familySlug: string, variantId: string) {
   // Compute diff counts vs Default
   const diffCountByClientSet = new Map<string, number>();
   if (defaultSet && latestVersionByClientSet.has(defaultSet.id)) {
-    const versionIds = [...latestVersionByClientSet.values()];
-    // PostgREST caps each response at 1000 rows; with ~1100 params per version
-    // a 2-version diff already truncates. Fetch in pages.
-    const PAGE_SIZE = 1000;
-    const paramValues: { param_version_id: string; name: string; value: string }[] = [];
-    for (let from = 0; ; from += PAGE_SIZE) {
-      const { data: page } = await supabase
-        .from("param_values")
-        .select("param_version_id, name, value")
-        .in("param_version_id", versionIds)
-        .order("name")
-        .range(from, from + PAGE_SIZE - 1);
-      if (!page || page.length === 0) break;
-      paramValues.push(...page);
-      if (page.length < PAGE_SIZE) break;
-    }
+    const PAGE_SIZE = 500;
 
-    // Pivot: name → versionId → value
+    // Fetch each version independently to avoid pagination boundary issues
+    // that occur when using .in() across multiple large versions.
     const valuesByVersion = new Map<string, Map<string, string>>();
-    for (const pv of paramValues) {
-      let m = valuesByVersion.get(pv.param_version_id);
-      if (!m) {
-        m = new Map();
-        valuesByVersion.set(pv.param_version_id, m);
+    for (const versionId of latestVersionByClientSet.values()) {
+      const paramMap = new Map<string, string>();
+      for (let from = 0; ; from += PAGE_SIZE) {
+        const { data: page } = await supabase
+          .from("param_values")
+          .select("name, value")
+          .eq("param_version_id", versionId)
+          .order("name")
+          .range(from, from + PAGE_SIZE - 1);
+        if (!page || page.length === 0) break;
+        for (const { name, value } of page) paramMap.set(name, value);
+        if (page.length < PAGE_SIZE) break;
       }
-      m.set(pv.name, pv.value);
+      valuesByVersion.set(versionId, paramMap);
     }
 
     const defaultVersionId = latestVersionByClientSet.get(defaultSet.id)!;
@@ -88,7 +82,7 @@ async function getData(familySlug: string, variantId: string) {
       const allNames = new Set<string>([...defaultValues.keys(), ...csValues.keys()]);
       let diff = 0;
       for (const name of allNames) {
-        if (defaultValues.get(name) !== csValues.get(name)) diff++;
+        if (!paramValuesEqual(defaultValues.get(name) ?? "", csValues.get(name) ?? "")) diff++;
       }
       diffCountByClientSet.set(csId, diff);
     }

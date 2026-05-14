@@ -87,17 +87,21 @@ export async function DELETE(
 
   const admin = createAdminClient();
 
-  // Block deletion if any client_set references this drone.
-  const { count } = await admin
+  // Cascade: delete all client_sets (and their param files) linked to this drone
+  const { data: clientSets } = await admin
     .from("client_sets")
-    .select("id", { count: "exact", head: true })
+    .select("id")
     .eq("drone_id", id);
 
-  if (count && count > 0) {
-    return NextResponse.json(
-      { error: `Cannot delete: ${count} client set${count === 1 ? "" : "s"} reference this drone` },
-      { status: 409 }
-    );
+  for (const cs of clientSets ?? []) {
+    const { data: versions } = await admin
+      .from("param_versions")
+      .select("storage_path")
+      .eq("client_set_id", cs.id);
+    if (versions?.length) {
+      await admin.storage.from("param-files").remove(versions.map((v) => v.storage_path).filter(Boolean));
+    }
+    await admin.from("client_sets").delete().eq("id", cs.id);
   }
 
   const { error } = await admin.from("drones").delete().eq("id", id);

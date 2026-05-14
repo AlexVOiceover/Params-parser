@@ -1,0 +1,10 @@
+{
+  "description": "Params that are shown in diffs and compare but cannot be manually edited. These are managed automatically by the app or are system-critical. Edit this file to add or remove entries — no TypeScript changes needed.",
+  "params": [
+    { "name": "SCR_ENABLE",  "reason": "Managed automatically by the app — must always be 1 for versioning to work" },
+    { "name": "SCR_USER1",   "reason": "Drone serial identity, written only during registration" },
+    { "name": "SCR_USER2",   "reason": "Catalog version marker, written only during flash/update" },
+    { "name": "FORMAT_VERSION", "reason": "ArduPilot internal EEPROM format version, set by firmware" },
+    { "name": "SYSID_THISMAV",  "reason": "MAVLink system ID — changing this breaks communication" }
+  ]
+}

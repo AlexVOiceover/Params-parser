@@ -88,7 +88,9 @@ export async function POST(
       if (page.length < 1000) break;
     }
     if (pvRows.length) {
-      const rows = pvRows.map((pv) => ({ param_version_id: newVersion.id, name: pv.name, value: pv.value }));
+      const pvMap = new Map(pvRows.map((pv) => [pv.name, pv.value]));
+      pvMap.set("SCR_ENABLE", "1");
+      const rows = Array.from(pvMap.entries()).map(([name, value]) => ({ param_version_id: newVersion.id, name, value }));
       for (let i = 0; i < rows.length; i += 500) {
         await admin.from("param_values").insert(rows.slice(i, i + 500));
       }

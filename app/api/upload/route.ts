@@ -203,6 +203,8 @@ export async function POST(request: NextRequest) {
         // 8. Store param values — deduplicate by name first (last occurrence wins)
         //    so .param files with duplicate entries don't create duplicate DB rows.
         const paramMap = new Map(parsedParams.map(({ name, value }) => [name, value]));
+        // Always enforce SCR_ENABLE=1 — required for SCR_USER1/2 to persist
+        paramMap.set("SCR_ENABLE", "1");
         const paramValues = Array.from(paramMap.entries()).map(([name, value]) => ({
           param_version_id: pv.id,
           name,

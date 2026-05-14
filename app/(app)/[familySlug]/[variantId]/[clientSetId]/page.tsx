@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { createSessionClient } from "@/lib/supabase/server";
 import { ParamVersionList } from "@/components/param-version-list";
-import { RUNTIME_PARAMS } from "@/lib/param-engine";
+import { RUNTIME_PARAMS, paramValuesEqual } from "@/lib/param-engine";
 import type { Family, Variant, ClientSet, ParamVersion } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -90,7 +90,7 @@ async function getData(familySlug: string, variantId: string, clientSetId: strin
       let diff = 0;
       for (const name of allNames) {
         if (RUNTIME_PARAMS.has(name)) continue;
-        if (prev.get(name) !== curr.get(name)) diff++;
+        if (!paramValuesEqual(prev.get(name) ?? "", curr.get(name) ?? "")) diff++;
       }
       diffVsPrev.set(sorted[i].id, diff);
     }
