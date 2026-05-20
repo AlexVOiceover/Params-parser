@@ -1,4 +1,5 @@
-flash firmware
+Do set home a different tool icon.
+DO set ROI
 
-Layer over mission PLanner
+Change speed if moved to first or last lost geographical postion
 

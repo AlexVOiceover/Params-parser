@@ -15,7 +15,9 @@ import {
   Sun,
   Layers,
   Moon,
+  Map as MapIcon,
 } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { useAuth } from "@/components/auth-provider";
 import { useSerialMode } from "@/lib/use-serial-mode";
@@ -26,6 +28,8 @@ const navLinkClass =
   "flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap";
 
 export function AppHeader() {
+  const pathname = usePathname();
+  const isMission = pathname === "/mission";
   const { droneParams, openImportDialog } = useDroneParams();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
@@ -118,6 +122,15 @@ export function AppHeader() {
         v{CURRENT_VERSION}
       </button>
       <div className="flex-1" />
+
+      <Link
+        href={isMission ? "/" : "/mission"}
+        title={isMission ? "Back to Catalog" : "Mission planner"}
+        className="flex items-center gap-1.5 rounded-md border border-border px-2 sm:px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap shrink-0"
+      >
+        <MapIcon className="h-3.5 w-3.5" />
+        <span className="hidden sm:inline">{isMission ? "Catalog" : "Mission"}</span>
+      </Link>
 
       {hasWebSerial && (
         <button

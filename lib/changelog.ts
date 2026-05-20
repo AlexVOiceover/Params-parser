@@ -6,6 +6,16 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.19.0",
+    date: "2026-05-20",
+    items: [
+      "Mission planner — create and edit waypoint missions on a Mapbox satellite map",
+      "Full MAVLink command set with smart per-command parameter editor and expert mode",
+      "Save and load .waypoints files compatible with Mission Planner and QGroundControl",
+      "Undo support (Ctrl+Z) and drag-and-drop reordering in the waypoint list",
+    ],
+  },
+  {
     version: "0.18.0",
     date: "2026-05-14",
     items: [
