@@ -15,6 +15,10 @@ export async function POST(request: NextRequest) {
     clientSetId: string;
     versionLabel: string;
     params: { name: string; value: string }[];
+    /** If true, mark existing versions in the client_set as not-latest and the
+     *  new version as latest. Default false (used by the "capture-for-review"
+     *  flow that does not promote the capture above the curated version). */
+    isLatest?: boolean;
   };
 
   if (!body.clientSetId || !body.versionLabel || !Array.isArray(body.params)) {
@@ -23,6 +27,14 @@ export async function POST(request: NextRequest) {
 
   const admin = createAdminClient();
 
+  // Demote previous latest in this client_set so the new one becomes latest.
+  if (body.isLatest) {
+    await admin
+      .from("param_versions")
+      .update({ is_latest: false })
+      .eq("client_set_id", body.clientSetId);
+  }
+
   const { data: version, error: versionError } = await admin
     .from("param_versions")
     .insert({
@@ -30,7 +42,7 @@ export async function POST(request: NextRequest) {
       version_label: body.versionLabel,
       storage_path: "",
       needs_review: true,
-      is_latest: false,
+      is_latest: body.isLatest === true,
       created_by: user.id,
     })
     .select("id")

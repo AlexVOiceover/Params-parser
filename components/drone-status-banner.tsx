@@ -126,7 +126,7 @@ export function DroneStatusBanner() {
         </button>
       )}
     </div>
-    {showRegister && <RegisterDroneModal onClose={() => setShowRegister(false)} />}
+    {showRegister && <RegisterDroneModal mode="capture" onClose={() => setShowRegister(false)} />}
     </>
   );
 }

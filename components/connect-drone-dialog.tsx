@@ -6,7 +6,7 @@ import { openDroneConnection } from "@/lib/mavlink-serial";
 import { getStoredDroneParamsCount, useDroneParams } from "@/lib/drone-params-context";
 import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
 import { useSerialMode } from "@/lib/use-serial-mode";
-import { RegisterDroneModal } from "@/components/register-drone-modal";
+import { RegisterDroneModal, type RegisterMode } from "@/components/register-drone-modal";
 import { useAuth } from "@/components/auth-provider";
 import type { Param } from "@/lib/types";
 
@@ -48,7 +48,7 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
   const match = useConnectedDroneMatch();
   const { droneParams } = useDroneParams();
   const { role } = useAuth();
-  const [showRegister, setShowRegister] = useState(false);
+  const [registerMode, setRegisterMode] = useState<RegisterMode | null>(null);
   const [capturing, setCapturing] = useState(false);
   const [captureResult, setCaptureResult] = useState<string | null>(null);
 
@@ -133,7 +133,13 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
 
   return (
     <>
-    {showRegister && <RegisterDroneModal onClose={() => setShowRegister(false)} />}
+    {registerMode && (
+      <RegisterDroneModal
+        mode={registerMode}
+        onClose={() => setRegisterMode(null)}
+        onSuccess={() => { setRegisterMode(null); handleClose(); }}
+      />
+    )}
     <div className="fixed inset-0 z-40 flex items-center justify-center">
       <div
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
@@ -230,17 +236,25 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
                         Drone identified
                       </p>
                       <div className="flex flex-col gap-0.5 text-xs">
-                        {[
-                          ["Drone serial", <span className="font-mono">{match.drone.serial}</span>],
-                          ["Client", match.isOrphan ? <span className="italic text-muted-foreground">No client</span> : (match.drone.client_name ?? "—")],
-                          ...(match.drone.family_name ? [["Family", match.drone.family_name]] : []),
-                          ...(match.drone.variant_name ? [["Variant", match.drone.variant_name]] : []),
-                        ].map(([label, value]) => (
-                          <div key={String(label)} className="flex items-baseline gap-1.5">
-                            <span className="text-muted-foreground shrink-0">{label}:</span>
-                            <span className="text-foreground">{value}</span>
-                          </div>
-                        ))}
+                        {(() => {
+                          const scrUser1Param = droneParams?.find((p) => p.name === "SCR_USER1");
+                          const scrUser1 = scrUser1Param ? parseInt(scrUser1Param.value, 10) : null;
+                          const rows: [string, React.ReactNode][] = [
+                            ["Catalog serial", <span className="font-mono">{match.drone.serial}</span>],
+                          ];
+                          if (scrUser1 !== null && Number.isFinite(scrUser1) && scrUser1 > 0) {
+                            rows.push(["Drone reports", <span className="font-mono">{scrUser1}</span>]);
+                          }
+                          rows.push(["Client", match.isOrphan ? <span className="italic text-muted-foreground">No client</span> : (match.drone.client_name ?? "—")]);
+                          if (match.drone.family_name) rows.push(["Family", match.drone.family_name]);
+                          if (match.drone.variant_name) rows.push(["Variant", match.drone.variant_name]);
+                          return rows.map(([label, value]) => (
+                            <div key={label} className="flex items-baseline gap-1.5">
+                              <span className="text-muted-foreground shrink-0">{label}:</span>
+                              <span className="text-foreground">{value}</span>
+                            </div>
+                          ));
+                        })()}
                       </div>
                       {match.versionStatus === "up_to_date" && match.droneVersion !== null && (
                         <p className="flex items-center gap-1.5 text-xs text-emerald-400">
@@ -307,16 +321,36 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
                   (match.droneVersion === null && (ms === "matched" || ms === "unmatched"));
                 if (!shouldShowRegister) return null;
                 return (
-                  <button
-                    type="button"
-                    onClick={() => setShowRegister(true)}
-                    className="flex items-center justify-center gap-2 rounded-md bg-primary hover:bg-primary/90 px-3 py-2 text-xs font-medium text-primary-foreground transition-colors cursor-pointer w-full mt-1"
-                  >
-                    <ClipboardList className="h-3.5 w-3.5 shrink-0" />
-                    {match.status === "matched" && match.droneVersion === null
-                      ? "Complete setup — flash defaults"
-                      : "Register this drone & flash defaults"}
-                  </button>
+                  <div className="flex flex-col gap-2 mt-1">
+                    {/* Primary: safe, preserves params */}
+                    <button
+                      type="button"
+                      onClick={() => setRegisterMode("capture")}
+                      className="flex flex-col items-start gap-0.5 rounded-md bg-primary hover:bg-primary/90 px-3 py-2.5 text-primary-foreground transition-colors cursor-pointer w-full text-left"
+                    >
+                      <div className="flex items-center gap-2 text-xs font-semibold">
+                        <ClipboardList className="h-3.5 w-3.5 shrink-0" />
+                        Register &amp; keep current params
+                      </div>
+                      <div className="text-[10px] opacity-80 pl-5">
+                        Captures the drone&apos;s params as v1. Only writes SCR identifiers.
+                      </div>
+                    </button>
+                    {/* Secondary: destructive, factory-fresh only */}
+                    <button
+                      type="button"
+                      onClick={() => setRegisterMode("flash")}
+                      className="flex flex-col items-start gap-0.5 rounded-md border border-amber-500/30 hover:bg-amber-500/5 px-3 py-2 text-foreground transition-colors cursor-pointer w-full text-left"
+                    >
+                      <div className="flex items-center gap-2 text-xs">
+                        <AlertTriangle className="h-3 w-3 shrink-0 text-amber-500" />
+                        Register &amp; flash defaults
+                      </div>
+                      <div className="text-[10px] text-muted-foreground pl-5">
+                        Overwrites all params with catalog Default. Factory-fresh drones only.
+                      </div>
+                    </button>
+                  </div>
                 );
               })()}
             </>
