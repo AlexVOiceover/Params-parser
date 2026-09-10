@@ -6,6 +6,28 @@ import { LogIn, Mail, CheckCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { devSignIn } from "./actions";
 
+/**
+ * Supabase surfaces raw throttling errors that mean nothing to a user — most
+ * notably "you can only request this after 0 seconds", where the remaining
+ * wait is rounded down to zero. Translate the ones people actually hit.
+ */
+function friendlyAuthError(message: string): string {
+  const m = message.toLowerCase();
+  if (m.includes("only request this after")) {
+    const secs = parseInt(/after (\d+) second/.exec(m)?.[1] ?? "0", 10);
+    return secs > 5
+      ? `Please wait ${secs} seconds before requesting another link.`
+      : "Please wait a few seconds before requesting another link.";
+  }
+  if (m.includes("rate limit")) {
+    return "Too many sign-in emails have been sent. Please wait a few minutes and try again.";
+  }
+  if (m.includes("signups not allowed") || m.includes("user not found")) {
+    return "No account found for that email. Ask an administrator to invite you.";
+  }
+  return message;
+}
+
 export default function LoginPage() {
   return (
     <Suspense fallback={null}>
@@ -79,7 +101,7 @@ function LoginPageInner() {
       });
 
       if (otpError) {
-        setError(otpError.message);
+        setError(friendlyAuthError(otpError.message));
         setLoading(false);
         return;
       }

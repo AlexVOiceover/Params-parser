@@ -6,6 +6,13 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.20.4",
+    date: "2026-09-10",
+    items: [
+      "Sign-in errors are now readable — no more \"you can only request this after 0 seconds\"",
+    ],
+  },
+  {
     version: "0.20.3",
     date: "2026-09-10",
     items: [
