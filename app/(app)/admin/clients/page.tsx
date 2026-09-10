@@ -51,7 +51,7 @@ export default async function ClientsPage() {
       </nav>
       <h1 className="text-xl font-semibold text-foreground mb-1">Clients</h1>
       <p className="text-sm text-muted-foreground mt-2 mb-6">
-        Companies that own drones in the catalog. To register a new drone, connect it via USB and use the Import button — the wizard will handle setup.
+        Companies that own drones in the catalog. Register a new drone by connecting it via USB and using the Import button, or expand a client and upload a param file you received.
       </p>
       <ClientsTable clients={clients} families={families} variants={variants} />
     </div>

@@ -38,6 +38,10 @@ export async function POST(request: NextRequest) {
         // Modes:
         //   "existing"        — clientSetId provided
         //   "new-client-set"  — variantId + clientName + serial (+ clientId/droneId) provided
+        //   "new-drone"       — variantId + clientId + serial provided; registers the
+        //                       drone inline, then creates its client_set. Used when a
+        //                       param set arrives by email for a drone that was
+        //                       never connected here.
         //   "default"         — variantId provided; resolves or creates the variant's Default client_set
         controller.enqueue(msg("Reading file…"));
         const formData = await request.formData();
@@ -45,7 +49,7 @@ export async function POST(request: NextRequest) {
         const variantId = formData.get("variantId") as string | null;
         let clientSetId = formData.get("clientSetId") as string | null;
         const clientId = formData.get("clientId") as string | null;
-        const droneId = formData.get("droneId") as string | null;
+        let droneId = formData.get("droneId") as string | null;
         const clientName = formData.get("clientName") as string | null;
         const serial = formData.get("serial") as string | null;
         const versionLabel = formData.get("versionLabel") as string;
@@ -69,6 +73,11 @@ export async function POST(request: NextRequest) {
         }
         if (mode === "default" && !variantId) {
           controller.enqueue(msg("Variant id is required", true));
+          controller.close();
+          return;
+        }
+        if (mode === "new-drone" && (!variantId || !clientId || !serial?.trim())) {
+          controller.enqueue(msg("Variant, client and serial are required", true));
           controller.close();
           return;
         }
@@ -111,11 +120,108 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // 3a-bis. new-drone mode — register the drone, then fall through to
+        // client_set creation with the id we just minted.
+        if (mode === "new-drone") {
+          const trimmedSerial = serial!.trim();
+          controller.enqueue(msg(`Registering drone "${trimmedSerial}"…`));
+
+          // Reuse an existing drone with this serial for this client if one is
+          // already registered, so re-uploading a file is idempotent.
+          const { data: existingDrone } = await admin
+            .from("drones")
+            .select("id, variant_id")
+            .eq("client_id", clientId!)
+            .eq("serial", trimmedSerial)
+            .maybeSingle();
+
+          if (existingDrone) {
+            if (existingDrone.variant_id !== variantId) {
+              controller.enqueue(msg(
+                `Drone "${trimmedSerial}" is already registered to this client on a different variant`,
+                true
+              ));
+              controller.close();
+              return;
+            }
+            droneId = existingDrone.id;
+            controller.enqueue(msg("Drone already registered — reusing it"));
+          } else {
+            // Adopt a matching orphan drone (registered at bring-up with no
+            // client) rather than creating a duplicate serial.
+            const { data: orphan } = await admin
+              .from("drones")
+              .select("id, variant_id")
+              .is("client_id", null)
+              .eq("serial", trimmedSerial)
+              .maybeSingle();
+
+            if (orphan && orphan.variant_id === variantId) {
+              const { error: adoptError } = await admin
+                .from("drones")
+                .update({ client_id: clientId! })
+                .eq("id", orphan.id);
+              if (adoptError) {
+                controller.enqueue(msg(`Failed to assign drone to client: ${adoptError.message}`, true));
+                controller.close();
+                return;
+              }
+              droneId = orphan.id;
+              controller.enqueue(msg("Adopted existing unassigned drone"));
+            } else {
+              const { data: newDrone, error: droneError } = await admin
+                .from("drones")
+                .insert({
+                  serial: trimmedSerial,
+                  variant_id: variantId!,
+                  client_id: clientId!,
+                  created_by: user.id,
+                })
+                .select("id")
+                .single();
+              if (droneError || !newDrone) {
+                const errMsg = droneError?.code === "23505"
+                  ? `A drone with serial "${trimmedSerial}" already exists`
+                  : (droneError?.message ?? "unknown error");
+                controller.enqueue(msg(`Failed to register drone: ${errMsg}`, true));
+                controller.close();
+                return;
+              }
+              droneId = newDrone.id;
+              controller.enqueue(msg("Drone registered"));
+            }
+          }
+
+          // Reuse the drone's client_set on this variant if it already has one.
+          const { data: existingCs } = await admin
+            .from("client_sets")
+            .select("id")
+            .eq("drone_id", droneId)
+            .eq("variant_id", variantId!)
+            .maybeSingle();
+          if (existingCs) clientSetId = existingCs.id;
+        }
+
         // 3b. Create new client set under existing variant if needed
-        if (mode === "new-client-set") {
-          controller.enqueue(msg(`Creating client set "${clientName} · ${serial}"…`));
+        if ((mode === "new-client-set" || mode === "new-drone") && !clientSetId) {
+          // new-drone mode identifies the client by id, so resolve its name here.
+          let resolvedClientName = clientName?.trim() ?? "";
+          if (!resolvedClientName && clientId) {
+            const { data: clientRow } = await admin
+              .from("clients")
+              .select("name")
+              .eq("id", clientId)
+              .maybeSingle();
+            resolvedClientName = clientRow?.name ?? "";
+          }
+          if (!resolvedClientName) {
+            controller.enqueue(msg("Could not resolve the client name", true));
+            controller.close();
+            return;
+          }
+          controller.enqueue(msg(`Creating client set "${resolvedClientName} · ${serial}"…`));
           const { data: newCs, error: csError } = await admin.from("client_sets").insert({
-            client_name: clientName!.trim(),
+            client_name: resolvedClientName,
             serial: serial!.trim(),
             variant_id: variantId!,
             client_id: clientId,

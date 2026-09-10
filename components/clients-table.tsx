@@ -3,9 +3,10 @@
 import { Fragment, useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronDown, ChevronRight, Trash2, Plus, X, Pencil, Check } from "lucide-react";
+import { ChevronDown, ChevronRight, Trash2, Plus, X, Pencil, Check, Upload, Usb } from "lucide-react";
 // Plus is still used for the Add client button below
 import { WriteNFCButton } from "@/components/write-nfc-button";
+import { UploadParamFileModal } from "@/components/upload-param-file-modal";
 
 export interface ClientWithDrones {
   id: string;
@@ -56,6 +57,11 @@ export function ClientsTable({ clients, families, variants }: Props) {
       return next;
     });
   }
+
+  // ── Upload a received param file ─────────────────────────
+  // Holds the client whose modal is open, so the client is implied by context
+  // rather than re-picked inside the modal.
+  const [uploadFor, setUploadFor] = useState<ClientWithDrones | null>(null);
 
   // ── Create client ────────────────────────────────────────
   const [showAddClient, setShowAddClient] = useState(false);
@@ -424,13 +430,26 @@ export function ClientsTable({ clients, families, variants }: Props) {
                       );
                     })}
 
-                    {/* Register hint */}
+                    {/* Add-drone actions — USB import, or a param file received by email */}
                     <tr className="border-b border-border bg-secondary/15">
                       <td className="px-3 py-1.5"></td>
                       <td colSpan={3} className="px-3 py-1.5 pl-8">
-                        <span className="text-[11px] text-muted-foreground italic">
-                          To add a drone, connect it via USB and use the Import button.
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setUploadFor(c)}
+                            className="flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-[11px] text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
+                          >
+                            <Upload className="h-3 w-3" />
+                            Upload param file
+                          </button>
+                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                            or connect the drone via
+                            <Usb className="h-3 w-3" />
+                            <span className="text-foreground">Import from drone</span>
+                            above.
+                          </span>
+                        </div>
                       </td>
                     </tr>
                   </>
@@ -488,6 +507,17 @@ export function ClientsTable({ clients, families, variants }: Props) {
           )}
         </tbody>
       </table>
+
+      {uploadFor && (
+        <UploadParamFileModal
+          clientId={uploadFor.id}
+          clientName={uploadFor.name}
+          families={families}
+          variants={variants}
+          drones={uploadFor.drones}
+          onClose={() => setUploadFor(null)}
+        />
+      )}
     </div>
   );
 }
