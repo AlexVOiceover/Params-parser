@@ -1,11 +1,13 @@
 {
   "name": "air6-param-filter",
-  "version": "1.0.2",
+  "version": "0.20.0",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
+    "check:version": "node scripts/check-version.mjs",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "prebuild": "node scripts/check-version.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

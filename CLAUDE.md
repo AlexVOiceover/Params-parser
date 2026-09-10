@@ -6,6 +6,12 @@
 - **Never** include "Co-authored by Claude", "Co-authored by Anthropic", or any AI attribution in commit messages or PR descriptions
 - Keep commit messages concise and focused on the *why*, not the *what*
 
+## Versioning
+
+- `lib/changelog.ts` is the **source of truth** for the app version — `CURRENT_VERSION` comes from `CHANGELOG[0].version` and drives the header badge and What's New dialog.
+- `package.json` must carry the **same** version. `npm run check:version` enforces this and runs automatically via `prebuild`, so a mismatch fails the build (including on Vercel).
+- Never push user-facing commits to `main` without adding a changelog entry covering them. Use `/ship`, which handles the bump, both files, and the checks.
+
 ## Project
 
 Next.js 15 web app (App Router) that filters ArduCopter `.param` files before applying them to drones.

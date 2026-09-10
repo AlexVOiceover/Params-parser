@@ -2,13 +2,13 @@ Commit all staged and unstaged changes, run quality checks, bump the app version
 
 ## Instructions
 
-1. **Get current branch** — run `git branch --show-current` and save as `BRANCH`. If it is `main`, stop and tell the user there is nothing to ship.
+1. **Get current branch** — run `git branch --show-current` and save as `BRANCH`. If it is `main`, you are shipping directly from main: still do steps 2–4 (commit, checks, version bump), then `git push origin main` and skip the merge/delete steps 6–7.
 
 2. **Commit pending work** — run `git add -A`, then check `git diff --cached --quiet`. If there are staged changes, ask the user for a commit message or derive one from the changes. Commit with that message (no AI attribution). Skip personal/transient files: `.vscode/settings.json`, `.claude/loop`. Use `git add -A -- ':!.vscode/settings.json' ':!.claude/loop'` rather than a plain `git add -A`.
 
 3. **Quality checks** — run these before pushing:
-   - `npx svelte-check --threshold error` — fix any type errors before continuing
-   - `npx eslint .` — fix any lint errors before continuing
+   - `npx tsc --noEmit` — fix any type errors before continuing
+   - `npm run build` — must compile clean; this also runs the version consistency check
    - If either fails, fix the errors, commit the fixes, then re-run checks until clean
 
 4. **Bump the app version** — `lib/changelog.ts` exports `CURRENT_VERSION` (derived from `CHANGELOG[0].version`) and a `CHANGELOG` array (newest first). Bump and prepend a new entry:
@@ -36,11 +36,17 @@ Commit all staged and unstaged changes, run quality checks, bump the app version
         ```
       - Get today's date from `date +%F` (don't use the model's notion of "today").
 
-   d. **Commit the bump** as its own commit:
+   d. **Update `package.json`** — set `"version"` to the same `<new-version>`.
+      `lib/changelog.ts` is the source of truth, but the two must always match:
+      `npm run check:version` fails the build otherwise.
+
+   e. **Commit the bump** as its own commit:
       ```
-      git add lib/changelog.ts
+      git add lib/changelog.ts package.json
       git commit -m "chore: release v<new-version>"
       ```
+
+   f. **Verify** — run `npm run check:version`; it must print `✓ Version <new-version> consistent`.
 
 5. **Push** — run `git push -u origin $BRANCH`.
 
@@ -68,6 +74,8 @@ Commit all staged and unstaged changes, run quality checks, bump the app version
 - **Never ask the user about the bump kind or changelog** — decide both yourself from the branch name and commits.
 - **Never auto-decide a major bump** without a `BREAKING CHANGE:` in a commit message.
 - **Don't include AI attribution** in commit messages or changelog entries.
-- **Bump the version on the feature branch**, not on main. The bump commit is part of the merge.
+- **Bump the version on the branch you are shipping from.** On a feature branch the bump commit is part of the merge; when shipping directly from `main` it is the last commit before the push.
 - **If the version bump fails** (file missing, parse error, etc.), abort the ship and surface the error — don't silently push without a bump.
 - **Today's date** comes from `date +%F`, not from the model's training cutoff.
+- **`package.json` and `lib/changelog.ts` must always carry the same version.** `lib/changelog.ts` is the source of truth (it drives `CURRENT_VERSION` and the header badge); `package.json` mirrors it. `npm run check:version` enforces this and runs automatically before every build, including on Vercel.
+- **Never push user-facing commits to `main` without a release entry.** Before pushing, run `git log --oneline $(git describe --tags --abbrev=0 2>/dev/null || echo HEAD~10)..HEAD` — if there are unreleased user-facing commits, bump and add a changelog entry covering *all* of them, not just the most recent.
