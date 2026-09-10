@@ -6,6 +6,13 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.21.0",
+    date: "2026-09-10",
+    items: [
+      "Sign in with the code from the email instead of the link — works even when a mail scanner opens links before you do",
+    ],
+  },
+  {
     version: "0.20.5",
     date: "2026-09-10",
     items: [

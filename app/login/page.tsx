@@ -52,6 +52,10 @@ function LoginPageInner() {
   const [error, setError] = useState<string | null>(urlError);
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  // Six-digit code step. Link scanners (Outlook/Hotmail Safe Links) pre-fetch
+  // URLs and burn the single-use token, so the code is the reliable path.
+  const [code, setCode] = useState("");
+  const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
     setError(urlError);
@@ -117,6 +121,39 @@ function LoginPageInner() {
     }
   }
 
+  async function handleVerifyCode(e: React.FormEvent) {
+    e.preventDefault();
+    const token = code.replace(/\D/g, "");
+    if (token.length < 6) {
+      setError("Enter the code from the email.");
+      return;
+    }
+    setVerifying(true);
+    setError(null);
+
+    const supabase = createClient();
+    if (!supabase) {
+      setError("Auth not configured.");
+      setVerifying(false);
+      return;
+    }
+
+    const { error: verifyErr } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: "email",
+    });
+
+    if (verifyErr) {
+      setError(friendlyAuthError(verifyErr.message));
+      setVerifying(false);
+      return;
+    }
+
+    // Hard navigate so the server sees the freshly written auth cookie.
+    window.location.href = next;
+  }
+
   return (
     <div className="w-full max-w-sm rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
       <div className="flex items-center gap-2 border-b border-border bg-toolbar px-5 py-4">
@@ -125,13 +162,52 @@ function LoginPageInner() {
       </div>
 
       {sent ? (
-        <div className="p-5 flex flex-col gap-3 items-center text-center">
-          <CheckCircle className="h-10 w-10 text-emerald-400" />
-          <p className="text-sm font-medium text-foreground">Check your email</p>
-          <p className="text-xs text-muted-foreground">
-            We sent a magic link to <span className="font-medium text-foreground">{email}</span>. Click it to sign in — you can close this tab.
-          </p>
-        </div>
+        <form onSubmit={handleVerifyCode} className="p-5 flex flex-col gap-3">
+          <div className="flex flex-col items-center text-center gap-2">
+            <CheckCircle className="h-9 w-9 text-emerald-400" />
+            <p className="text-sm font-medium text-foreground">Check your email</p>
+            <p className="text-xs text-muted-foreground">
+              We sent a sign-in code to <span className="font-medium text-foreground">{email}</span>.
+              Enter it below — or click the link in the same email.
+            </p>
+          </div>
+
+          <label className="flex flex-col gap-1.5 mt-1" htmlFor="otp-code">
+            <span className="text-xs font-medium text-muted-foreground">Code</span>
+            <input
+              id="otp-code"
+              value={code}
+              onChange={(e) => { setCode(e.target.value); setError(null); }}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={8}
+              placeholder="12345678"
+              className="rounded-md border border-border bg-secondary px-3 py-2 text-center font-mono text-lg tracking-[0.3em] text-foreground placeholder:text-muted-foreground placeholder:tracking-normal outline-none focus:ring-1 focus:ring-ring"
+            />
+          </label>
+
+          {error && (
+            <p className="text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded-md px-3 py-2">
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={verifying || code.replace(/\D/g, "").length < 6}
+            className="flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
+          >
+            {verifying ? "Verifying…" : "Sign in"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setSent(false); setCode(""); setError(null); }}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer whitespace-nowrap"
+          >
+            Use a different email
+          </button>
+        </form>
       ) : (
         <form onSubmit={handleSubmit} className="p-5 flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
