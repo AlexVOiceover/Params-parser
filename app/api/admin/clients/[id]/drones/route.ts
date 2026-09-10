@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createSupabase, createSessionClient, createAdminClient } from "@/lib/supabase/server";
+import { createSessionClient, createAdminClient } from "@/lib/supabase/server";
+import { requireContributor } from "@/lib/supabase/auth";
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { data, error } = await createSupabase()
+  if (!await requireContributor()) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  const { data, error } = await (await createSessionClient())
     .from("drones")
     .select("id, serial, variant_id")
     .eq("client_id", id)

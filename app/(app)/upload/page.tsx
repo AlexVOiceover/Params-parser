@@ -20,12 +20,13 @@ export default async function UploadPage() {
     .eq("id", user.id)
     .single();
 
-  if (!profile || !["contributor", "admin", "client"].includes(profile.role)) {
+  // /api/upload only accepts contributor and admin, so a client user would get
+  // a form that can never submit. Keep the page and the route in agreement.
+  if (!profile || !["contributor", "admin"].includes(profile.role)) {
     redirect("/");
   }
-  if (profile.role === "client" && !profile.client_id) {
-    redirect("/");
-  }
+  // Kept as the wider union because UploadForm and the scoping below still
+  // handle "client"; the redirect above is what currently excludes them.
   const role = profile.role as "admin" | "contributor" | "client";
   const userClientId = profile.client_id as string | null;
 
@@ -76,23 +77,47 @@ export default async function UploadPage() {
     ? (dronesData ?? []).filter((d) => d.client_id === userClientId)
     : (dronesData ?? []);
 
+  // These are read with the service-role client, which bypasses RLS, so they
+  // must be re-scoped by hand — otherwise a client user's form receives every
+  // client_set in the system.
+  const visibleDroneIds = new Set(visibleDrones.map((d) => d.id));
+  const visibleClientSets = role === "client"
+    ? (clientSetsData ?? []).filter(
+        (cs) => cs.client_id === userClientId || (cs.drone_id && visibleDroneIds.has(cs.drone_id))
+      )
+    : (clientSetsData ?? []);
+  // Variants and families are only kept where the user has a drone on them.
+  const visibleVariantIds = role === "client"
+    ? new Set(visibleDrones.map((d) => d.variant_id))
+    : null;
+  const visibleVariants = visibleVariantIds
+    ? (variantsData ?? []).filter((v) => visibleVariantIds.has(v.id))
+    : (variantsData ?? []);
+  const visibleFamilyIds = new Set(visibleVariants.map((v) => v.family_id).filter(Boolean));
+  const visibleFamilies = visibleVariantIds
+    ? (familiesData ?? []).filter((f) => visibleFamilyIds.has(f.id))
+    : (familiesData ?? []);
+
   const data: UploadFormData = {
     clients: visibleClients,
     drones: visibleDrones,
-    families: familiesData ?? [],
-    variants: (variantsData ?? []).map((v) => ({
+    families: visibleFamilies,
+    variants: (visibleVariants).map((v) => ({
       id: v.id,
       name: v.name,
       family_id: v.family_id ?? "",
     })),
-    clientSets: (clientSetsData ?? []).map((cs) => ({
+    clientSets: (visibleClientSets).map((cs) => ({
       id: cs.id,
       client_id: cs.client_id ?? "",
       drone_id: cs.drone_id ?? "",
       variant_id: cs.variant_id,
       nextMajor: (maxMajorByClientSet.get(cs.id) ?? 0) + 1,
     })),
-    defaultClientSets: (defaultClientSetsData ?? []).map((cs) => ({
+    defaultClientSets: (visibleVariantIds
+      ? (defaultClientSetsData ?? []).filter((cs) => visibleVariantIds.has(cs.variant_id))
+      : (defaultClientSetsData ?? [])
+    ).map((cs) => ({
       id: cs.id,
       variant_id: cs.variant_id,
       nextMajor: (maxMajorByClientSet.get(cs.id) ?? 0) + 1,

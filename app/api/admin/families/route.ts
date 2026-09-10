@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient, createSessionClient, createAdminClient } from "@/lib/supabase/server";
+import { createSessionClient, createAdminClient } from "@/lib/supabase/server";
+import { requireContributor } from "@/lib/supabase/auth";
 
 export async function GET() {
-  const { data, error } = await createClient()
+  if (!await requireContributor()) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  const { data, error } = await (await createSessionClient())
     .from("families")
     .select("id, name")
     .order("name");

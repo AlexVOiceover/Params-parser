@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSessionClient, createAdminClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/server";
+import { requireContributor } from "@/lib/supabase/auth";
 
 export async function POST(request: NextRequest) {
-  const supabase = await createSessionClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  if (profile?.role !== "admin" && profile?.role !== "contributor") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const caller = await requireContributor();
+  if (!caller) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const user = { id: caller.id };
 
   const body = await request.json() as {
     clientSetId: string;
@@ -26,6 +22,18 @@ export async function POST(request: NextRequest) {
   }
 
   const admin = createAdminClient();
+
+  // The client_set id comes from the request, so confirm it exists before
+  // writing through the service-role client — otherwise any contributor could
+  // inject a version into any client's drone.
+  const { data: targetSet } = await admin
+    .from("client_sets")
+    .select("id")
+    .eq("id", body.clientSetId)
+    .maybeSingle();
+  if (!targetSet) {
+    return NextResponse.json({ error: "Unknown param set" }, { status: 404 });
+  }
 
   // Demote previous latest in this client_set so the new one becomes latest.
   if (body.isLatest) {

@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createSupabase, createSessionClient, createAdminClient } from "@/lib/supabase/server";
+import { createSessionClient, createAdminClient } from "@/lib/supabase/server";
+import { requireContributor } from "@/lib/supabase/auth";
 
 export async function GET() {
-  const { data, error } = await createSupabase()
+  // Anon client returns nothing under RLS anyway; gate explicitly so this
+  // admin-prefixed endpoint does not rely on RLS alone.
+  if (!await requireContributor()) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  const { data, error } = await (await createSessionClient())
     .from("clients")
     .select("id, name")
     .order("name");

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSessionClient, createAdminClient } from "@/lib/supabase/server";
+import { requireContributor } from "@/lib/supabase/auth";
 import { writeParamFile } from "@/lib/param-engine";
 
 /**
@@ -15,19 +16,24 @@ export async function PATCH(
 ) {
   const { id } = await params;
 
-  const supabase = await createSessionClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  if (!profile || !["admin", "contributor"].includes(profile.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const caller = await requireContributor();
+  if (!caller) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const body = await request.json() as { edits: Record<string, number> };
   if (!body.edits || typeof body.edits !== "object") {
     return NextResponse.json({ error: "edits object required" }, { status: 400 });
   }
+
+  // Confirm the caller can actually see this version under RLS before writing
+  // through the service-role client, which bypasses RLS entirely. Without this
+  // any version id in the system could be rewritten by id alone.
+  const supabase = await createSessionClient();
+  const { data: visible } = await supabase
+    .from("param_versions")
+    .select("id")
+    .eq("id", id)
+    .maybeSingle();
+  if (!visible) return NextResponse.json({ error: "Version not found" }, { status: 404 });
 
   const admin = createAdminClient();
 

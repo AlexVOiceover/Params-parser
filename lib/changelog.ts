@@ -6,6 +6,15 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.21.2",
+    date: "2026-09-10",
+    items: [
+      "Security: param versions can no longer be written or rewritten by id alone",
+      "Security: the upload page no longer exposes other clients' drones and param sets",
+      "Admin endpoints now check permission directly instead of relying on database rules alone",
+    ],
+  },
+  {
     version: "0.21.1",
     date: "2026-09-10",
     items: [
