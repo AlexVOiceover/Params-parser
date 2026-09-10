@@ -6,6 +6,18 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.20.0",
+    date: "2026-09-10",
+    items: [
+      "Upload a param set received by email straight to a client — no USB connection needed, the drone is registered from the file's serial",
+      "Compare a version against a .param file that isn't in the catalog — the file stays in your browser and is never saved",
+      "Comparing is now one button: pick versions, add a file, or both",
+      "Registering a drone can now keep its current params as v1 instead of flashing defaults",
+      "Fixed column resizing on the compare table",
+      "Mission planner is now admin-only",
+    ],
+  },
+  {
     version: "0.19.0",
     date: "2026-05-20",
     items: [
