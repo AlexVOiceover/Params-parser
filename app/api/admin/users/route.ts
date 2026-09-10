@@ -26,7 +26,12 @@ export async function POST(request: NextRequest) {
   if (role !== "client" && clientId) return NextResponse.json({ error: "Client must be empty for non-client roles" }, { status: 400 });
 
   const admin = createAdminClient();
-  const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email);
+  // Without redirectTo the invite link points at Supabase's default Site URL
+  // instead of this app's callback, and the invited user lands on an auth error.
+  const origin = new URL(request.url).origin;
+  const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
+    redirectTo: `${origin}/auth/callback`,
+  });
   if (inviteErr || !invited?.user) {
     return NextResponse.json({ error: inviteErr?.message ?? "Invite failed" }, { status: 500 });
   }

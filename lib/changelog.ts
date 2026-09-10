@@ -6,6 +6,13 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.20.1",
+    date: "2026-09-10",
+    items: [
+      "Fixed invited users landing on \"Authentication failed\" instead of being signed in",
+    ],
+  },
+  {
     version: "0.20.0",
     date: "2026-09-10",
     items: [
