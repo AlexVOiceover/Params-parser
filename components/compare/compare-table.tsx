@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { SlidersHorizontal, Info, Upload, X, RotateCcw, Search, GitCompareArrows, FileDown, Copy, Check } from "lucide-react";
 import { validateParam, paramValuesEqual, LOCKED_PARAMS } from "@/lib/param-engine";
+import { FILE_VERSION_ID } from "@/lib/file-compare-shared";
 import type { CompareVersion, CompareRow, ParamDefinition } from "@/lib/types";
 
 interface Props {
@@ -60,11 +61,29 @@ export function CompareTable({
     if (!writeMode && showModifiedOnly) setShowModifiedOnly(false);
   }
 
-  // column widths: index 0 = param name col, 1..n = version cols
+  // column widths: index 0 = param name col, 1..n = version cols.
+  // The table is sized to the sum of these, so they stay authoritative while
+  // dragging — a stretched table would let the browser override them.
   const [colWidths, setColWidths] = useState<number[]>(() => [
     PARAM_COL_DEFAULT,
     ...versions.map(() => VERSION_COL_DEFAULT),
   ]);
+
+  // Fill the available width on first layout (and when the column count
+  // changes), so a few columns don't sit bunched up on the left.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const autoSizedFor = useRef<number>(-1);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || autoSizedFor.current === versions.length) return;
+    const available = el.clientWidth;
+    if (!available) return;
+    autoSizedFor.current = versions.length;
+    const forVersions = available - PARAM_COL_DEFAULT;
+    if (versions.length === 0 || forVersions <= 0) return;
+    const each = Math.max(VERSION_COL_DEFAULT, Math.floor(forVersions / versions.length));
+    setColWidths([PARAM_COL_DEFAULT, ...versions.map(() => each)]);
+  }, [versions.length]);
 
   const dragState = useRef<{ colIndex: number; startX: number; startWidth: number } | null>(null);
 
@@ -301,20 +320,20 @@ export function CompareTable({
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-auto">
+      <div ref={scrollRef} className="flex-1 overflow-auto">
         <div className={versions.length === 1 ? "mx-auto max-w-3xl" : ""}>
           <table
-            className="border-collapse w-full"
-            style={{ tableLayout: "fixed", minWidth: colWidths.reduce((a, b) => a + b, 0) }}
+            className="border-collapse"
+            style={{ tableLayout: "fixed", width: colWidths.reduce((a, b) => a + b, 0) }}
           >
             <colgroup>
               {colWidths.map((w, i) => (
-                <col key={i} style={i === colWidths.length - 1 ? undefined : { width: w }} />
+                <col key={i} style={{ width: w }} />
               ))}
             </colgroup>
           <thead className="sticky top-0 z-30">
             <tr className="border-b border-border text-xs text-muted-foreground">
-              <th className="sticky left-0 z-20 bg-secondary px-4 py-2.5 text-left font-medium overflow-hidden" style={{ width: colWidths[0], boxShadow: "inset -1px 0 0 hsl(var(--border))" }}>
+              <th className="relative sticky left-0 z-20 bg-secondary px-4 py-2.5 text-left font-medium overflow-hidden" style={{ width: colWidths[0], boxShadow: "inset -1px 0 0 hsl(var(--border))" }}>
                 Param
                 <ResizeHandle colIndex={0} />
               </th>
@@ -452,7 +471,7 @@ export function CompareTable({
                       // Cells in editable columns: clicking activates write mode
                       // for that column and immediately opens the input.
                       const isLocked = LOCKED_PARAMS.has(row.name);
-                      const isEditable = onToggleWriteMode && vid !== "live" && !isMissing && !isLocked;
+                      const isEditable = onToggleWriteMode && vid !== "live" && vid !== FILE_VERSION_ID && !isMissing && !isLocked;
                       return (
                         <td
                           key={vid}
