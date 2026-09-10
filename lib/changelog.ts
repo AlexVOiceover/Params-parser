@@ -6,6 +6,13 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.20.3",
+    date: "2026-09-10",
+    items: [
+      "Fixed sign-in links failing with \"Authentication failed\" — the session arrives in a URL fragment that only the browser can read",
+    ],
+  },
+  {
     version: "0.20.2",
     date: "2026-09-10",
     items: [
