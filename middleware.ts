@@ -36,7 +36,7 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   const path = request.nextUrl.pathname;
-  const needsAuth = path.startsWith("/admin") || path.startsWith("/upload");
+  const needsAuth = path.startsWith("/admin") || path.startsWith("/upload") || path.startsWith("/mission");
 
   if (needsAuth && !user) {
     const url = request.nextUrl.clone();
@@ -46,13 +46,18 @@ export async function middleware(request: NextRequest) {
 
   // Block client-role users from /admin/*; the page-level redirect would
   // catch them too, but middleware short-circuits the request earlier.
-  if (user && path.startsWith("/admin")) {
+  // /mission is admin-only, so anything below admin is turned away here —
+  // hiding the header button alone would leave the URL reachable.
+  if (user && (path.startsWith("/admin") || path.startsWith("/mission"))) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")
       .eq("id", user.id)
       .single();
-    if (profile?.role === "client") {
+    const blocked = path.startsWith("/mission")
+      ? profile?.role !== "admin"
+      : profile?.role === "client";
+    if (blocked) {
       const url = request.nextUrl.clone();
       url.pathname = "/";
       return NextResponse.redirect(url);

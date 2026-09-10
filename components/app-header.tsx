@@ -123,14 +123,16 @@ export function AppHeader() {
       </button>
       <div className="flex-1" />
 
-      <Link
-        href={isMission ? "/" : "/mission"}
-        title={isMission ? "Back to Catalog" : "Mission planner"}
-        className="flex items-center gap-1.5 rounded-md border border-border px-2 sm:px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap shrink-0"
-      >
-        <MapIcon className="h-3.5 w-3.5" />
-        <span className="hidden sm:inline">{isMission ? "Catalog" : "Mission"}</span>
-      </Link>
+      {isAdmin && (
+        <Link
+          href={isMission ? "/" : "/mission"}
+          title={isMission ? "Back to Catalog" : "Mission planner"}
+          className="flex items-center gap-1.5 rounded-md border border-border px-2 sm:px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap shrink-0"
+        >
+          <MapIcon className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">{isMission ? "Catalog" : "Mission"}</span>
+        </Link>
+      )}
 
       {hasWebSerial && (
         <button
