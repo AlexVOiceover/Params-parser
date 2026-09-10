@@ -6,6 +6,13 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.21.1",
+    date: "2026-09-10",
+    items: [
+      "Security: closed a hole that let a signed-in user change their own role or switch to another client's data",
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-09-10",
     items: [
