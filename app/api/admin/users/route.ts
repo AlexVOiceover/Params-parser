@@ -29,11 +29,45 @@ export async function POST(request: NextRequest) {
   // Without redirectTo the invite link points at Supabase's default Site URL
   // instead of this app's callback, and the invited user lands on an auth error.
   const origin = new URL(request.url).origin;
+  const redirectTo = `${origin}/auth/callback`;
+
+  let userId: string | null = null;
+  let resent = false;
+
   const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
-    redirectTo: `${origin}/auth/callback`,
+    redirectTo,
   });
-  if (inviteErr || !invited?.user) {
-    return NextResponse.json({ error: inviteErr?.message ?? "Invite failed" }, { status: 500 });
+
+  if (invited?.user) {
+    userId = invited.user.id;
+  } else {
+    // Already invited: inviteUserByEmail refuses a second time, which used to
+    // leave no way to resend. Send a fresh magic link instead so the admin can
+    // recover a lost or expired invite, and update the role either way.
+    const { data: existing } = await admin
+      .from("profiles")
+      .select("id")
+      .eq("username", email.split("@")[0])
+      .maybeSingle();
+
+    const { data: linkData, error: linkErr } = await admin.auth.admin.generateLink({
+      type: "magiclink",
+      email,
+      options: { redirectTo },
+    });
+
+    if (linkErr || !linkData?.user) {
+      return NextResponse.json(
+        { error: inviteErr?.message ?? linkErr?.message ?? "Invite failed" },
+        { status: 500 }
+      );
+    }
+    userId = linkData.user.id ?? existing?.id ?? null;
+    resent = true;
+  }
+
+  if (!userId) {
+    return NextResponse.json({ error: "Could not resolve the invited user" }, { status: 500 });
   }
 
   // Upsert the profile row with the chosen role and client_id.
@@ -43,11 +77,11 @@ export async function POST(request: NextRequest) {
   const username = email.split("@")[0];
   const { error: profileErr } = await admin
     .from("profiles")
-    .upsert({ id: invited.user.id, username, role, client_id: clientId });
+    .upsert({ id: userId, username, role, client_id: clientId });
 
   if (profileErr) {
     return NextResponse.json({ error: `Invite sent but role update failed: ${profileErr.message}` }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, resent });
 }

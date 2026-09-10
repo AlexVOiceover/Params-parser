@@ -16,6 +16,15 @@ export async function GET(request: NextRequest) {
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) return NextResponse.redirect(new URL(next, request.url));
+    // PKCE needs the code_verifier stored by the browser that requested the
+    // link. An invited user clicks in a different browser than the admin who
+    // sent it, so there is no verifier and the exchange fails. Fall back to
+    // verifying the code as a one-time token, which needs no local state.
+    const { error: otpError } = await supabase.auth.verifyOtp({
+      token_hash: code,
+      type: "email",
+    });
+    if (!otpError) return NextResponse.redirect(new URL(next, request.url));
     return NextResponse.redirect(new URL("/login?error=auth_failed", request.url));
   }
 

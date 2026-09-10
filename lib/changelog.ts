@@ -6,6 +6,14 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.20.2",
+    date: "2026-09-10",
+    items: [
+      "Fixed invited users landing on \"Authentication failed\" — sign-in links now work in any browser, not just the one that sent them",
+      "Inviting an existing email now resends a sign-in link and updates their role, instead of failing",
+    ],
+  },
+  {
     version: "0.20.1",
     date: "2026-09-10",
     items: [

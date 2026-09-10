@@ -161,6 +161,8 @@ export function AdminDashboard({ profiles, clients, currentUserId }: Props) {
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteSuccess, setInviteSuccess] = useState(false);
+  // True when the email already had an account and we sent a fresh link.
+  const [inviteResent, setInviteResent] = useState(false);
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault();
@@ -183,9 +185,11 @@ export function AdminDashboard({ profiles, clients, currentUserId }: Props) {
     });
     setInviting(false);
     if (res.ok) {
+      const body = await res.json().catch(() => ({}));
       setEmail("");
       setRole("contributor");
       setClientId("");
+      setInviteResent(body?.resent === true);
       setInviteSuccess(true);
       router.refresh();
     } else {
@@ -249,7 +253,7 @@ export function AdminDashboard({ profiles, clients, currentUserId }: Props) {
               type="email"
               required
               value={email}
-              onChange={(e) => { setEmail(e.target.value); setInviteSuccess(false); setInviteError(null); }}
+              onChange={(e) => { setEmail(e.target.value); setInviteSuccess(false); setInviteResent(false); setInviteError(null); }}
               placeholder="user@example.com"
               className="flex-1 min-w-48 rounded-md border border-border bg-secondary px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
             />
@@ -288,7 +292,11 @@ export function AdminDashboard({ profiles, clients, currentUserId }: Props) {
           </div>
         </form>
         {inviteSuccess && (
-          <p className="mt-2 text-xs text-green-400">Invite sent — they'll receive an email with a sign-in link.</p>
+          <p className="mt-2 text-xs text-green-400">
+            {inviteResent
+              ? "This email already had an account — a fresh sign-in link has been sent and the role updated."
+              : "Invite sent — they'll receive an email with a sign-in link."}
+          </p>
         )}
         {inviteError && (
           <p className="mt-2 text-xs text-destructive">{inviteError}</p>
