@@ -23,6 +23,18 @@ export default function AuthCallbackPage() {
     const search = new URLSearchParams(window.location.search);
     const next = search.get("next") ?? "/";
 
+    // Supabase reports failures in either the query or the fragment. Surface
+    // the real reason — an expired/used token is the common one, and the
+    // generic message sends people hunting for the wrong problem.
+    const errorCode =
+      search.get("error_code") ?? params.get("error_code");
+    if (errorCode) {
+      setFailed(true);
+      const reason = errorCode === "otp_expired" ? "link_used" : "auth_failed";
+      window.location.replace(`/login?error=${reason}`);
+      return;
+    }
+
     const supabase = createClient();
     if (!supabase) {
       setFailed(true);

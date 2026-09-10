@@ -40,8 +40,11 @@ function LoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") ?? "/";
+  const errParam = searchParams.get("error");
   const urlError =
-    searchParams.get("error") === "auth_failed"
+    errParam === "link_used"
+      ? "That sign-in link has expired or was already used. Request a new one below and open it in your browser."
+      : errParam === "auth_failed"
       ? "Authentication failed. Please request a new link."
       : null;
 

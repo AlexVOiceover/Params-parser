@@ -6,6 +6,13 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.20.5",
+    date: "2026-09-10",
+    items: [
+      "Expired or already-used sign-in links now say so, instead of a generic authentication error",
+    ],
+  },
+  {
     version: "0.20.4",
     date: "2026-09-10",
     items: [
