@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useTransition, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Filter, Download, Trash2, Copy, X, AlertTriangle, Upload, Eye, Usb, GitCompareArrows, CheckSquare, Square } from "lucide-react";
+import { Filter, Download, Trash2, Copy, X, AlertTriangle, Upload, Eye, Usb, GitCompareArrows, CheckSquare, Square, FileUp } from "lucide-react";
 import { ApplyUpdateButton } from "@/components/apply-update-button";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { useConnectedDroneMatch, clearDroneMatchCache } from "@/lib/use-connected-drone-match";
-import { writeParamFile } from "@/lib/param-engine";
+import { writeParamFile, parseParamFile } from "@/lib/param-engine";
+import { FILE_VERSION_ID, writeCompareFile } from "@/lib/file-compare-shared";
 
 interface ParamVersionRow {
   id: string;
@@ -110,12 +111,29 @@ export function ParamVersionList({
   const droneVersion = droneMatchesThisSet ? match.droneVersion : null;
 
   // ── Compare mode ──────────────────────────────────────────
+  // One entry point for all comparing: pick versions (auto-selected when there
+  // is only one) and optionally attach a .param file that isn't in the catalog.
   const [compareMode, setCompareMode] = useState(false);
   const [compareSelected, setCompareSelected] = useState<Set<string>>(new Set());
+  // Transient file attached to the comparison — held in sessionStorage only,
+  // never uploaded. Used to diff a set received by email against the catalog.
+  const [compareFile, setCompareFile] = useState<{ name: string; params: { name: string; value: string }[] } | null>(null);
+  const [compareFileError, setCompareFileError] = useState<string | null>(null);
+  const compareFileInputRef = useRef<HTMLInputElement>(null);
 
   function toggleCompareMode() {
-    setCompareMode((v) => !v);
-    setCompareSelected(new Set());
+    setCompareMode((prev) => {
+      if (prev) {
+        setCompareSelected(new Set());
+        setCompareFile(null);
+        setCompareFileError(null);
+        return false;
+      }
+      // Entering compare: with a single version there is nothing to choose, so
+      // pre-select it and let the user just attach a file.
+      setCompareSelected(versions.length === 1 ? new Set([versions[0].id]) : new Set());
+      return true;
+    });
   }
 
   function toggleCompareSelect(id: string) {
@@ -126,10 +144,33 @@ export function ParamVersionList({
     });
   }
 
+  async function handleCompareFile(picked: File | null) {
+    if (!picked) return;
+    setCompareFileError(null);
+    try {
+      const params = parseParamFile(await picked.text()).map((p) => ({ name: p.name, value: p.value }));
+      if (params.length === 0) {
+        setCompareFileError("No parameters found in that file.");
+        return;
+      }
+      setCompareFile({ name: picked.name, params });
+    } catch {
+      setCompareFileError("Could not read that file.");
+    }
+  }
+
+  // A comparison needs two columns: either two versions, or one plus a file.
+  const compareCount = compareSelected.size + (compareFile ? 1 : 0);
+  const canCompare = compareCount >= 2;
+
   function goToCompare() {
-    const ids = [...compareSelected];
-    if (ids.length < 2) return;
-    router.push(`/compare?${ids.map((id) => `v=${id}`).join("&")}`);
+    if (!canCompare) return;
+    const parts = [...compareSelected].map((id) => `v=${id}`);
+    if (compareFile) {
+      writeCompareFile(compareFile);
+      parts.push(`v=${FILE_VERSION_ID}`);
+    }
+    router.push(`/compare?${parts.join("&")}`);
   }
 
   // ── Delete state ──────────────────────────────────────────
@@ -347,38 +388,90 @@ export function ParamVersionList({
 
   return (
     <>
-      {versions.length > 1 && (
-        <div className="flex items-center gap-2 mb-2">
-          <button
-            type="button"
-            onClick={toggleCompareMode}
-            className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-              compareMode
-                ? "border-primary bg-primary/10 text-primary"
-                : "border-border text-foreground hover:bg-secondary"
-            }`}
-          >
-            <GitCompareArrows className="h-3.5 w-3.5" />
-            {compareMode ? "Cancel" : "Compare versions"}
-          </button>
+      {versions.length > 0 && (
+        <div className="mb-2 flex flex-col gap-2">
+          <div className="flex items-center flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={toggleCompareMode}
+              className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                compareMode
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border text-foreground hover:bg-secondary"
+              }`}
+            >
+              <GitCompareArrows className="h-3.5 w-3.5" />
+              {compareMode ? "Cancel" : "Compare"}
+            </button>
+
+            {compareMode && (
+              <>
+                <span className="text-xs text-muted-foreground">
+                  {versions.length > 1
+                    ? "Tick versions, and/or add a file"
+                    : "Add a file to compare against this version"}
+                </span>
+                {canCompare && (
+                  <button
+                    type="button"
+                    onClick={goToCompare}
+                    className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    <GitCompareArrows className="h-3.5 w-3.5" />
+                    Compare {compareCount}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* File slot — a .param set that isn't in the catalog and won't be
+              saved. Sits with the version checkboxes so comparing is one flow. */}
           {compareMode && (
-            <>
-              <span className="text-xs text-muted-foreground">
-                {compareSelected.size === 0
-                  ? "Select versions to compare"
-                  : `${compareSelected.size} selected`}
-              </span>
-              {compareSelected.size >= 2 && (
-                <button
-                  type="button"
-                  onClick={goToCompare}
-                  className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  <GitCompareArrows className="h-3.5 w-3.5" />
-                  Compare {compareSelected.size}
-                </button>
+            <div className="flex items-center flex-wrap gap-2 rounded-lg border border-dashed border-border bg-secondary/20 px-3 py-2">
+              {compareFile ? (
+                <>
+                  <FileUp className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="font-mono text-xs text-foreground truncate">{compareFile.name}</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {compareFile.params.length} params · not saved
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setCompareFile(null); setCompareFileError(null); }}
+                    aria-label="Remove file"
+                    className="ml-auto rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => compareFileInputRef.current?.click()}
+                    className="flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-xs text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    <FileUp className="h-3.5 w-3.5" />
+                    Add .param file…
+                  </button>
+                  <span className="text-[11px] text-muted-foreground">
+                    Compare against a file you received — it is not uploaded or kept.
+                  </span>
+                </>
               )}
-            </>
+              <input
+                ref={compareFileInputRef}
+                type="file"
+                accept=".param"
+                className="hidden"
+                onChange={(e) => { handleCompareFile(e.target.files?.[0] ?? null); e.target.value = ""; }}
+              />
+            </div>
+          )}
+
+          {compareMode && compareFileError && (
+            <span className="text-xs text-destructive">{compareFileError}</span>
           )}
         </div>
       )}

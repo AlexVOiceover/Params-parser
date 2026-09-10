@@ -6,6 +6,7 @@ import { parseParamFile, RUNTIME_PARAMS } from "@/lib/param-engine";
 import { VersionTree } from "@/components/compare/version-tree";
 import { CompareTableWrapper } from "@/components/compare/compare-table-wrapper";
 import { DRONE_VERSION_ID } from "@/lib/drone-params-shared";
+import { FILE_VERSION_ID } from "@/lib/file-compare-shared";
 import type { CompareVersion, CompareRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -304,13 +305,16 @@ export default async function ComparePage({
   const { v } = await searchParams;
   const allIds = Array.isArray(v) ? v : v ? [v] : [];
   const hasDroneVersion = allIds.includes(DRONE_VERSION_ID);
-  const dbVersionIds = allIds.filter((id) => id !== DRONE_VERSION_ID);
+  // A transient .param file lives in sessionStorage, so the column is merged
+  // client-side — the server only needs to know it was requested.
+  const hasFileVersion = allIds.includes(FILE_VERSION_ID);
+  const dbVersionIds = allIds.filter((id) => id !== DRONE_VERSION_ID && id !== FILE_VERSION_ID);
 
-  if (dbVersionIds.length >= 1 || hasDroneVersion) {
+  if (dbVersionIds.length >= 1 || hasDroneVersion || hasFileVersion) {
     const { versions, rows } = dbVersionIds.length > 0
       ? await fetchCompareData(dbVersionIds)
       : { versions: [], rows: [] };
-    const totalCount = versions.length + (hasDroneVersion ? 1 : 0);
+    const totalCount = versions.length + (hasDroneVersion ? 1 : 0) + (hasFileVersion ? 1 : 0);
     return (
       <div className="h-full flex flex-col">
         <div className="flex items-center flex-wrap gap-x-1 gap-y-0.5 px-4 py-2 border-b border-border text-xs text-muted-foreground shrink-0 min-w-0">
@@ -346,6 +350,7 @@ export default async function ComparePage({
             versions={versions}
             rows={rows}
             hasDroneVersion={hasDroneVersion}
+            hasFileVersion={hasFileVersion}
           />
         </div>
       </div>
