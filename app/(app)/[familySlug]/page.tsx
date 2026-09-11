@@ -7,16 +7,6 @@ import type { Family, Variant } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-async function getFamily(slug: string): Promise<Family | null> {
-  const supabase = await createSessionClient();
-  const { data } = await supabase
-    .from("families")
-    .select("id, slug, name, description")
-    .eq("slug", slug)
-    .single();
-  return data ?? null;
-}
-
 async function getVariants(familyId: string, role: string | null, clientId: string | null): Promise<Variant[]> {
   const supabase = await createSessionClient();
 
@@ -41,15 +31,34 @@ async function getVariants(familyId: string, role: string | null, clientId: stri
   return (data as unknown as Variant[]) ?? [];
 }
 
-async function getProfile(): Promise<{ role: string | null; clientId: string | null }> {
+/**
+ * getUser() is a ~50ms network call and is not cached, so the family lookup and
+ * the profile lookup share one client and one auth check rather than each
+ * paying for their own.
+ */
+async function getFamilyAndProfile(slug: string): Promise<{
+  family: Family | null;
+  role: string | null;
+  clientId: string | null;
+}> {
   try {
     const supabase = await createSessionClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { role: null, clientId: null };
-    const { data } = await supabase.from("profiles").select("role, client_id").eq("id", user.id).single();
-    return { role: data?.role ?? null, clientId: data?.client_id ?? null };
+
+    const [familyRes, profileRes] = await Promise.all([
+      supabase.from("families").select("id, slug, name, description").eq("slug", slug).single(),
+      user
+        ? supabase.from("profiles").select("role, client_id").eq("id", user.id).single()
+        : Promise.resolve({ data: null }),
+    ]);
+
+    return {
+      family: (familyRes.data as Family | null) ?? null,
+      role: (profileRes.data?.role as string | null) ?? null,
+      clientId: (profileRes.data?.client_id as string | null) ?? null,
+    };
   } catch {
-    return { role: null, clientId: null };
+    return { family: null, role: null, clientId: null };
   }
 }
 
@@ -59,11 +68,11 @@ export default async function FamilySlugPage({
   params: Promise<{ familySlug: string }>;
 }) {
   const { familySlug } = await params;
-  const [family, profile] = await Promise.all([getFamily(familySlug), getProfile()]);
+  const { family, role, clientId } = await getFamilyAndProfile(familySlug);
   if (!family) notFound();
 
-  const isAdmin = profile.role === "admin";
-  const variants = await getVariants(family.id, profile.role, profile.clientId);
+  const isAdmin = role === "admin";
+  const variants = await getVariants(family.id, role, clientId);
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-10">

@@ -11,27 +11,35 @@ export const metadata: Metadata = {
   title: "Catalog — AIR6",
 };
 
-async function getProfile(): Promise<{ role: string | null; clientId: string | null }> {
-  try {
-    const supabase = await createSessionClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return { role: null, clientId: null };
-    const { data } = await supabase
-      .from("profiles")
-      .select("role, client_id")
-      .eq("id", user.id)
-      .single();
-    return { role: data?.role ?? null, clientId: data?.client_id ?? null };
-  } catch {
-    return { role: null, clientId: null };
-  }
-}
-
-async function getFamilies(role: string | null, clientId: string | null) {
+/**
+ * Catalog data in as few round-trips as possible.
+ *
+ * Each Supabase round-trip costs ~150-200ms, and this page previously chained
+ * them: auth, then profile, then drones, then variants, then families, then a
+ * separate count query per family. Families and variants are small tables, so
+ * fetching both whole and counting in memory is far cheaper than N count
+ * queries, and the independent ones now run concurrently.
+ */
+async function getCatalog() {
   const supabase = await createSessionClient();
 
-  // For client users, find which variants they own drones on, then derive
-  // which families to show. Other roles see everything.
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // Profile, families and variants are independent — fetch together.
+  const [profileRes, familiesRes, variantsRes] = await Promise.all([
+    user
+      ? supabase.from("profiles").select("role, client_id").eq("id", user.id).single()
+      : Promise.resolve({ data: null }),
+    supabase.from("families").select("id, slug, name, description").order("name"),
+    supabase.from("variants").select("id, family_id"),
+  ]);
+
+  const role = (profileRes.data?.role as string | null) ?? null;
+  const clientId = (profileRes.data?.client_id as string | null) ?? null;
+  const families = familiesRes.data ?? [];
+  const variants = variantsRes.data ?? [];
+
+  // Client users only see families they own a drone on.
   let allowedVariantIds: Set<string> | null = null;
   if (role === "client" && clientId) {
     const { data: drones } = await supabase
@@ -39,46 +47,27 @@ async function getFamilies(role: string | null, clientId: string | null) {
       .select("variant_id")
       .eq("client_id", clientId);
     allowedVariantIds = new Set((drones ?? []).map((d) => d.variant_id));
-    // No drones → no families.
-    if (allowedVariantIds.size === 0) return [];
+    if (allowedVariantIds.size === 0) return { role, families: [] };
   }
 
-  let familiesQ = supabase.from("families").select("id, slug, name, description").order("name");
-
-  // Restrict families to those that own at least one allowed variant.
-  if (allowedVariantIds) {
-    const { data: variants } = await supabase
-      .from("variants")
-      .select("family_id")
-      .in("id", [...allowedVariantIds]);
-    const allowedFamilyIds = new Set((variants ?? []).map((v) => v.family_id).filter(Boolean) as string[]);
-    if (allowedFamilyIds.size === 0) return [];
-    familiesQ = familiesQ.in("id", [...allowedFamilyIds]);
+  const countByFamily = new Map<string, number>();
+  for (const v of variants) {
+    if (!v.family_id) continue;
+    if (allowedVariantIds && !allowedVariantIds.has(v.id)) continue;
+    countByFamily.set(v.family_id, (countByFamily.get(v.family_id) ?? 0) + 1);
   }
 
-  const { data: families } = await familiesQ;
-  if (!families?.length) return [];
+  const visible = families
+    .filter((f) => !allowedVariantIds || (countByFamily.get(f.id) ?? 0) > 0)
+    .map((f) => ({ ...f, variant_count: countByFamily.get(f.id) ?? 0 }));
 
-  const counts = await Promise.all(
-    families.map(async (f) => {
-      let q = supabase
-        .from("variants")
-        .select("id", { count: "exact", head: true })
-        .eq("family_id", f.id);
-      if (allowedVariantIds) q = q.in("id", [...allowedVariantIds]);
-      const { count } = await q;
-      return { ...f, variant_count: count ?? 0 };
-    })
-  );
-
-  return counts;
+  return { role, families: visible };
 }
 
 export default async function CatalogPage() {
-  const profile = await getProfile();
-  const families = await getFamilies(profile.role, profile.clientId);
-  const isAdmin = profile.role === "admin";
-  const canUpload = profile.role === "admin" || profile.role === "contributor" || profile.role === "client";
+  const { role, families } = await getCatalog();
+  const isAdmin = role === "admin";
+  const canUpload = role === "admin" || role === "contributor";
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-10">

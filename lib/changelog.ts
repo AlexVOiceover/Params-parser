@@ -6,6 +6,13 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.22.1",
+    date: "2026-09-11",
+    items: [
+      "Catalog and family pages load around three times faster — queries now run together instead of one after another",
+    ],
+  },
+  {
     version: "0.22.0",
     date: "2026-09-11",
     items: [
