@@ -10,6 +10,7 @@ export const CHANGELOG: ReleaseNote[] = [
     date: "2026-09-11",
     items: [
       "Catalog and family pages load around three times faster — queries now run together instead of one after another",
+      "The app now runs in the same region as the database, removing a transatlantic round-trip from every query",
     ],
   },
   {
