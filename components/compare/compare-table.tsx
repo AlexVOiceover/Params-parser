@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { SlidersHorizontal, Info, Upload, X, RotateCcw, Search, GitCompareArrows, FileDown, Copy, Check } from "lucide-react";
+import { SlidersHorizontal, Info, Upload, X, RotateCcw, Search, GitCompareArrows, FileDown, Copy, Check, EyeOff } from "lucide-react";
+import { PrefixFilterModal, prefixOf, readHiddenPrefixes } from "@/components/compare/prefix-filter";
 import { validateParam, paramValuesEqual, LOCKED_PARAMS } from "@/lib/param-engine";
 import { FILE_VERSION_ID } from "@/lib/file-compare-shared";
 import type { CompareVersion, CompareRow, ParamDefinition } from "@/lib/types";
@@ -46,6 +47,10 @@ export function CompareTable({
 }: Props) {
   const [showDiffsOnly, setShowDiffsOnly] = useState(false);
   const [showCsvModal, setShowCsvModal] = useState(false);
+  // Hidden parameter groups (AHRS_, COMPASS_, …). Persisted per browser.
+  const [hiddenPrefixes, setHiddenPrefixes] = useState<Set<string>>(new Set());
+  const [showPrefixModal, setShowPrefixModal] = useState(false);
+  useEffect(() => { setHiddenPrefixes(readHiddenPrefixes()); }, []);
   const [csvCopied, setCsvCopied] = useState(false);
   const [paramDefs, setParamDefs] = useState<Record<string, ParamDefinition> | null>(null);
   const [editingCell, setEditingCell] = useState<string | null>(null);
@@ -149,6 +154,7 @@ export function CompareTable({
 
   const canDiff = versions.length >= 2;
   const diffCount = processedRows.filter((r) => r.isDiff).length;
+  // Declared after prefixFiltered below; see visibleDiffCount.
 
   const trimmedQuery = searchQuery.trim();
   const queryLower = trimmedQuery.toLowerCase();
@@ -174,7 +180,33 @@ export function CompareTable({
     return nameMatch || valueMatch;
   }
 
-  let visibleRows = showDiffsOnly && canDiff ? processedRows.filter((r) => r.isDiff) : processedRows;
+  // Group counts for the filter modal, computed before any hiding so the modal
+  // always lists every group present in this comparison.
+  const { countsByPrefix, diffCountsByPrefix } = (() => {
+    const counts = new Map<string, number>();
+    const diffs = new Map<string, number>();
+    for (const row of processedRows) {
+      const p = prefixOf(row.name);
+      if (!p) continue;
+      counts.set(p, (counts.get(p) ?? 0) + 1);
+      if (row.isDiff) diffs.set(p, (diffs.get(p) ?? 0) + 1);
+    }
+    return { countsByPrefix: counts, diffCountsByPrefix: diffs };
+  })();
+
+  // Applied first, so every downstream consumer — including CSV export, which
+  // reads visibleRows — inherits the filter.
+  const prefixFiltered = hiddenPrefixes.size > 0
+    ? processedRows.filter((r) => {
+        const p = prefixOf(r.name);
+        return !p || !hiddenPrefixes.has(p);
+      })
+    : processedRows;
+
+  const hiddenRowCount = processedRows.length - prefixFiltered.length;
+  const visibleDiffCount = prefixFiltered.filter((r) => r.isDiff).length;
+
+  let visibleRows = showDiffsOnly && canDiff ? prefixFiltered.filter((r) => r.isDiff) : prefixFiltered;
   if (showModifiedOnly && pendingEdits && pendingEdits.size > 0) {
     visibleRows = visibleRows.filter((r) => pendingEdits.has(r.name));
   }
@@ -201,8 +233,11 @@ export function CompareTable({
           <span className="hidden sm:block text-xs text-muted-foreground shrink-0">
             {canDiff ? (
               <>
-                <span className="text-amber-600 dark:text-amber-400 font-medium">{diffCount}</span>
-                {" param"}{diffCount !== 1 ? "s" : ""} differ · {rows.length} total
+                <span className="text-amber-600 dark:text-amber-400 font-medium">{visibleDiffCount}</span>
+                {" param"}{visibleDiffCount !== 1 ? "s" : ""} differ · {prefixFiltered.length} total
+                {hiddenRowCount > 0 && (
+                  <span className="text-muted-foreground"> · {hiddenRowCount} hidden</span>
+                )}
               </>
             ) : (
               <>{rows.length} total</>
@@ -247,6 +282,21 @@ export function CompareTable({
 
           {/* Action buttons — icon only on mobile, icon+text on sm+ */}
           <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={() => setShowPrefixModal(true)}
+              title="Hide parameter groups"
+              className={`flex items-center gap-1.5 rounded-md border px-2 sm:px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                hiddenPrefixes.size > 0
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border text-foreground hover:bg-secondary"
+              }`}
+            >
+              <EyeOff className="h-3.5 w-3.5 shrink-0" />
+              <span className="hidden sm:inline">
+                {hiddenPrefixes.size > 0 ? `${hiddenPrefixes.size} group${hiddenPrefixes.size === 1 ? "" : "s"} hidden` : "Groups"}
+              </span>
+              {hiddenPrefixes.size > 0 && <span className="sm:hidden">{hiddenPrefixes.size}</span>}
+            </button>
             <button
               onClick={() => setShowCsvModal(true)}
               title="Export as CSV"
@@ -572,6 +622,15 @@ export function CompareTable({
       </div>
     </div>
 
+    {showPrefixModal && (
+      <PrefixFilterModal
+        countsByPrefix={countsByPrefix}
+        diffCountsByPrefix={diffCountsByPrefix}
+        hidden={hiddenPrefixes}
+        onChange={setHiddenPrefixes}
+        onClose={() => setShowPrefixModal(false)}
+      />
+    )}
     {showCsvModal && <CsvModal
       versions={versions}
       visibleRows={visibleRows}

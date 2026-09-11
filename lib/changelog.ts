@@ -6,6 +6,15 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.23.0",
+    date: "2026-09-11",
+    items: [
+      "Hide whole parameter groups on Compare — mute noisy hardware groups like AHRS_ and COMPASS_ that always differ",
+      "Group list comes from ArduPilot, so new groups appear automatically",
+      "CSV export respects the filter and your choices are remembered",
+    ],
+  },
+  {
     version: "0.22.1",
     date: "2026-09-11",
     items: [
