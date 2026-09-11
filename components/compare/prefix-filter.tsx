@@ -13,6 +13,7 @@ import { X, Search, RotateCcw, EyeOff, ArrowDownWideNarrow, ArrowDownAZ } from "
  */
 
 export const HIDDEN_PREFIXES_KEY = "air6_compare_hidden_prefixes";
+const LAST_SEARCH_KEY = "air6_compare_group_search";
 
 /** Prefix of a param name, e.g. COMPASS_OFS_X -> COMPASS_. Null when ungrouped. */
 export function prefixOf(paramName: string): string | null {
@@ -32,6 +33,17 @@ export function readHiddenPrefixes(): Set<string> {
 
 function writeHiddenPrefixes(hidden: Set<string>): void {
   try { localStorage.setItem(HIDDEN_PREFIXES_KEY, JSON.stringify([...hidden])); } catch {}
+}
+
+function readLastSearch(): string {
+  try { return localStorage.getItem(LAST_SEARCH_KEY) ?? ""; } catch { return ""; }
+}
+
+function writeLastSearch(value: string): void {
+  try {
+    if (value.trim()) localStorage.setItem(LAST_SEARCH_KEY, value);
+    else localStorage.removeItem(LAST_SEARCH_KEY);
+  } catch {}
 }
 
 interface Props {
@@ -54,6 +66,21 @@ export function PrefixFilterModal({
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<"diffs" | "name">("diffs");
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Prefill with the last search so a repeated lookup is one keypress away.
+  // The text is selected, so typing replaces it rather than appending.
+  useEffect(() => {
+    const last = readLastSearch();
+    if (!last) return;
+    setQuery(last);
+    const el = inputRef.current;
+    if (el) { el.focus(); el.select(); }
+  }, []);
+
+  function updateQuery(value: string) {
+    setQuery(value);
+    writeLastSearch(value);
+  }
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
@@ -117,14 +144,14 @@ export function PrefixFilterModal({
             <input
               ref={inputRef}
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => updateQuery(e.target.value)}
               placeholder="Search groups…"
               aria-label="Search parameter groups"
               className="w-full rounded-md border border-border bg-secondary pl-8 pr-7 py-1.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
             />
             {query && (
               <button
-                onMouseDown={(e) => { e.preventDefault(); setQuery(""); }}
+                onMouseDown={(e) => { e.preventDefault(); updateQuery(""); inputRef.current?.focus(); }}
                 aria-label="Clear search"
                 className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground cursor-pointer"
               >
@@ -180,9 +207,21 @@ export function PrefixFilterModal({
 
         <div className="overflow-y-auto border-t border-border divide-y divide-border">
           {rows.length === 0 && (
-            <p className="px-5 py-8 text-center text-xs text-muted-foreground italic">
-              No groups match &ldquo;{query}&rdquo;.
-            </p>
+            <div className="px-5 py-8 flex flex-col items-center gap-2.5">
+              <p className="text-center text-xs text-muted-foreground italic">
+                No groups match &ldquo;{query}&rdquo; in this comparison.
+              </p>
+              {/* The search may have been restored from last time, so offer a
+                  way out rather than leaving an apparently empty list. */}
+              <button
+                type="button"
+                onClick={() => { updateQuery(""); inputRef.current?.focus(); }}
+                className="flex items-center gap-1 rounded border border-border px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <X className="h-3 w-3" />
+                Clear search
+              </button>
+            </div>
           )}
           {rows.map(([prefix, count]) => {
             const diffs = diffCountsByPrefix.get(prefix) ?? 0;

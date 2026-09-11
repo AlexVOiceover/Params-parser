@@ -13,6 +13,7 @@ export const CHANGELOG: ReleaseNote[] = [
       "Group list comes from ArduPilot, so new groups appear automatically",
       "CSV export respects the filter and your choices are remembered",
       "Sort the group list by number of differences or alphabetically",
+      "The group search remembers your last term and preselects it",
     ],
   },
   {
