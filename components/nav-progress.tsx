@@ -83,16 +83,27 @@ export function NavProgress() {
   }, []);
 
   // The route committed — finish and fade out.
+  //
+  // Keyed on the serialised URL, not the searchParams object: that object is a
+  // new reference every render, so depending on it re-ran this effect
+  // constantly and its cleanup cancelled the timer the click had just started,
+  // meaning the bar never appeared. No cleanup here for the same reason.
+  const routeKey = `${pathname}?${searchParams}`;
+  const firstRoute = useRef(true);
   useEffect(() => {
+    if (firstRoute.current) {
+      firstRoute.current = false;
+      return;
+    }
     clearTimers();
-    setProgress((p) => (p > 0 ? 100 : 0));
+    setVisible(true);
+    setProgress(100);
     hideTimer.current = setTimeout(() => {
       setVisible(false);
       setProgress(0);
     }, DONE_FADE_MS);
-    return clearTimers;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, searchParams]);
+  }, [routeKey]);
 
   return (
     <div
