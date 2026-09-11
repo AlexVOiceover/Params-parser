@@ -12,6 +12,7 @@ export const CHANGELOG: ReleaseNote[] = [
       "Hide whole parameter groups on Compare — mute noisy hardware groups like AHRS_ and COMPASS_ that always differ",
       "Group list comes from ArduPilot, so new groups appear automatically",
       "CSV export respects the filter and your choices are remembered",
+      "Sort the group list by number of differences or alphabetically",
     ],
   },
   {

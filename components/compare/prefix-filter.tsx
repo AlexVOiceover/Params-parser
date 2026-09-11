@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { X, Search, RotateCcw, EyeOff } from "lucide-react";
+import { X, Search, RotateCcw, EyeOff, ArrowDownWideNarrow, ArrowDownAZ } from "lucide-react";
 
 /**
  * Hide whole parameter groups from the compare table.
@@ -52,6 +52,7 @@ export function PrefixFilterModal({
   onClose,
 }: Props) {
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<"diffs" | "name">("diffs");
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -65,11 +66,13 @@ export function PrefixFilterModal({
     return [...countsByPrefix.entries()]
       .filter(([p]) => !q || p.includes(q))
       .sort((a, b) => {
-        // Groups with the most differences first — those are what clutter the view.
+        if (sort === "name") return a[0].localeCompare(b[0]);
+        // Groups with the most differences first — those are what clutter the
+        // view. Ties fall back to alphabetical so the order stays stable.
         const d = (diffCountsByPrefix.get(b[0]) ?? 0) - (diffCountsByPrefix.get(a[0]) ?? 0);
         return d !== 0 ? d : a[0].localeCompare(b[0]);
       });
-  }, [countsByPrefix, diffCountsByPrefix, query]);
+  }, [countsByPrefix, diffCountsByPrefix, query, sort]);
 
   function toggle(prefix: string) {
     const next = new Set(hidden);
@@ -133,6 +136,36 @@ export function PrefixFilterModal({
             <span className="text-muted-foreground">
               {shownCount} of {countsByPrefix.size} shown
             </span>
+            <div className="flex items-center rounded-md border border-border overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setSort("diffs")}
+                aria-pressed={sort === "diffs"}
+                title="Sort by number of differences"
+                className={`flex items-center gap-1 px-2 py-0.5 transition-colors cursor-pointer whitespace-nowrap ${
+                  sort === "diffs"
+                    ? "bg-primary/15 text-primary"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                }`}
+              >
+                <ArrowDownWideNarrow className="h-3 w-3" />
+                Differences
+              </button>
+              <button
+                type="button"
+                onClick={() => setSort("name")}
+                aria-pressed={sort === "name"}
+                title="Sort alphabetically"
+                className={`flex items-center gap-1 border-l border-border px-2 py-0.5 transition-colors cursor-pointer whitespace-nowrap ${
+                  sort === "name"
+                    ? "bg-primary/15 text-primary"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                }`}
+              >
+                <ArrowDownAZ className="h-3 w-3" />
+                A–Z
+              </button>
+            </div>
             {hidden.size > 0 && (
               <button
                 onClick={() => setAll(new Set())}
