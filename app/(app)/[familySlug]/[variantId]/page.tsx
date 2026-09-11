@@ -56,8 +56,10 @@ async function getData(familySlug: string, variantId: string) {
 
     // Fetch each version independently to avoid pagination boundary issues
     // that occur when using .in() across multiple large versions.
-    const valuesByVersion = new Map<string, Map<string, string>>();
-    for (const versionId of latestVersionByClientSet.values()) {
+    // One version's pages must be walked in order, but different versions are
+    // independent — fetch them concurrently. Serially this was 3+ round-trips
+    // per client set, which is what made this page take seconds.
+    async function fetchVersionValues(versionId: string): Promise<[string, Map<string, string>]> {
       const paramMap = new Map<string, string>();
       for (let from = 0; ; from += PAGE_SIZE) {
         const { data: page } = await supabase
@@ -70,8 +72,12 @@ async function getData(familySlug: string, variantId: string) {
         for (const { name, value } of page) paramMap.set(name, value);
         if (page.length < PAGE_SIZE) break;
       }
-      valuesByVersion.set(versionId, paramMap);
+      return [versionId, paramMap];
     }
+
+    const valuesByVersion = new Map<string, Map<string, string>>(
+      await Promise.all([...latestVersionByClientSet.values()].map(fetchVersionValues))
+    );
 
     const defaultVersionId = latestVersionByClientSet.get(defaultSet.id)!;
     const defaultValues = valuesByVersion.get(defaultVersionId) ?? new Map<string, string>();

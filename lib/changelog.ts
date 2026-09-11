@@ -6,6 +6,14 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.22.0",
+    date: "2026-09-11",
+    items: [
+      "Every page now shows a progress bar and a loading skeleton instead of appearing frozen",
+      "Variant and compare pages load noticeably faster — param sets are now fetched in parallel",
+    ],
+  },
+  {
     version: "0.21.2",
     date: "2026-09-10",
     items: [

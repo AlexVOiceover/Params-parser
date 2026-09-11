@@ -6,6 +6,16 @@
 - **Never** include "Co-authored by Claude", "Co-authored by Anthropic", or any AI attribution in commit messages or PR descriptions
 - Keep commit messages concise and focused on the *why*, not the *what*
 
+## Loading & Feedback (required)
+
+Every action that can make the user wait — even briefly — must acknowledge the press immediately. No silent waits.
+
+- **Navigation** is covered automatically by `<NavProgress />` in `app/(app)/layout.tsx`. It hooks link clicks globally, so normal `<Link>` needs no extra code.
+- **Every route that fetches data needs a `loading.tsx`** next to its `page.tsx`, built from `SkeletonRows` / `SkeletonBlock` in `components/ui/busy.tsx`. A new dynamic route without one is incomplete.
+- **Buttons that trigger async work** use `<BusyButton busy={...} busyLabel="Saving…">` from `components/ui/busy.tsx`. It disables itself while busy, which also prevents double-submits.
+- **In-page panels** that load data use `<LoadingPanel />`.
+- Never leave a button enabled during its own request, and never show a bare disabled state with no spinner or label change.
+
 ## Versioning
 
 - `lib/changelog.ts` is the **source of truth** for the app version — `CURRENT_VERSION` comes from `CHANGELOG[0].version` and drives the header badge and What's New dialog.

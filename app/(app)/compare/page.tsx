@@ -178,19 +178,26 @@ async function fetchCompareData(
   async function fetchAllParamValues(ids: string[]) {
     const PAGE_SIZE = 500;
     const out: { param_version_id: string; name: string; value: string }[] = [];
-    for (const id of ids) {
-      for (let from = 0; ; from += PAGE_SIZE) {
-        const { data: page } = await supabase
-          .from("param_values")
-          .select("name, value")
-          .eq("param_version_id", id)
-          .order("name")
-          .range(from, from + PAGE_SIZE - 1);
-        if (!page || page.length === 0) break;
-        out.push(...page.map((p) => ({ param_version_id: id, ...p })));
-        if (page.length < PAGE_SIZE) break;
-      }
-    }
+    // Pages within one version are sequential, but versions are independent —
+    // comparing several versions serially multiplied the wait by the count.
+    const perVersion = await Promise.all(
+      ids.map(async (id) => {
+        const rows: { param_version_id: string; name: string; value: string }[] = [];
+        for (let from = 0; ; from += PAGE_SIZE) {
+          const { data: page } = await supabase
+            .from("param_values")
+            .select("name, value")
+            .eq("param_version_id", id)
+            .order("name")
+            .range(from, from + PAGE_SIZE - 1);
+          if (!page || page.length === 0) break;
+          rows.push(...page.map((p) => ({ param_version_id: id, ...p })));
+          if (page.length < PAGE_SIZE) break;
+        }
+        return rows;
+      })
+    );
+    for (const rows of perVersion) out.push(...rows);
     return out;
   }
 
