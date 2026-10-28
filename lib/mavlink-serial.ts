@@ -34,6 +34,11 @@ const CRC_EXTRA: Record<number, number> = {
   77: 143,  // COMMAND_ACK
   105: 93,  // HIGHRES_IMU
   116: 76,  // SCALED_IMU2
+  117: 128, // LOG_REQUEST_LIST
+  118:  56, // LOG_ENTRY
+  119: 116, // LOG_REQUEST_DATA
+  120: 134, // LOG_DATA
+  122: 203, // LOG_REQUEST_END
   125:  38, // POWER_STATUS
   147: 154, // BATTERY_STATUS
   163: 127, // AHRS
@@ -83,7 +88,7 @@ function x25crc(buf: Uint8Array, start: number, trim: number, extra: number): nu
 
 let seq = 0;
 
-function buildV1(msgId: number, payload: Uint8Array): Uint8Array {
+export function buildV1(msgId: number, payload: Uint8Array): Uint8Array {
   const s = seq++ & 0xff;
   const len = payload.length;
   const frame = new Uint8Array(6 + len + 2);
@@ -96,7 +101,7 @@ function buildV1(msgId: number, payload: Uint8Array): Uint8Array {
   return frame;
 }
 
-function buildV2(msgId: number, payload: Uint8Array): Uint8Array {
+export function buildV2(msgId: number, payload: Uint8Array): Uint8Array {
   const s = seq++ & 0xff;
   const len = payload.length;
   const frame = new Uint8Array(10 + len + 2);
@@ -165,17 +170,73 @@ function parseParamValue(payload: Uint8Array): ParamValue | null {
   return { name, value, index, count };
 }
 
+// ── LOG_ENTRY / LOG_DATA parsers ──────────────────────────────────────────────
+// MAVLink orders fields by descending type size, not declaration order, so
+// these layouts come from the generated c_library_v2 headers rather than the
+// field order the docs list in prose.
+
+// LOG_ENTRY (118) wire layout:
+//   [0-3]  time_utc     uint32
+//   [4-7]  size         uint32
+//   [8-9]  id           uint16
+//   [10-11] num_logs    uint16
+//   [12-13] last_log_num uint16
+export interface LogEntry {
+  id: number;
+  numLogs: number;
+  lastLogNum: number;
+  timeUtc: number;
+  size: number;
+}
+
+export function parseLogEntry(payload: Uint8Array): LogEntry | null {
+  if (payload.length < 14) return null;
+  const view = new DataView(payload.buffer, payload.byteOffset);
+  return {
+    timeUtc: view.getUint32(0, true),
+    size: view.getUint32(4, true),
+    id: view.getUint16(8, true),
+    numLogs: view.getUint16(10, true),
+    lastLogNum: view.getUint16(12, true),
+  };
+}
+
+// LOG_DATA (120) wire layout:
+//   [0-3]  ofs    uint32
+//   [4-5]  id     uint16
+//   [6]    count  uint8
+//   [7-96] data   uint8[90]
+export interface LogChunk {
+  id: number;
+  ofs: number;
+  count: number;
+  data: Uint8Array;
+}
+
+export function parseLogData(payload: Uint8Array): LogChunk | null {
+  if (payload.length < 7) return null;
+  const view = new DataView(payload.buffer, payload.byteOffset);
+  const ofs = view.getUint32(0, true);
+  const id = view.getUint16(4, true);
+  const count = payload[6];
+  // Trust `count` over the padded 90-byte field, but never read past the frame.
+  const available = Math.max(0, payload.length - 7);
+  return { id, ofs, count, data: payload.slice(7, 7 + Math.min(count, available)) };
+}
+
 // ── Packet splitter (mirrors node-mavlink MavLinkPacketSplitter) ─────────────
 
 interface SplitterResult {
   params: ParamValue[];
+  logEntries: LogEntry[];
+  logData: LogChunk[];
   statusTexts: string[];
   detectedVersion: 1 | 2 | null;
   validFrames: number;
   heartbeats: number;
 }
 
-class MavlinkSplitter {
+export class MavlinkSplitter {
   private buf = new Uint8Array(0);
   detectedVersion: 1 | 2 | null = null;
   crcMismatches = 0;
@@ -188,6 +249,8 @@ class MavlinkSplitter {
     this.buf = next;
 
     const params: ParamValue[] = [];
+    const logEntries: LogEntry[] = [];
+    const logData: LogChunk[] = [];
     const statusTexts: string[] = [];
     let validFrames = 0;
     let heartbeats = 0;
@@ -236,6 +299,14 @@ class MavlinkSplitter {
             const pv = parseParamValue(payload);
             if (pv) params.push(pv);
           }
+          if (msgId === 118) {
+            const entry = parseLogEntry(frame.slice(headerLen, headerLen + payloadLen));
+            if (entry) logEntries.push(entry);
+          }
+          if (msgId === 120) {
+            const chunk = parseLogData(frame.slice(headerLen, headerLen + payloadLen));
+            if (chunk) logData.push(chunk);
+          }
           // STATUSTEXT (253): severity uint8 at [0], text char[50] at [1..50]
           if (msgId === 253 && payloadLen >= 2) {
             const payload = frame.slice(headerLen, headerLen + payloadLen);
@@ -262,7 +333,7 @@ class MavlinkSplitter {
       }
     }
 
-    return { params, statusTexts, detectedVersion: this.detectedVersion, validFrames, heartbeats };
+    return { params, logEntries, logData, statusTexts, detectedVersion: this.detectedVersion, validFrames, heartbeats };
   }
 }
 
@@ -275,8 +346,8 @@ export type MavlinkCallbacks = {
   onLog: (msg: string) => void;
 };
 
-interface SerialPortSignals { dataTerminalReady?: boolean; requestToSend?: boolean; }
-interface SerialPort {
+export interface SerialPortSignals { dataTerminalReady?: boolean; requestToSend?: boolean; }
+export interface SerialPort {
   open(options: { baudRate: number; bufferSize?: number }): Promise<void>;
   close(): Promise<void>;
   readable: ReadableStream<Uint8Array> | null;
