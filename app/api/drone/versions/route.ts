@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * POST /api/drone/versions
- * Body: { chipId, firmware, params: { name, value }[], changelog? }
+ * Body: { chipId, firmware, params: { name, value }[], changelog }
  *
  * "Save as new version" — anyone who can see the drone. Creates the next
  * version in the drone's own history from a live read. An admin's save is
@@ -29,6 +29,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!CHIP_ID_PATTERN.test(chipId) || !Array.isArray(body.params) || body.params.length === 0) {
     return NextResponse.json({ error: "chipId and params are required" }, { status: 400 });
   }
+  const changelog = body.changelog?.trim() ?? "";
+  if (!changelog) return NextResponse.json({ error: "Say what changed on the drone" }, { status: 400 });
 
   // Authorise through the caller's session: RLS decides whether they can see this drone.
   const supabase = await createSessionClient();
@@ -75,7 +77,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       client_set_id: set.id,
       version_label: label,
       storage_path: storagePath,
-      changelog: body.changelog?.trim() || `Saved from ${drone.serial}`,
+      changelog,
       created_by: caller.id,
       is_latest: approved,
       needs_review: !approved,

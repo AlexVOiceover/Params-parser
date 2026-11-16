@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { CheckCircle, AlertTriangle, AlertCircle, Bell, Link2, Save, RefreshCw } from "lucide-react";
 import { BusyButton, Spinner } from "@/components/ui/busy";
 import { ApplyUpdateButton } from "@/components/apply-update-button";
@@ -23,7 +23,7 @@ function formatParamValue(value: number | string): string {
   return String(Number(n.toPrecision(7)));
 }
 
-function DiffList({ diff, versionLabel }: { diff: ParamDiff[]; versionLabel: string }) {
+export function DiffList({ diff, versionLabel }: { diff: ParamDiff[]; versionLabel: string }) {
   const [all, setAll] = useState(false);
   const shown = all ? diff : diff.slice(0, 8);
   return (
@@ -61,10 +61,24 @@ function DiffList({ diff, versionLabel }: { diff: ParamDiff[]; versionLabel: str
   );
 }
 
-function SaveAsNewVersionButton() {
+/**
+ * Saves the live read as the next version of the drone's own history, with a
+ * required changelog. `extraAction` sits next to Save (e.g. Restore).
+ */
+export function SaveFromDroneForm({
+  saveLabel,
+  extraAction,
+  onSaved,
+}: {
+  saveLabel: string;
+  extraAction?: React.ReactNode;
+  onSaved?: () => void;
+}) {
   const { droneParams, autopilot } = useDroneParams();
+  const [changelog, setChangelog] = useState("");
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const inputId = useId();
 
   async function save() {
     setSaving(true);
@@ -72,7 +86,12 @@ function SaveAsNewVersionButton() {
     const res = await fetch("/api/drone/versions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chipId: autopilot?.chipId, firmware: autopilot?.firmware ?? null, params: droneParams }),
+      body: JSON.stringify({
+        chipId: autopilot?.chipId,
+        firmware: autopilot?.firmware ?? null,
+        params: droneParams,
+        changelog: changelog.trim(),
+      }),
     });
     const body = await res.json().catch(() => ({})) as { label?: string; approved?: boolean; error?: string };
     setSaving(false);
@@ -81,21 +100,40 @@ function SaveAsNewVersionButton() {
       return;
     }
     setResult({ ok: true, text: body.approved ? `Saved as v${body.label}` : `Saved as v${body.label} — waiting for review` });
+    setChangelog("");
     refreshDroneMatch();
+    onSaved?.();
   }
 
   return (
-    <div className="flex flex-col gap-1">
-      <BusyButton
-        type="button"
-        busy={saving}
-        busyLabel="Saving…"
-        icon={<Save className="h-3.5 w-3.5" />}
-        onClick={save}
-        className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-secondary"
-      >
-        Save as new version
-      </BusyButton>
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1">
+        <label htmlFor={inputId} className="text-[11px] font-medium text-muted-foreground">
+          What changed on the drone? <span className="text-destructive">*</span>
+        </label>
+        <input
+          id={inputId}
+          value={changelog}
+          onChange={(e) => setChangelog(e.target.value)}
+          disabled={saving}
+          placeholder="e.g. RTK moving baseline set up on site"
+          className="rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
+        />
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <BusyButton
+          type="button"
+          busy={saving}
+          busyLabel="Saving…"
+          icon={<Save className="h-3.5 w-3.5" />}
+          onClick={save}
+          disabled={!changelog.trim()}
+          className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+        >
+          {saveLabel}
+        </BusyButton>
+        {extraAction}
+      </div>
       {result && (
         <p className={`text-[11px] ${result.ok ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-300"}`}>{result.text}</p>
       )}
@@ -340,10 +378,14 @@ export function DroneStatusPanel({ match, onRegister }: Props) {
             Restore writes the stored v{desired.label} values to the drone.
             {drone?.client_set_id && " Save as new version keeps the drone's values and stores them as the next version."}
           </p>
-          <div className="flex items-start gap-2 flex-wrap">
-            <ApplyUpdateButton version={desired} label={`Restore v${desired.label}`} />
-            {drone?.client_set_id && <SaveAsNewVersionButton />}
-          </div>
+          {drone?.client_set_id ? (
+            <SaveFromDroneForm
+              saveLabel="Save as new version"
+              extraAction={<ApplyUpdateButton version={desired} label={`Restore v${desired.label}`} />}
+            />
+          ) : (
+            <div><ApplyUpdateButton version={desired} label={`Restore v${desired.label}`} /></div>
+          )}
         </div>
       )}
 
@@ -356,7 +398,7 @@ export function DroneStatusPanel({ match, onRegister }: Props) {
       {match.status === "linked" && state === "no_version" && (
         <div className="flex flex-col gap-2">
           <p className="text-xs text-muted-foreground">This drone&apos;s history has no approved version yet.</p>
-          {drone?.client_set_id && <SaveAsNewVersionButton />}
+          {drone?.client_set_id && <SaveFromDroneForm saveLabel="Save as new version" />}
         </div>
       )}
     </div>

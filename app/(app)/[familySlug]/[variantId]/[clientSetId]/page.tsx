@@ -36,6 +36,7 @@ async function getData(familySlug: string, variantId: string, clientSetId: strin
 
   // Resolve live name + serial via FK; fall back to captured text if missing.
   let resolvedClientSet: ClientSet | null = null;
+  let droneChipId: string | null = null;
   if (clientSet) {
     const cs = clientSet as ClientSet & { client_id: string | null; drone_id: string | null };
     const [{ data: live_client }, { data: live_drone }] = await Promise.all([
@@ -43,9 +44,10 @@ async function getData(familySlug: string, variantId: string, clientSetId: strin
         ? supabase.from("clients").select("name").eq("id", cs.client_id).maybeSingle()
         : Promise.resolve({ data: null }),
       cs.drone_id
-        ? supabase.from("drones").select("serial").eq("id", cs.drone_id).maybeSingle()
+        ? supabase.from("drones").select("serial, chip_id").eq("id", cs.drone_id).maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
+    droneChipId = live_drone?.chip_id ?? null;
     resolvedClientSet = {
       ...cs,
       client_name: live_client?.name ?? cs.client_name,
@@ -102,6 +104,7 @@ async function getData(familySlug: string, variantId: string, clientSetId: strin
 
   return {
     events,
+    droneChipId,
     family: family as Family | null,
     variant: variant as Variant | null,
     clientSet: resolvedClientSet,
@@ -214,7 +217,7 @@ export default async function ClientSetPage({
 }) {
   const { familySlug, variantId, clientSetId } = await params;
   const isAdmin = await getIsAdmin();
-  const { family, variant, clientSet, versions, diffVsPrev, events } = await getData(familySlug, variantId, clientSetId);
+  const { family, variant, clientSet, versions, diffVsPrev, events, droneChipId } = await getData(familySlug, variantId, clientSetId);
 
   if (!family || !variant || !clientSet) notFound();
 
@@ -260,6 +263,8 @@ export default async function ClientSetPage({
         isAdmin={isAdmin}
         isDefault={clientSet?.is_default ?? false}
         droneId={(clientSet as ClientSet & { drone_id: string | null })?.drone_id ?? null}
+        droneChipId={droneChipId}
+        droneSerial={clientSet.serial || null}
         diffVsPrev={diffVsPrev}
         familyName={family.name}
         variantName={variant.name}
