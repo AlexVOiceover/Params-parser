@@ -39,6 +39,7 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
   const [received, setReceived] = useState(0);
   const [total, setTotal] = useState(0);
   const [error, setError] = useState("");
+  const [chipId, setChipId] = useState<string | null>(null);
   const [mobile, setMobile] = useState(false);
   const [iosDevice, setIosDevice] = useState(false);
   const disconnectRef = useRef<(() => void) | null>(null);
@@ -93,9 +94,11 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
     setError("");
     setReceived(0);
     setTotal(0);
+    setChipId(null);
 
     const disconnect = await openDroneConnection(BAUD_RATE, {
       onLog: addLog,
+      onChipId: setChipId,
       onProgress(recv, tot) {
         setReceived(recv);
         if (tot > 0) setTotal(tot);
@@ -220,6 +223,12 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
           {stage === "done" && (
             <>
               <p className="text-xs text-emerald-400">✓ {received} parameters loaded.</p>
+              <p className="text-xs text-muted-foreground">
+                Chip ID:{" "}
+                {chipId
+                  ? <span className="font-mono text-foreground break-all">{chipId}</span>
+                  : <span className="italic">not reported</span>}
+              </p>
               {match.status !== "idle" && (
                 <div className="rounded-md border border-border bg-secondary/50 px-3 py-2 flex flex-col gap-1">
                   {match.status === "loading" && (

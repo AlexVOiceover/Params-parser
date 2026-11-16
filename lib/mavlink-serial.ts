@@ -32,11 +32,13 @@ const CRC_EXTRA: Record<number, number> = {
   62: 183,  // NAV_CONTROLLER_OUTPUT
   65: 118,  // RC_CHANNELS
   74:  20,  // VFR_HUD
+  76: 152,  // COMMAND_LONG
   77: 143,  // COMMAND_ACK
   105: 93,  // HIGHRES_IMU
   116: 76,  // SCALED_IMU2
   125:  38, // POWER_STATUS
   147: 154, // BATTERY_STATUS
+  148: 178, // AUTOPILOT_VERSION
   163: 127, // AHRS
   165:  27, // HWSTATUS
   166:  59, // RADIO
@@ -116,6 +118,29 @@ export function buildParamRequestList(v1: boolean): Uint8Array {
   return v1 ? buildV1(21, p) : buildV2(21, p);
 }
 
+// COMMAND_LONG (76) MAV_CMD_REQUEST_MESSAGE (512) — ask the FC to send one message.
+//   [0-27] param1..7 float32, [28-29] command uint16, [30] target_system,
+//   [31] target_component, [32] confirmation
+export function buildRequestMessage(msgId: number, v1: boolean): Uint8Array {
+  const p = new Uint8Array(33);
+  const view = new DataView(p.buffer);
+  view.setFloat32(0, msgId, true);
+  view.setUint16(28, 512, true);
+  p[30] = TARGET_SYS; p[31] = TARGET_COMP;
+  return v1 ? buildV1(76, p) : buildV2(76, p);
+}
+
+// AUTOPILOT_VERSION (148): uid2 (extension, MAVLink 2 only) sits at [60-77].
+// ArduPilot fills its first 12 bytes with the MCU's factory-burned unique ID.
+// MAVLink 2 trims trailing zero bytes, so pad before reading.
+function parseChipId(payload: Uint8Array): string | null {
+  const full = new Uint8Array(78);
+  full.set(payload.subarray(0, 78));
+  const uid2 = full.subarray(60, 72);
+  if (uid2.every((b) => b === 0)) return null;
+  return Array.from(uid2, (b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+}
+
 // PARAM_REQUEST_READ wire layout (largest fields first):
 //   [0-1]  param_index      int16 (-1 = look up by param_id)
 //   [2]    target_system    uint8
@@ -177,6 +202,7 @@ function parseParamValue(payload: Uint8Array): ParamValue | null {
 interface SplitterResult {
   params: ParamValue[];
   statusTexts: string[];
+  chipId: string | null;
   detectedVersion: 1 | 2 | null;
   validFrames: number;
   heartbeats: number;
@@ -196,6 +222,7 @@ class MavlinkSplitter {
 
     const params: ParamValue[] = [];
     const statusTexts: string[] = [];
+    let chipId: string | null = null;
     let validFrames = 0;
     let heartbeats = 0;
 
@@ -243,6 +270,9 @@ class MavlinkSplitter {
             const pv = parseParamValue(payload);
             if (pv) params.push(pv);
           }
+          if (msgId === 148) {
+            chipId = parseChipId(frame.slice(headerLen, headerLen + payloadLen)) ?? chipId;
+          }
           // STATUSTEXT (253): severity uint8 at [0], text char[50] at [1..50]
           if (msgId === 253 && payloadLen >= 2) {
             const payload = frame.slice(headerLen, headerLen + payloadLen);
@@ -269,7 +299,7 @@ class MavlinkSplitter {
       }
     }
 
-    return { params, statusTexts, detectedVersion: this.detectedVersion, validFrames, heartbeats };
+    return { params, statusTexts, chipId, detectedVersion: this.detectedVersion, validFrames, heartbeats };
   }
 }
 
@@ -280,6 +310,7 @@ export type MavlinkCallbacks = {
   onDone: (params: { name: string; value: string }[]) => void;
   onError: (msg: string) => void;
   onLog: (msg: string) => void;
+  onChipId?: (chipId: string | null) => void;
 };
 
 interface SerialPortSignals { dataTerminalReady?: boolean; requestToSend?: boolean; }
@@ -333,6 +364,7 @@ export async function openDroneConnection(
   let versionLogged = false;
   let consecutiveHeartbeats = 0;
   let lastProgressLog = 0;
+  let chipIdReported = false;
 
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   const writer = port.writable?.getWriter();
@@ -456,9 +488,21 @@ export async function openDroneConnection(
             onLog("Autopilot ready (no version string received, falling back)…");
           }
           onLog("Autopilot ready — reading parameters…");
+          if (splitter.detectedVersion === 1) {
+            onLog("⚠ MAVLink v1 — the chip ID is only sent over MAVLink 2");
+            callbacks.onChipId?.(null);
+          } else {
+            await sendFrame(buildRequestMessage(148, false));
+          }
           await sendFrame(buildParamRequestList(splitter.detectedVersion === 1));
           requestSent = true;
           scheduleRetry();
+        }
+
+        if (result.chipId && !chipIdReported) {
+          chipIdReported = true;
+          onLog(`Chip ID: ${result.chipId}`);
+          callbacks.onChipId?.(result.chipId);
         }
 
         for (const pv of result.params) {
