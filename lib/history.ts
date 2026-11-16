@@ -1,5 +1,6 @@
 import { createAdminClient, type createSessionClient } from "@/lib/supabase/server";
-import { isRuntime, paramsEqual } from "@/lib/desired-state";
+import { isRuntime, isUnmanaged, paramsEqual } from "@/lib/desired-state";
+import { latestApproved } from "@/lib/versions";
 import type { DroneEventKind, LinkMethod } from "@/lib/types";
 
 type Supabase = Awaited<ReturnType<typeof createSessionClient>>;
@@ -117,4 +118,33 @@ export async function getEvents(supabase: Supabase, droneId: string): Promise<Ti
     method: r.method as LinkMethod | null,
     createdAt: r.created_at,
   }));
+}
+
+/**
+ * For each drone, how many managed params of its target differ from the model
+ * template's target. Per-drone params are ignored. Drones without a target are left out.
+ */
+export async function diffFromTemplate(supabase: Supabase, template: TimelineVersion[], droneIds: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const templateTarget = latestApproved(template.map((v) => ({ id: v.id, version_label: v.label, needs_review: v.needsReview })));
+  if (!templateTarget || droneIds.length === 0) return out;
+  const { data: sets } = await supabase.from("client_sets").select("id, drone_id").in("drone_id", droneIds).eq("is_default", false);
+  const setIds = (sets ?? []).map((s) => s.id);
+  if (setIds.length === 0) return out;
+  const { data: versions } = await supabase.from("param_versions").select("id, client_set_id, version_label, needs_review").in("client_set_id", setIds);
+  const base = await values(supabase, templateTarget.id);
+  await Promise.all((sets ?? []).map(async (set) => {
+    const target = latestApproved((versions ?? []).filter((v) => v.client_set_id === set.id));
+    if (!target || !set.drone_id) return;
+    const mine = await values(supabase, target.id);
+    let n = 0;
+    for (const name of new Set([...base.keys(), ...mine.keys()])) {
+      if (isUnmanaged(name)) continue;
+      const a = base.get(name);
+      const b = mine.get(name);
+      if (a === undefined || b === undefined || !paramsEqual(a, b)) n++;
+    }
+    out.set(set.drone_id, n);
+  }));
+  return out;
 }

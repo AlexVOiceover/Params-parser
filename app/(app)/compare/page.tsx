@@ -5,6 +5,8 @@ import { createClient, createAdminClient, createSessionClient } from "@/lib/supa
 import { parseParamFile } from "@/lib/param-engine";
 import { isRuntime } from "@/lib/desired-state";
 import { VersionTree } from "@/components/compare/version-tree";
+import { FILE_VERSION_ID } from "@/lib/file-compare-shared";
+import { latestApproved } from "@/lib/versions";
 import { CompareTableWrapper } from "@/components/compare/compare-table-wrapper";
 import { DRONE_VERSION_ID } from "@/lib/drone-params-shared";
 import type { CompareVersion, CompareRow } from "@/lib/types";
@@ -55,7 +57,7 @@ type ClientSetRow = {
   drone_id: string | null;
   is_default: boolean;
 };
-type VersionRow = { id: string; version_label: string; is_latest: boolean; client_set_id: string };
+type VersionRow = { id: string; version_label: string; needs_review: boolean; client_set_id: string };
 
 async function fetchTree(): Promise<FamilyNode[]> {
   const supabase = await createSessionClient().catch(() => createClient());
@@ -110,7 +112,7 @@ async function fetchTree(): Promise<FamilyNode[]> {
   if (clientSetIds.length) {
     const { data } = await supabase
       .from("param_versions")
-      .select("id, version_label, is_latest, client_set_id")
+      .select("id, version_label, needs_review, client_set_id")
       .in("client_set_id", clientSetIds)
       .order("version_label");
     versions = data ?? [];
@@ -152,10 +154,10 @@ async function fetchTree(): Promise<FamilyNode[]> {
               id: c.id,
               name: liveLabel(c),
               isDefault: c.is_default,
-              versions: (versionsByClientSet.get(c.id) ?? []).map((ver) => ({
+              versions: (versionsByClientSet.get(c.id) ?? []).map((ver, _i, all) => ({
                 id: ver.id,
                 label: ver.version_label,
-                isLatest: ver.is_latest,
+                isLatest: latestApproved(all)?.id === ver.id,
               })),
             }))
             .filter((c) => c.versions.length > 0),
@@ -307,18 +309,21 @@ async function fetchCompareData(
 export default async function ComparePage({
   searchParams,
 }: {
-  searchParams: Promise<{ v?: string | string[] }>;
+  searchParams: Promise<{ v?: string | string[]; pick?: string | string[] }>;
 }) {
-  const { v } = await searchParams;
+  const { v, pick } = await searchParams;
   const allIds = Array.isArray(v) ? v : v ? [v] : [];
+  const picked = Array.isArray(pick) ? pick : pick ? [pick] : [];
   const hasDroneVersion = allIds.includes(DRONE_VERSION_ID);
-  const dbVersionIds = allIds.filter((id) => id !== DRONE_VERSION_ID);
+  // A .param file lives in sessionStorage, so its column is merged client-side.
+  const hasFileVersion = allIds.includes(FILE_VERSION_ID);
+  const dbVersionIds = allIds.filter((id) => id !== DRONE_VERSION_ID && id !== FILE_VERSION_ID);
 
-  if (dbVersionIds.length >= 1 || hasDroneVersion) {
+  if (dbVersionIds.length >= 1 || hasDroneVersion || hasFileVersion) {
     const { versions, rows } = dbVersionIds.length > 0
       ? await fetchCompareData(dbVersionIds)
       : { versions: [], rows: [] };
-    const totalCount = versions.length + (hasDroneVersion ? 1 : 0);
+    const totalCount = versions.length + (hasDroneVersion ? 1 : 0) + (hasFileVersion ? 1 : 0);
     return (
       <div className="h-full flex flex-col">
         <div className="flex items-center flex-wrap gap-x-1 gap-y-0.5 px-4 py-2 border-b border-border text-xs text-muted-foreground shrink-0 min-w-0">
@@ -344,12 +349,19 @@ export default async function ComparePage({
             );
           })()}
           <span className="text-foreground shrink-0">{totalCount} version{totalCount !== 1 ? "s" : ""}</span>
+          <Link
+            href={`/compare?${allIds.map((id) => `pick=${encodeURIComponent(id)}`).join("&")}`}
+            className="ml-auto text-primary hover:underline cursor-pointer shrink-0 whitespace-nowrap"
+          >
+            Add or change versions…
+          </Link>
         </div>
         <div className="flex-1 overflow-hidden">
           <CompareTableWrapper
             versions={versions}
             rows={rows}
             hasDroneVersion={hasDroneVersion}
+            hasFileVersion={hasFileVersion}
           />
         </div>
       </div>
@@ -365,7 +377,7 @@ export default async function ComparePage({
         <span className="text-foreground shrink-0">Compare</span>
       </div>
       <div className="flex-1 overflow-hidden">
-        <VersionTree tree={tree} />
+        <VersionTree tree={tree} initialChecked={picked} />
       </div>
     </div>
   );

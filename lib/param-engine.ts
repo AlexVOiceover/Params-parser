@@ -1,4 +1,5 @@
-import type { Param, Rule, ParamDefinition } from "./types";
+import type { Param, Rule, ProtectionList, ParamGroup, ParamDefinition } from "./types";
+import defaultListsJson from "@/data/protection-lists.json";
 
 /**
  * Extract the trailing integer from a drone serial string, used to match the
@@ -59,6 +60,70 @@ export function matchesRule(paramName: string, rule: Rule): boolean {
   if (rule.type === "pattern") return compiled(rule.value).test(paramName);
   return false;
 }
+
+/**
+ * Split params into protected and remaining based on rules.
+ */
+export function applyFilter(
+  params: Param[],
+  rules: Rule[]
+): { protected: Param[]; remaining: Param[] } {
+  const protectedParams: Param[] = [];
+  const remaining: Param[] = [];
+  for (const param of params) {
+    if (rules.some((rule) => matchesRule(param.name, rule))) {
+      protectedParams.push(param);
+    } else {
+      remaining.push(param);
+    }
+  }
+  return { protected: protectedParams, remaining };
+}
+
+/**
+ * Resolve which ArduPilot pdef group a param belongs to.
+ * Matches the longest pdef group prefix.
+ */
+function resolveGroup(name: string, pdefGroups: string[]): string {
+  let bestLen = 0;
+  let best = "";
+  for (const g of pdefGroups) {
+    const gPrefix = g.replace(/_$/, "");
+    if (!gPrefix) continue;
+    if (name === gPrefix || name.startsWith(gPrefix + "_")) {
+      if (gPrefix.length > bestLen) {
+        bestLen = gPrefix.length;
+        best = gPrefix;
+      }
+    }
+  }
+  if (best) return best;
+  return name.includes("_") ? name.split("_")[0] : name;
+}
+
+/**
+ * Build grouped params from a flat list.
+ */
+export function buildGroups(
+  params: Param[],
+  pdefGroups: string[]
+): ParamGroup[] {
+  const map: Record<string, Param[]> = {};
+  for (const param of params) {
+    const g = resolveGroup(param.name, pdefGroups);
+    if (!map[g]) map[g] = [];
+    map[g].push(param);
+  }
+  return Object.entries(map)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([label, params]) => ({ label, params }));
+}
+
+/**
+ * Default protection lists loaded from data/protection-lists.json.
+ */
+export const DEFAULT_PROTECTION_LISTS: ProtectionList[] =
+  defaultListsJson as ProtectionList[];
 
 /**
  * Validate a param value against its ArduPilot definition.

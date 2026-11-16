@@ -37,7 +37,7 @@ export default async function DronePage({ params }: { params: Promise<{ serial: 
   const [{ data: variant }, { data: client }, { data: set }, { count: droneCount }] = await Promise.all([
     supabase.from("variants").select("id, name, family_id").eq("id", drone.variant_id).maybeSingle(),
     drone.client_id ? supabase.from("clients").select("name").eq("id", drone.client_id).maybeSingle() : Promise.resolve({ data: null }),
-    supabase.from("client_sets").select("id").eq("drone_id", drone.id).eq("is_default", false).maybeSingle(),
+    supabase.from("client_sets").select("id, description").eq("drone_id", drone.id).eq("is_default", false).maybeSingle(),
     supabase.from("drones").select("id", { count: "exact", head: true }),
   ]);
   const { data: family } = variant?.family_id
@@ -95,6 +95,7 @@ export default async function DronePage({ params }: { params: Promise<{ serial: 
             {drone.chip_id ? <>flight controller <span className="font-mono">{drone.chip_id.slice(0, 8)}…</span></> : "flight controller not linked"}
           </span>
         </p>
+        {set?.description && <p className="text-sm text-foreground">{set.description}</p>}
       </header>
 
       {set ? (
@@ -108,6 +109,7 @@ export default async function DronePage({ params }: { params: Promise<{ serial: 
           isAdmin={isAdmin}
           isStaff={isStaff}
           fileBase={drone.serial}
+          filterSource={{ family: family?.name ?? "", variant: variant?.name ?? "", client: `${client?.name ?? "No client"} · ${drone.serial}` }}
         />
       ) : isStaff ? (
         <StartHistoryButton droneId={drone.id} serial={drone.serial} variantId={drone.variant_id} clientId={drone.client_id} clientName={client?.name ?? null} />
@@ -118,6 +120,8 @@ export default async function DronePage({ params }: { params: Promise<{ serial: 
       {settingsOptions && (
         <DroneSettings
           droneId={drone.id}
+          setId={set?.id ?? null}
+          description={set?.description ?? null}
           serial={drone.serial}
           chipId={drone.chip_id}
           clientId={drone.client_id}

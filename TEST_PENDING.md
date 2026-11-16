@@ -137,3 +137,13 @@ Things to verify when you have time. Tick them off as you go.
 - [ ] A client cannot insert versions or drone-log rows through the Supabase API
 - [ ] Stored-file URLs (…/storage/v1/object/public/param-files/…) return 400/404
 - [ ] Downloads still work from the drone page
+
+### Restored after review (2026-11-16)
+- [ ] Filter in the header: load a file / the drone / a version ("Open in Filter" on a version card), protection lists, notes, export, Publish to Catalog (asks for a changelog, saves into the drone's history)
+- [ ] Compare in the header: tree across all drones and templates; "Add a .param file…" adds a file column; "Add or change versions…" from a comparison keeps the current picks
+- [ ] Version card: "Compare with…" opens the tree with that version ticked
+- [ ] Version card: "Copy to…" → pick a drone or a model template → saved as its next version
+- [ ] Drones list: Group by model / client (remembered), click column headers to sort
+- [ ] Models list: edit name + description of a line or variant; delete a variant with no drones; delete an empty line
+- [ ] Model page: description shown; Duplicate variant (copies the template history); each drone shows how many params differ from the template
+- [ ] Drone page: description shown and editable in settings

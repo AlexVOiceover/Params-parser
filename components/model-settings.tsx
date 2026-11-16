@@ -6,14 +6,38 @@ import { Trash2 } from "lucide-react";
 import { BusyButton } from "@/components/ui/busy";
 
 /** Admin: rename or delete a model (variant). Deleting is refused while drones use it. */
-export function ModelSettings({ variantId, name, droneCount }: { variantId: string; name: string; droneCount: number }) {
+export function ModelSettings({ variantId, familyId, name, description, droneCount }: {
+  variantId: string;
+  familyId: string | null;
+  name: string;
+  description: string | null;
+  droneCount: number;
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [value, setValue] = useState(name);
-  const [busy, setBusy] = useState<"save" | "delete" | null>(null);
+  const [desc, setDesc] = useState(description ?? "");
+  const [copyName, setCopyName] = useState(`${name} copy`);
+  const [busy, setBusy] = useState<"save" | "delete" | "copy" | null>(null);
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const id = useId();
+  const descId = useId();
+  const copyId = useId();
+
+  async function duplicate() {
+    setBusy("copy");
+    setError(null);
+    const res = await fetch(`/api/admin/variants/${variantId}/clone`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ familyId, name: copyName.trim(), description: desc }),
+    });
+    const b = await res.json().catch(() => ({})) as { error?: string; variantId?: string };
+    setBusy(null);
+    if (!res.ok || !b.variantId) { setError(b.error ?? "Could not duplicate"); return; }
+    router.push(`/models/${b.variantId}`);
+  }
 
   async function call(method: "PATCH" | "DELETE") {
     setBusy(method === "PATCH" ? "save" : "delete");
@@ -21,7 +45,7 @@ export function ModelSettings({ variantId, name, droneCount }: { variantId: stri
     const res = await fetch(`/api/admin/variants/${variantId}`, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: method === "PATCH" ? JSON.stringify({ name: value.trim() }) : undefined,
+      body: method === "PATCH" ? JSON.stringify({ name: value.trim(), description: desc }) : undefined,
     });
     setBusy(null);
     if (!res.ok) {
@@ -43,11 +67,24 @@ export function ModelSettings({ variantId, name, droneCount }: { variantId: stri
             <label htmlFor={id} className="text-xs font-medium text-muted-foreground">Variant name</label>
             <input id={id} value={value} onChange={(e) => setValue(e.target.value)} className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring" />
           </div>
-          {value.trim() && value.trim() !== name && (
+          <div className="flex flex-col gap-1.5 flex-1 min-w-56">
+            <label htmlFor={descId} className="text-xs font-medium text-muted-foreground">Description</label>
+            <input id={descId} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Optional" className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring" />
+          </div>
+          {value.trim() && (value.trim() !== name || desc !== (description ?? "")) && (
             <BusyButton type="button" busy={busy === "save"} busyLabel="Saving…" onClick={() => call("PATCH")} className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">
-              Rename
+              Save
             </BusyButton>
           )}
+        </div>
+        <div className="flex items-end gap-2 flex-wrap border-t border-border pt-4">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={copyId} className="text-xs font-medium text-muted-foreground">Duplicate as a new variant (copies the template history)</label>
+            <input id={copyId} value={copyName} onChange={(e) => setCopyName(e.target.value)} className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring" />
+          </div>
+          <BusyButton type="button" busy={busy === "copy"} busyLabel="Duplicating…" disabled={!copyName.trim() || !familyId} onClick={duplicate} className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary">
+            Duplicate variant
+          </BusyButton>
         </div>
         <div className="flex items-center gap-2 border-t border-border pt-4 flex-wrap">
           {droneCount > 0 ? (

@@ -98,6 +98,8 @@ export function AppHeader() {
   const nav: { href: string; label: string; active: boolean; count?: number }[] = [
     { href: "/", label: isStaff ? "Drones" : "My drones", active: pathname === "/" || pathname.startsWith("/drones") },
     ...(isStaff ? [{ href: "/models", label: "Models", active: pathname.startsWith("/models") }] : []),
+    { href: "/compare", label: "Compare", active: pathname.startsWith("/compare") },
+    { href: "/filter", label: "Filter", active: pathname.startsWith("/filter") },
     ...(isAdmin ? [{ href: "/admin/review", label: "Review", active: pathname.startsWith("/admin/review"), count: reviewCount }] : []),
     ...(isAdmin ? [{ href: "/admin/clients", label: "Clients", active: pathname.startsWith("/admin/clients") }] : []),
   ];

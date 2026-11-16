@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { createSessionClient } from "@/lib/supabase/server";
 import { getFleet, modelName } from "@/lib/fleet";
-import { getVersions } from "@/lib/history";
+import { getVersions, diffFromTemplate } from "@/lib/history";
 import { droneHref } from "@/lib/versions";
 import { HistoryTimeline } from "@/components/history-timeline";
 import { FleetStatusBadge } from "@/components/status-badge";
@@ -25,7 +25,7 @@ export default async function ModelPage({ params }: { params: Promise<{ variantI
   const role = profile?.role ?? null;
   if (role !== "admin" && role !== "contributor") redirect("/");
 
-  const { data: variant } = await supabase.from("variants").select("id, name, family_id").eq("id", variantId).maybeSingle();
+  const { data: variant } = await supabase.from("variants").select("id, name, description, family_id").eq("id", variantId).maybeSingle();
   if (!variant) notFound();
   const [{ data: family }, { data: template }, fleet] = await Promise.all([
     variant.family_id ? supabase.from("families").select("name").eq("id", variant.family_id).maybeSingle() : Promise.resolve({ data: null }),
@@ -34,6 +34,7 @@ export default async function ModelPage({ params }: { params: Promise<{ variantI
   ]);
   const versions = await getVersions(supabase, template?.id ?? null);
   const drones = fleet.filter((d) => d.variantId === variantId);
+  const differences = await diffFromTemplate(supabase, versions, drones.map((d) => d.id));
   const name = modelName(family?.name, variant.name);
 
   return (
@@ -43,6 +44,7 @@ export default async function ModelPage({ params }: { params: Promise<{ variantI
           <ChevronLeft className="h-3.5 w-3.5" /> All models
         </Link>
         <h1 className="text-2xl font-semibold text-foreground">{name}</h1>
+        {variant.description && <p className="text-sm text-foreground">{variant.description}</p>}
         <p className="text-sm text-muted-foreground">
           The template is the reference config new {name} drones start from. Changing it does not change existing drones.
         </p>
@@ -58,6 +60,7 @@ export default async function ModelPage({ params }: { params: Promise<{ variantI
         isAdmin={role === "admin"}
         isStaff
         fileBase={name.replace(/\s*·\s*/g, "-")}
+        filterSource={{ family: family?.name ?? "", variant: variant.name, client: "Template" }}
       />
 
       <section className="flex flex-col gap-3">
@@ -70,6 +73,11 @@ export default async function ModelPage({ params }: { params: Promise<{ variantI
               <li key={d.id} className="flex items-center gap-3 px-4 py-2">
                 <Link href={droneHref(d.serial)} className="font-mono text-sm text-foreground hover:text-primary cursor-pointer">{d.serial}</Link>
                 <span className="text-xs text-muted-foreground flex-1 truncate">{d.clientName ?? "No client"}</span>
+                {differences.has(d.id) && (
+                  <span className="text-[11px] text-muted-foreground whitespace-nowrap" title="Managed params in its target that differ from the current template (per-drone params ignored)">
+                    {differences.get(d.id) === 0 ? "same as template" : `${differences.get(d.id)} differ from template`}
+                  </span>
+                )}
                 <FleetStatusBadge row={d} isStaff />
               </li>
             ))}
@@ -77,7 +85,9 @@ export default async function ModelPage({ params }: { params: Promise<{ variantI
         )}
       </section>
 
-      {role === "admin" && <ModelSettings variantId={variantId} name={variant.name} droneCount={drones.length} />}
+      {role === "admin" && (
+        <ModelSettings variantId={variantId} familyId={variant.family_id} name={variant.name} description={variant.description} droneCount={drones.length} />
+      )}
     </div>
   );
 }

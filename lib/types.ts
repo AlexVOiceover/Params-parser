@@ -11,6 +11,13 @@ export interface Rule {
   value: string;
 }
 
+export interface ProtectionList {
+  name: string;
+  description: string;
+  rules: Rule[];
+  isGlobal?: boolean;
+}
+
 export interface ParamDefinition {
   DisplayName?: string;
   Description?: string;
@@ -21,6 +28,19 @@ export interface ParamDefinition {
   RebootRequired?: string;
   Default?: string;
 }
+
+export interface ParamGroup {
+  label: string;
+  params: Param[];
+}
+
+export interface ConsoleEntry {
+  timestamp: string;
+  level: "INFO" | "WARN" | "ERROR";
+  message: string;
+}
+
+export type ParamNotes = Record<string, string>;
 
 // ── Catalog types (Supabase) ──────────────────────────────────────────────
 

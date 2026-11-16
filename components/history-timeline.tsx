@@ -4,13 +4,14 @@ import { useEffect, useId, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ArrowUpCircle, Check, ChevronDown, Download, FileUp, GitCompareArrows, Link2, RotateCcw, Trash2, Unlink, Usb, X,
+  ArrowUpCircle, Check, ChevronDown, Columns2, Copy, Filter, Download, FileUp, GitCompareArrows, Link2, RotateCcw, Trash2, Unlink, Usb, X,
 } from "lucide-react";
 import { BusyButton } from "@/components/ui/busy";
 import { Badge } from "@/components/status-badge";
 import { DroneGhostCard } from "@/components/drone-ghost-card";
 import { ApplyUpdateButton } from "@/components/apply-update-button";
 import { NewVersionDialog } from "@/components/new-version-dialog";
+import { CopyVersionDialog } from "@/components/copy-version-dialog";
 import { useConnectedDroneMatch, refreshDroneMatch } from "@/lib/use-connected-drone-match";
 import { latestApproved, pendingProposal, nextLabel } from "@/lib/versions";
 import type { TimelineEvent, TimelineVersion } from "@/lib/history";
@@ -27,6 +28,8 @@ interface Props {
   isStaff: boolean;
   /** Prefix for downloaded file names, e.g. the serial. */
   fileBase: string;
+  /** Labels the Filter tool shows for where a version came from. */
+  filterSource: { family: string; variant: string; client: string };
 }
 
 function when(iso: string): string {
@@ -39,12 +42,14 @@ const METHOD_TEXT: Record<string, string> = {
   assembly: "at assembly",
 };
 
-export function HistoryTimeline({ kind, setId, variantId, versions, events, drone, isAdmin, isStaff, fileBase }: Props) {
+export function HistoryTimeline({ kind, setId, variantId, versions, events, drone, isAdmin, isStaff, fileBase, filterSource }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const match = useConnectedDroneMatch();
   const [newOpen, setNewOpen] = useState(false);
   const [restoreOf, setRestoreOf] = useState<TimelineVersion | null>(null);
+  const [copyOf, setCopyOf] = useState<TimelineVersion | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [comparing, setComparing] = useState<string[] | null>(null);
 
   const target = latestApproved(versions.map((v) => ({ ...v, version_label: v.label, needs_review: v.needsReview })));
@@ -109,6 +114,13 @@ export function HistoryTimeline({ kind, setId, variantId, versions, events, dron
         </div>
       </div>
 
+      {notice && (
+        <p role="status" className="flex items-center gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-foreground">
+          {notice}
+          <button type="button" aria-label="Dismiss" onClick={() => setNotice(null)} className="ml-auto rounded p-0.5 text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-3.5 w-3.5" /></button>
+        </p>
+      )}
+
       {kind === "drone" && drone && (
         <DroneGhostCard
           droneId={drone.id}
@@ -145,6 +157,7 @@ export function HistoryTimeline({ kind, setId, variantId, versions, events, dron
             isAdmin={isAdmin}
             kind={kind}
             fileBase={fileBase}
+            filterSource={filterSource}
             comparing={comparing}
             onToggleCompare={(id) => {
               const prev = comparing ?? [];
@@ -153,6 +166,7 @@ export function HistoryTimeline({ kind, setId, variantId, versions, events, dron
               if (picked.length === 2) router.push(`/compare?v=${picked[0]}&v=${picked[1]}`);
             }}
             onRestore={() => setRestoreOf(item.version!)}
+            onCopy={isStaff ? () => setCopyOf(item.version!) : undefined}
             onChanged={refresh}
           />
         ) : (
@@ -172,6 +186,15 @@ export function HistoryTimeline({ kind, setId, variantId, versions, events, dron
           onSaved={() => { setNewOpen(false); refresh(); }}
         />
       )}
+      {copyOf && (
+        <CopyVersionDialog
+          versionId={copyOf.id}
+          label={copyOf.label}
+          isAdmin={isAdmin}
+          onClose={() => setCopyOf(null)}
+          onCopied={(msg) => { setCopyOf(null); setNotice(msg); }}
+        />
+      )}
       {restoreOf && (
         <RestoreDialog
           v={restoreOf}
@@ -186,8 +209,8 @@ export function HistoryTimeline({ kind, setId, variantId, versions, events, dron
 }
 
 function VersionCard({
-  v, isTarget, isProposal, superseded, onDrone, captured, installable, canRestore, isAdmin, kind, fileBase,
-  comparing, onToggleCompare, onRestore, onChanged,
+  v, isTarget, isProposal, superseded, onDrone, captured, installable, canRestore, isAdmin, kind, fileBase, filterSource,
+  comparing, onToggleCompare, onRestore, onCopy, onChanged,
 }: {
   v: TimelineVersion;
   isTarget: boolean;
@@ -200,9 +223,11 @@ function VersionCard({
   isAdmin: boolean;
   kind: "drone" | "model";
   fileBase: string;
+  filterSource: { family: string; variant: string; client: string };
   comparing: string[] | null;
   onToggleCompare: (id: string) => void;
   onRestore: () => void;
+  onCopy?: () => void;
   onChanged: () => void;
 }) {
   const [busy, setBusy] = useState<"approve" | "delete" | null>(null);
@@ -289,6 +314,29 @@ function VersionCard({
                 >
                   <GitCompareArrows className="h-3.5 w-3.5" /> What changed
                 </Link>
+              )}
+              <Link
+                href={`/compare?pick=${v.id}`}
+                title="Compare with any other version, drone, model template or a file"
+                className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-secondary cursor-pointer whitespace-nowrap"
+              >
+                <Columns2 className="h-3.5 w-3.5" /> Compare with…
+              </Link>
+              <Link
+                href={`/filter?versionId=${v.id}&family=${encodeURIComponent(filterSource.family)}&variant=${encodeURIComponent(filterSource.variant)}&client=${encodeURIComponent(filterSource.client)}&version=${encodeURIComponent(v.label)}`}
+                className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-secondary cursor-pointer whitespace-nowrap"
+              >
+                <Filter className="h-3.5 w-3.5" /> Open in Filter
+              </Link>
+              {onCopy && (
+                <button
+                  type="button"
+                  onClick={onCopy}
+                  title="Save a copy as the next version of another drone or a model template"
+                  className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-secondary cursor-pointer whitespace-nowrap"
+                >
+                  <Copy className="h-3.5 w-3.5" /> Copy to…
+                </button>
               )}
               {canRestore && (
                 <button

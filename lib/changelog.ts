@@ -13,6 +13,8 @@ export const CHANGELOG: ReleaseNote[] = [
       "The header always shows the connected drone and whether it is up to date; models and their templates have their own page",
       "Restore saves an old version as the next one, new versions from a file show what they change before saving, and Download can leave out per-drone params",
       "Every page requires signing in, files download only for people allowed to see them, and only admins' versions are approved without review",
+      "Filter and Compare are in the header; any version can be compared with any drone, template or a file, opened in Filter, or copied to another drone",
+      "Drones can be grouped by model or client and sorted by any column; models can be edited, described, duplicated and deleted from the list",
     ],
   },
   {

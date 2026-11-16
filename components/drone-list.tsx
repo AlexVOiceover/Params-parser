@@ -1,9 +1,9 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, Search, Usb, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Search, Usb, X } from "lucide-react";
 import { BusyButton } from "@/components/ui/busy";
 import { FleetStatusBadge } from "@/components/status-badge";
 import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
@@ -39,8 +39,26 @@ export function DroneList({ rows, isStaff, isAdmin, models, clients, initialClie
   const [status, setStatus] = useState<FleetStatus | "all">("all");
   const [clientId, setClientId] = useState<string>(initialClientId ?? "all");
   const [adding, setAdding] = useState(false);
+  const [groupBy, setGroupByState] = useState<GroupBy>("none");
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "status", dir: "asc" });
   const searchId = useId();
   const clientFilterId = useId();
+  const groupId = useId();
+
+  // Remember the grouping per browser; it is a viewing preference.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("air6_drones_group");
+      if (saved === "model" || saved === "client") setGroupByState(saved);
+    } catch {}
+  }, []);
+  function setGroupBy(g: GroupBy) {
+    setGroupByState(g);
+    try { localStorage.setItem("air6_drones_group", g); } catch {}
+  }
+  function toggleSort(key: SortKey) {
+    setSort((prev) => ({ key, dir: prev.key === key && prev.dir === "asc" ? "desc" : "asc" }));
+  }
 
   const counts = useMemo(() => {
     const c = new Map<FleetStatus, number>();
@@ -54,8 +72,24 @@ export function DroneList({ rows, isStaff, isAdmin, models, clients, initialClie
       (status === "all" || r.status === status) &&
       (clientId === "all" || (clientId === "none" ? !r.clientId : r.clientId === clientId)) &&
       (!q || r.serial.toLowerCase().includes(q) || r.modelName.toLowerCase().includes(q) || (r.clientName ?? "").toLowerCase().includes(q))
-    );
-  }, [rows, query, status, clientId]);
+    ).sort((a, b) => {
+      const cmp = compareBy(sort.key, a, b);
+      return sort.dir === "asc" ? cmp : -cmp;
+    });
+  }, [rows, query, status, clientId, sort]);
+
+  const groups = useMemo(() => {
+    if (groupBy === "none") return [{ key: "all", label: null as string | null, rows: visible }];
+    const map = new Map<string, FleetRow[]>();
+    for (const r of visible) {
+      const key = groupBy === "model" ? r.modelName : r.clientName ?? "No client";
+      map.set(key, [...(map.get(key) ?? []), r]);
+    }
+    return [...map.entries()]
+      .sort(([a], [b]) => (a === "No client" ? 1 : b === "No client" ? -1 : a.localeCompare(b)))
+      .map(([key, list]) => ({ key, label: key as string | null, rows: list }));
+  }, [visible, groupBy]);
+  const columnCount = isStaff ? 6 : 5;
 
   const attention = rows.filter((r) => r.status !== "up_to_date").length;
 
@@ -104,6 +138,17 @@ export function DroneList({ rows, isStaff, isAdmin, models, clients, initialClie
                 </button>
               )}
             </div>
+            <label htmlFor={groupId} className="sr-only">Group by</label>
+            <select
+              id={groupId}
+              value={groupBy}
+              onChange={(e) => setGroupBy(e.target.value as GroupBy)}
+              className="shrink-0 rounded-md border border-border bg-secondary px-2 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+            >
+              <option value="none">No grouping</option>
+              <option value="model">Group by model</option>
+              {isStaff && <option value="client">Group by client</option>}
+            </select>
             {isStaff && clients.length > 0 && (
               <>
                 <label htmlFor={clientFilterId} className="sr-only">Client</label>
@@ -143,16 +188,24 @@ export function DroneList({ rows, isStaff, isAdmin, models, clients, initialClie
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-secondary text-[11px] uppercase tracking-wider text-muted-foreground">
-                <th className="px-4 py-2 text-left font-semibold">Serial</th>
-                <th className="px-4 py-2 text-left font-semibold hidden sm:table-cell">Model</th>
-                {isStaff && <th className="px-4 py-2 text-left font-semibold hidden md:table-cell">Client</th>}
-                <th className="px-4 py-2 text-left font-semibold">Status</th>
-                <th className="px-4 py-2 text-left font-semibold hidden md:table-cell">Target</th>
-                <th className="px-4 py-2 text-left font-semibold hidden lg:table-cell">Last verified</th>
+                <SortTh label="Serial" k="serial" sort={sort} onSort={toggleSort} />
+                <SortTh label="Model" k="model" sort={sort} onSort={toggleSort} className="hidden sm:table-cell" />
+                {isStaff && <SortTh label="Client" k="client" sort={sort} onSort={toggleSort} className="hidden md:table-cell" />}
+                <SortTh label="Status" k="status" sort={sort} onSort={toggleSort} />
+                <SortTh label="Target" k="target" sort={sort} onSort={toggleSort} className="hidden md:table-cell" />
+                <SortTh label="Last verified" k="last" sort={sort} onSort={toggleSort} className="hidden lg:table-cell" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
-              {visible.map((r) => (
+            {groups.map((g) => (
+            <tbody key={g.key} className="divide-y divide-border border-b border-border last:border-b-0">
+              {g.label !== null && (
+                <tr className="bg-secondary/60">
+                  <th colSpan={columnCount} scope="colgroup" className="px-4 py-1.5 text-left text-xs font-semibold text-foreground">
+                    {g.label} <span className="font-normal text-muted-foreground">· {g.rows.length}</span>
+                  </th>
+                </tr>
+              )}
+              {g.rows.map((r) => (
                 <tr
                   key={r.id}
                   onClick={() => router.push(droneHref(r.serial))}
@@ -181,10 +234,11 @@ export function DroneList({ rows, isStaff, isAdmin, models, clients, initialClie
                   </td>
                 </tr>
               ))}
-              {visible.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-xs text-muted-foreground">No drones match.</td></tr>
-              )}
             </tbody>
+            ))}
+            {visible.length === 0 && (
+              <tbody><tr><td colSpan={columnCount} className="px-4 py-8 text-center text-xs text-muted-foreground">No drones match.</td></tr></tbody>
+            )}
           </table>
         </div>
       )}
@@ -199,6 +253,39 @@ export function DroneList({ rows, isStaff, isAdmin, models, clients, initialClie
         />
       )}
     </div>
+  );
+}
+
+type GroupBy = "none" | "model" | "client";
+type SortKey = "serial" | "model" | "client" | "status" | "target" | "last";
+
+function compareBy(key: SortKey, a: FleetRow, b: FleetRow): number {
+  switch (key) {
+    case "serial": return a.serial.localeCompare(b.serial);
+    case "model": return a.modelName.localeCompare(b.modelName) || a.serial.localeCompare(b.serial);
+    case "client": return (a.clientName ?? "~").localeCompare(b.clientName ?? "~") || a.serial.localeCompare(b.serial);
+    case "status": return STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status) || a.serial.localeCompare(b.serial);
+    case "target": return (parseInt(a.target ?? "0", 10) - parseInt(b.target ?? "0", 10)) || a.serial.localeCompare(b.serial);
+    case "last": return (a.lastAt ?? "").localeCompare(b.lastAt ?? "") || a.serial.localeCompare(b.serial);
+  }
+}
+
+function SortTh({ label, k, sort, onSort, className = "" }: {
+  label: string;
+  k: SortKey;
+  sort: { key: SortKey; dir: "asc" | "desc" };
+  onSort: (k: SortKey) => void;
+  className?: string;
+}) {
+  const active = sort.key === k;
+  const Icon = active ? (sort.dir === "asc" ? ChevronUp : ChevronDown) : null;
+  return (
+    <th className={`px-4 py-2 text-left font-semibold ${className}`} aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}>
+      <button type="button" onClick={() => onSort(k)} className={`flex items-center gap-1 uppercase tracking-wider cursor-pointer whitespace-nowrap hover:text-foreground ${active ? "text-foreground" : ""}`}>
+        {label}
+        {Icon && <Icon className="h-3 w-3" />}
+      </button>
+    </th>
   );
 }
 

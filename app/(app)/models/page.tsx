@@ -19,8 +19,8 @@ export default async function ModelsPage() {
   if (role !== "admin" && role !== "contributor") redirect("/");
 
   const [{ data: families }, { data: variants }, { data: templates }, { data: drones }] = await Promise.all([
-    supabase.from("families").select("id, name").order("name"),
-    supabase.from("variants").select("id, name, family_id").order("name"),
+    supabase.from("families").select("id, name, description").order("name"),
+    supabase.from("variants").select("id, name, description, family_id").order("name"),
     supabase.from("client_sets").select("variant_id, param_versions(id, version_label, needs_review)").eq("is_default", true),
     supabase.from("drones").select("variant_id"),
   ]);
@@ -31,6 +31,7 @@ export default async function ModelsPage() {
   const groups: FamilyGroup[] = (families ?? []).map((f) => ({
     id: f.id,
     name: f.name,
+    description: f.description,
     models: (variants ?? [])
       .filter((v) => v.family_id === f.id)
       .map((v) => {
@@ -38,6 +39,7 @@ export default async function ModelsPage() {
         return {
           id: v.id,
           name: v.name,
+          description: v.description,
           template: latestApproved(history)?.version_label ?? null,
           pending: pendingProposal(history)?.version_label ?? null,
           drones: droneCount.get(v.id) ?? 0,

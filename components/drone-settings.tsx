@@ -12,6 +12,8 @@ interface Option { id: string; name: string }
 
 interface Props {
   droneId: string;
+  setId: string | null;
+  description: string | null;
   serial: string;
   chipId: string | null;
   clientId: string | null;
@@ -22,18 +24,20 @@ interface Props {
 }
 
 /** Staff-only settings at the bottom of a drone's page. */
-export function DroneSettings({ droneId, serial, chipId, clientId, variantId, clients, models, isAdmin }: Props) {
+export function DroneSettings({ droneId, setId, description, serial, chipId, clientId, variantId, clients, models, isAdmin }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [serialInput, setSerialInput] = useState(serial);
   const [client, setClient] = useState(clientId ?? "");
   const [model, setModel] = useState(variantId);
+  const [desc, setDesc] = useState(description ?? "");
   const [busy, setBusy] = useState<"save" | "delete" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const ids = { serial: useId(), client: useId(), model: useId() };
+  const ids = { serial: useId(), client: useId(), model: useId(), description: useId() };
 
-  const changed = serialInput.trim() !== serial || client !== (clientId ?? "") || model !== variantId;
+  const descChanged = desc !== (description ?? "");
+  const changed = serialInput.trim() !== serial || client !== (clientId ?? "") || model !== variantId || descChanged;
 
   async function save() {
     setBusy("save");
@@ -42,6 +46,20 @@ export function DroneSettings({ droneId, serial, chipId, clientId, variantId, cl
     if (serialInput.trim() !== serial) body.serial = serialInput.trim();
     if (client !== (clientId ?? "")) body.clientId = client || null;
     if (model !== variantId) body.variantId = model;
+    if (descChanged && setId) {
+      const r = await fetch(`/api/admin/client-sets/${setId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: desc }),
+      });
+      if (!r.ok) {
+        setBusy(null);
+        const b = await r.json().catch(() => ({})) as { error?: string };
+        setError(b.error ?? "Could not save the description");
+        return;
+      }
+      if (Object.keys(body).length === 0) { setBusy(null); startTransition(() => router.refresh()); return; }
+    }
     const res = await fetch(`/api/admin/drones/${droneId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -95,6 +113,12 @@ export function DroneSettings({ droneId, serial, chipId, clientId, variantId, cl
             </select>
           </div>
         </div>
+        {setId && (
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={ids.description} className="text-xs font-medium text-muted-foreground">Description</label>
+            <input id={ids.description} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Optional, e.g. payload or special setup" className={field} />
+          </div>
+        )}
         {model !== variantId && (
           <p className="text-xs text-amber-700 dark:text-amber-300">The drone keeps its history; only its model label changes.</p>
         )}

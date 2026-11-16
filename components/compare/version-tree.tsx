@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronRight,
@@ -10,8 +10,12 @@ import {
   GitCommitHorizontal,
   GitCompareArrows,
   Usb,
+  FileUp,
+  X,
 } from "lucide-react";
 import { useDroneParams, DRONE_VERSION_ID } from "@/lib/drone-params-context";
+import { parseParamFile } from "@/lib/param-engine";
+import { FILE_VERSION_ID, readCompareFile, writeCompareFile, clearCompareFile, type CompareFilePayload } from "@/lib/file-compare-shared";
 
 interface VersionNode {
   id: string;
@@ -41,13 +45,29 @@ interface FamilyNode {
 
 interface Props {
   tree: FamilyNode[];
+  /** Versions already chosen (e.g. "Compare with…" from a version card). */
+  initialChecked?: string[];
 }
 
-export function VersionTree({ tree }: Props) {
+export function VersionTree({ tree, initialChecked = [] }: Props) {
   const router = useRouter();
   const { droneParams } = useDroneParams();
   const hasDroneParams = droneParams !== null && droneParams.length > 0;
-  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [checked, setChecked] = useState<Set<string>>(() => new Set(initialChecked.filter((id) => id !== FILE_VERSION_ID)));
+  // A .param file you received: kept in this tab only, never uploaded.
+  const [file, setFile] = useState<CompareFilePayload | null>(() => (initialChecked.includes(FILE_VERSION_ID) ? readCompareFile() : null));
+  const [fileError, setFileError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  async function pickFile(f: File | null) {
+    if (!f) return;
+    setFileError(null);
+    const params = parseParamFile(await f.text()).map((p) => ({ name: p.name, value: p.value }));
+    if (params.length === 0) { setFileError("No params found in that file."); return; }
+    const payload = { name: f.name, params };
+    writeCompareFile(payload);
+    setFile(payload);
+  }
   const [collapsedFamilies, setCollapsedFamilies] = useState<Set<string>>(new Set());
   const [collapsedVariants, setCollapsedVariants] = useState<Set<string>>(new Set());
   const [collapsedClientSets, setCollapsedClientSets] = useState<Set<string>>(new Set());
@@ -91,11 +111,12 @@ export function VersionTree({ tree }: Props) {
   function handleCompare() {
     const params = new URLSearchParams();
     for (const id of checked) params.append("v", id);
+    if (file) params.append("v", FILE_VERSION_ID);
     const url = `/compare?${params.toString()}`;
     router.push(url);
   }
 
-  const selectedCount = checked.size;
+  const selectedCount = checked.size + (file ? 1 : 0);
 
   return (
     <div className="flex flex-col h-full">
@@ -119,6 +140,46 @@ export function VersionTree({ tree }: Props) {
 
       {/* Tree */}
       <div className="flex-1 overflow-y-auto py-2">
+        {/* A .param file — compared without being saved */}
+        <div className="flex items-center gap-2 w-full px-4 py-2 border-b border-border/50 mb-1">
+          <FileUp className="h-3.5 w-3.5 text-primary shrink-0" />
+          {file ? (
+            <>
+              <span className="text-sm font-medium text-foreground truncate">{file.name}</span>
+              <span className="text-[10px] text-muted-foreground">{file.params.length} params · not saved</span>
+              <button
+                type="button"
+                aria-label="Remove file"
+                onClick={() => { clearCompareFile(); setFile(null); }}
+                className="ml-auto rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => fileInput.current?.click()}
+                className="text-sm text-primary hover:underline cursor-pointer whitespace-nowrap"
+              >
+                Add a .param file…
+              </button>
+              <span className="text-[11px] text-muted-foreground">e.g. one received by email — it is not uploaded or kept</span>
+            </>
+          )}
+          <label htmlFor="compare-file-input" className="sr-only">.param file to compare</label>
+          <input
+            id="compare-file-input"
+            ref={fileInput}
+            type="file"
+            accept=".param,.parm,.txt"
+            className="hidden"
+            onChange={(e) => { pickFile(e.target.files?.[0] ?? null); e.target.value = ""; }}
+          />
+          {fileError && <span className="text-xs text-destructive">{fileError}</span>}
+        </div>
+
         {/* Connected drone — appears when params are imported */}
         {hasDroneParams && (
           <div
