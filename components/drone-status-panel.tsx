@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle, AlertTriangle, AlertCircle, Bell, Link2, Save, RefreshCw } from "lucide-react";
 import { BusyButton, Spinner } from "@/components/ui/busy";
 import { ApplyUpdateButton } from "@/components/apply-update-button";
+import { ParamInfoHover } from "@/components/param-info-hover";
 import { useAuth } from "@/components/auth-provider";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { refreshDroneMatch, type DroneMatchResult } from "@/lib/use-connected-drone-match";
@@ -29,7 +30,7 @@ function DiffList({ diff }: { diff: ParamDiff[] }) {
     <div className="rounded border border-border bg-background/50 divide-y divide-border max-h-48 overflow-y-auto">
       {shown.map((d) => (
         <div key={d.name} className="flex flex-wrap items-baseline justify-between gap-x-2 px-2 py-1 font-mono text-[11px]">
-          <span className="text-foreground break-all">{d.name}</span>
+          <ParamInfoHover name={d.name} highlight={[String(d.actual), String(d.desired)]} />
           <span className="ml-auto text-muted-foreground text-right break-all">
             {d.actual === null ? <span className="italic">missing</span> : formatParamValue(d.actual)}
             <span className="mx-1">→</span>
