@@ -6,6 +6,15 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.24.1",
+    date: "2026-11-16",
+    items: [
+      "Every page now requires signing in, and param files download only for people allowed to see them",
+      "New versions from anyone but an admin wait for review, and approved versions can no longer be edited in place",
+      "Compare is read-only: drones are changed only through Install, which verifies and logs every write",
+    ],
+  },
+  {
     version: "0.24.0",
     date: "2026-11-16",
     items: [
