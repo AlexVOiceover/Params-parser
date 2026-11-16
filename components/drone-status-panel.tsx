@@ -39,9 +39,9 @@ function DiffList({ diff, versionLabel }: { diff: ParamDiff[]; versionLabel: str
         <tbody className="divide-y divide-border">
           {shown.map((d) => (
             <tr key={d.name}>
-              <td className="px-2 py-1"><ParamInfoHover name={d.name} highlight={[String(d.actual), String(d.desired)]} /></td>
-              <td className="px-2 py-1 text-right text-foreground">
-                {d.actual === null ? <span className="italic font-sans text-muted-foreground">not on drone</span> : formatParamValue(d.actual)}
+              <td className="px-2 py-1"><ParamInfoHover name={d.name} drone={d.actual === null ? undefined : String(d.actual)} stored={String(d.desired)} /></td>
+              <td className="px-2 py-1 text-right text-sky-700 dark:text-sky-300">
+                {d.actual === null ? "not on drone" : formatParamValue(d.actual)}
               </td>
               <td className="px-2 py-1 text-right text-amber-700 dark:text-amber-300">{formatParamValue(d.desired)}</td>
             </tr>

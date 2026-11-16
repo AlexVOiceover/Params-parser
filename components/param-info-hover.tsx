@@ -26,7 +26,11 @@ const HOVER_DELAY_MS = 500;
  * A param name that shows the ArduPilot definition (description, units,
  * default, range, options) on hover, keyboard focus or tap.
  */
-export function ParamInfoHover({ name, highlight = [] }: { name: string; highlight?: string[] }) {
+const DRONE_CLASS = "text-sky-700 dark:text-sky-300 font-medium";
+const STORED_CLASS = "text-amber-700 dark:text-amber-300 font-medium";
+
+/** `drone` and `stored` colour the matching options like the diff table's columns. */
+export function ParamInfoHover({ name, drone, stored }: { name: string; drone?: string; stored?: string }) {
   const ref = useRef<HTMLButtonElement>(null);
   const [def, setDef] = useState<ParamDefinition | null | undefined>(undefined);
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
@@ -105,11 +109,14 @@ export function ParamInfoHover({ name, highlight = [] }: { name: string; highlig
               </div>
               {options.length > 0 && (
                 <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-                  {options.slice(0, MAX_OPTIONS).map(([k, v]) => (
-                    <span key={k} className={highlight.includes(k) ? "text-foreground font-medium" : "text-muted-foreground"}>
-                      <span className="font-mono text-primary">{k}</span> = {v}
-                    </span>
-                  ))}
+                  {options.slice(0, MAX_OPTIONS).map(([k, v]) => {
+                    const cls = k === stored ? STORED_CLASS : k === drone ? DRONE_CLASS : null;
+                    return (
+                      <span key={k} className={cls ?? "text-muted-foreground"}>
+                        <span className={`font-mono ${cls ?? "text-primary"}`}>{k}</span> = {v}
+                      </span>
+                    );
+                  })}
                   {options.length > MAX_OPTIONS && <span className="text-muted-foreground">+{options.length - MAX_OPTIONS} more</span>}
                 </div>
               )}
