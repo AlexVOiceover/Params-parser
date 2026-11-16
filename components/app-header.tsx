@@ -4,56 +4,33 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
   Settings,
-  Building2,
-  Usb,
   User as UserIcon,
   LogOut,
   LogIn,
   ChevronDown,
-  ClipboardList,
   RefreshCw,
   Sun,
-  Layers,
   Moon,
   Map as MapIcon,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useDroneParams } from "@/lib/drone-params-context";
 import { useAuth } from "@/components/auth-provider";
-import { useSerialMode } from "@/lib/use-serial-mode";
+import { DroneChip } from "@/components/drone-chip";
 import { WhatsNewDialog } from "@/components/whats-new-dialog";
 import { CURRENT_VERSION } from "@/lib/changelog";
-
-function formatReadAge(ms: number, short: boolean): string {
-  const min = Math.floor(ms / 60_000);
-  if (min < 1) return short ? "now" : "just now";
-  if (min < 60) return short ? `${min}m` : `${min} min ago`;
-  const h = Math.floor(min / 60);
-  return short ? `${h}h` : `${h} h ago`;
-}
 
 const navLinkClass =
   "flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap";
 
 export function AppHeader() {
   const pathname = usePathname();
-  const isMission = pathname === "/mission";
-  const { droneParams, readAt, openImportDialog } = useDroneParams();
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!readAt) return;
-    setNow(Date.now());
-    const t = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(t);
-  }, [readAt]);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
-  const serialMode = useSerialMode();
-  const hasWebSerial = serialMode !== "unsupported";
   const { user, role, clientName, signOut } = useAuth();
 
   const isAdmin = role === "admin";
+  const isStaff = isAdmin || role === "contributor";
   const [reviewCount, setReviewCount] = useState<number>(0);
   const [isDark, setIsDark] = useState(true);
   useEffect(() => {
@@ -118,8 +95,12 @@ export function AppHeader() {
     };
   }, [userMenuOpen]);
 
-  const hasParams = droneParams !== null && droneParams.length > 0;
-  const readAge = readAt ? Math.max(0, now - readAt) : 0;
+  const nav: { href: string; label: string; active: boolean; count?: number }[] = [
+    { href: "/", label: isStaff ? "Drones" : "My drones", active: pathname === "/" || pathname.startsWith("/drones") },
+    ...(isStaff ? [{ href: "/models", label: "Models", active: pathname.startsWith("/models") }] : []),
+    ...(isAdmin ? [{ href: "/admin/review", label: "Review", active: pathname.startsWith("/admin/review"), count: reviewCount }] : []),
+    ...(isAdmin ? [{ href: "/admin/clients", label: "Clients", active: pathname.startsWith("/admin/clients") }] : []),
+  ];
 
   return (
     <>
@@ -137,35 +118,28 @@ export function AppHeader() {
       >
         v{CURRENT_VERSION}
       </button>
+      {user && (
+        <nav aria-label="Main" className="flex items-center gap-0.5 ml-1 sm:ml-3 overflow-x-auto">
+          {nav.map((n) => (
+            <Link
+              key={n.href}
+              href={n.href}
+              aria-current={n.active ? "page" : undefined}
+              className={`flex items-center gap-1.5 rounded-md px-2 sm:px-2.5 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                n.active ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+              }`}
+            >
+              {n.label}
+              {!!n.count && (
+                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">{n.count}</span>
+              )}
+            </Link>
+          ))}
+        </nav>
+      )}
       <div className="flex-1" />
 
-      {isAdmin && (
-        <Link
-          href={isMission ? "/" : "/mission"}
-          title={isMission ? "Back to Catalog" : "Mission planner"}
-          className="flex items-center gap-1.5 rounded-md border border-border px-2 sm:px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap shrink-0"
-        >
-          <MapIcon className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">{isMission ? "Catalog" : "Mission"}</span>
-        </Link>
-      )}
-
-      {hasWebSerial && (
-        <button
-          onClick={openImportDialog}
-          title={hasParams ? `${droneParams.length} params read ${formatReadAge(readAge, false)} — click to read again` : "Import from drone"}
-          aria-label={hasParams ? `Drone params read ${formatReadAge(readAge, false)}` : "Import from drone"}
-          className={`flex items-center gap-1.5 rounded-md border px-2 sm:px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-            hasParams
-              ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/25"
-              : "border-border text-foreground hover:bg-secondary"
-          }`}
-        >
-          <Usb className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">{hasParams ? `Drone · read ${formatReadAge(readAge, false)}` : "Import from drone"}</span>
-          {hasParams && <span className="sm:hidden">{formatReadAge(readAge, true)}</span>}
-        </button>
-      )}
+      {user && <DroneChip />}
 
       <div ref={userMenuRef} className="relative shrink-0">
         {user ? (
@@ -212,33 +186,12 @@ export function AppHeader() {
                   Users
                 </Link>
                 <Link
-                  href="/admin/clients"
+                  href="/mission"
                   onClick={() => setUserMenuOpen(false)}
                   className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
                 >
-                  <Building2 className="h-3.5 w-3.5" />
-                  Clients & Drones
-                </Link>
-                <Link
-                  href="/admin/drones"
-                  onClick={() => setUserMenuOpen(false)}
-                  className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  <Layers className="h-3.5 w-3.5" />
-                  Fleet
-                </Link>
-                <Link
-                  href="/admin/review"
-                  onClick={() => setUserMenuOpen(false)}
-                  className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  <ClipboardList className="h-3.5 w-3.5" />
-                  Review queue
-                  {reviewCount > 0 && (
-                    <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
-                      {reviewCount}
-                    </span>
-                  )}
+                  <MapIcon className="h-3.5 w-3.5" />
+                  Mission planner
                 </Link>
               </>
             )}

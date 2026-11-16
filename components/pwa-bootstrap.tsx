@@ -110,7 +110,7 @@ export function PwaBootstrap() {
       {!isOnline && (
         <div className="pointer-events-auto flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/15 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 shadow-lg backdrop-blur-sm">
           <WifiOff className="h-3.5 w-3.5 shrink-0" />
-          <span>Offline — filter tool still works; catalog uses cached data</span>
+          <span>Offline — reconnect to load drones and save changes</span>
         </div>
       )}
 

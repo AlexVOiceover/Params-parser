@@ -1,4 +1,4 @@
-// Types for the param filter application
+// Shared types
 
 export interface Param {
   name: string;
@@ -6,15 +6,9 @@ export interface Param {
 }
 
 export interface Rule {
-  type: "exact" | "prefix";
+  /** "pattern" is a regular expression matched against the whole name. */
+  type: "exact" | "prefix" | "pattern";
   value: string;
-}
-
-export interface ProtectionList {
-  name: string;
-  description: string;
-  rules: Rule[];
-  isGlobal?: boolean;
 }
 
 export interface ParamDefinition {
@@ -27,19 +21,6 @@ export interface ParamDefinition {
   RebootRequired?: string;
   Default?: string;
 }
-
-export interface ParamGroup {
-  label: string;
-  params: Param[];
-}
-
-export interface ConsoleEntry {
-  timestamp: string;
-  level: "INFO" | "WARN" | "ERROR";
-  message: string;
-}
-
-export type ParamNotes = Record<string, string>;
 
 // ── Catalog types (Supabase) ──────────────────────────────────────────────
 
@@ -79,49 +60,8 @@ export interface Drone {
   created_at: string;
 }
 
-export interface ClientSet {
-  id: string;
-  variant_id: string;
-  client_name: string;
-  serial: string;
-  client_id: string | null;
-  drone_id: string | null;
-  is_default: boolean;
-  description: string | null;
-  created_by: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ParamVersion {
-  id: string;
-  client_set_id: string;
-  version_label: string;
-  storage_path: string;
-  changelog: string | null;
-  created_by: string | null;
-  created_at: string;
-  is_latest: boolean;
-  needs_review: boolean;
-  /** ArduPilot firmware the version was made for ("4.5.7"); null = unknown. */
-  firmware: string | null;
-}
-
 export type DroneEventKind = "applied" | "captured" | "linked" | "relinked" | "unlinked";
 export type LinkMethod = "connect" | "messages_line" | "assembly";
-
-export interface DroneEvent {
-  id: string;
-  drone_id: string;
-  param_version_id: string | null;
-  chip_id: string | null;
-  firmware: string | null;
-  kind: DroneEventKind;
-  diff_count: number | null;
-  method: LinkMethod | null;
-  created_by: string | null;
-  created_at: string;
-}
 
 // ── Compare view types ────────────────────────────────────────────────────
 

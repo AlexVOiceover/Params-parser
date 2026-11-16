@@ -1,339 +1,70 @@
-import { NextRequest } from "next/server";
-import { createSessionClient, createAdminClient } from "@/lib/supabase/server";
-import { parseParamFile, writeParamFile } from "@/lib/param-engine";
+import { NextRequest, NextResponse } from "next/server";
+import { createAdminClient } from "@/lib/supabase/server";
+import { requireContributor } from "@/lib/supabase/auth";
+import { parseParamFile } from "@/lib/param-engine";
+import { createVersion } from "@/lib/create-version";
 
-export async function POST(request: NextRequest) {
-  const encoder = new TextEncoder();
+export const dynamic = "force-dynamic";
 
-  function msg(text: string, error = false) {
-    return encoder.encode(JSON.stringify({ text, error }) + "\n");
+/**
+ * POST /api/upload — multipart: file, changelog, firmware?, and either
+ * clientSetId (a drone's history) or variantId (that model's template,
+ * created on first use). Staff only. The server assigns the version number;
+ * an admin's upload is approved at once, anyone else's waits for review.
+ */
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const caller = await requireContributor();
+  if (!caller) return NextResponse.json({ error: "Only staff can upload versions" }, { status: 403 });
+
+  const form = await request.formData();
+  const file = form.get("file");
+  const changelog = String(form.get("changelog") ?? "").trim();
+  const firmware = String(form.get("firmware") ?? "").trim() || null;
+  const clientSetId = form.get("clientSetId");
+  const variantId = form.get("variantId");
+
+  if (!(file instanceof File)) return NextResponse.json({ error: "Choose a .param file" }, { status: 400 });
+  if (!changelog) return NextResponse.json({ error: "Say what this version changes" }, { status: 400 });
+  if (firmware && !/^\d+\.\d+\.\d+$/.test(firmware)) {
+    return NextResponse.json({ error: "Firmware must look like 4.5.7" }, { status: 400 });
   }
+  const params = parseParamFile(await file.text());
+  if (params.length === 0) return NextResponse.json({ error: "No params found in that file" }, { status: 400 });
 
-  const stream = new ReadableStream({
-    async start(controller) {
-      try {
-        // 1. Verify session
-        controller.enqueue(msg("Verifying session…"));
-        const supabase = await createSessionClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          controller.enqueue(msg("Unauthorized", true));
-          controller.close();
-          return;
-        }
+  const admin = createAdminClient();
+  let setId: string | null = null;
+  if (typeof clientSetId === "string" && clientSetId) {
+    const { data } = await admin.from("client_sets").select("id").eq("id", clientSetId).maybeSingle();
+    setId = data?.id ?? null;
+  } else if (typeof variantId === "string" && variantId) {
+    const { data: existing } = await admin
+      .from("client_sets")
+      .select("id")
+      .eq("variant_id", variantId)
+      .eq("is_default", true)
+      .maybeSingle();
+    if (existing) {
+      setId = existing.id;
+    } else {
+      const { data: created, error } = await admin
+        .from("client_sets")
+        .insert({ client_name: "Default", serial: "", variant_id: variantId, is_default: true, created_by: caller.id })
+        .select("id")
+        .single();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      setId = created.id;
+    }
+  }
+  if (!setId) return NextResponse.json({ error: "Unknown drone or model" }, { status: 404 });
 
-        // 2. Verify role
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", user.id)
-          .single();
-        if (!profile || !["contributor", "admin"].includes(profile.role)) {
-          controller.enqueue(msg("Forbidden — insufficient role", true));
-          controller.close();
-          return;
-        }
-
-        // 3. Parse form data
-        // Modes:
-        //   "existing"        — clientSetId provided
-        //   "new-client-set"  — variantId + clientName + serial (+ clientId/droneId) provided
-        //   "new-drone"       — variantId + clientId + serial provided; registers the
-        //                       drone inline, then creates its client_set. Used when a
-        //                       param set arrives by email for a drone that was
-        //                       never connected here.
-        //   "default"         — variantId provided; resolves or creates the variant's Default client_set
-        controller.enqueue(msg("Reading file…"));
-        const formData = await request.formData();
-        const mode = (formData.get("mode") as string | null) ?? "existing";
-        const variantId = formData.get("variantId") as string | null;
-        let clientSetId = formData.get("clientSetId") as string | null;
-        const clientId = formData.get("clientId") as string | null;
-        let droneId = formData.get("droneId") as string | null;
-        const clientName = formData.get("clientName") as string | null;
-        const serial = formData.get("serial") as string | null;
-        const versionLabel = formData.get("versionLabel") as string;
-        const changelog = (formData.get("changelog") as string | null) || null;
-        const firmwareRaw = ((formData.get("firmware") as string | null) ?? "").trim();
-        if (firmwareRaw && !/^\d+\.\d+\.\d+$/.test(firmwareRaw)) {
-          controller.enqueue(msg("Firmware must look like 4.5.7", true));
-          controller.close();
-          return;
-        }
-        const firmware = firmwareRaw || null;
-        const file = formData.get("file") as File | null;
-
-        if (!file || !versionLabel) {
-          controller.enqueue(msg("Missing required fields", true));
-          controller.close();
-          return;
-        }
-        if (mode === "existing" && !clientSetId) {
-          controller.enqueue(msg("Client set id is required", true));
-          controller.close();
-          return;
-        }
-        if (mode === "new-client-set" && (!variantId || !clientName?.trim() || !serial?.trim())) {
-          controller.enqueue(msg("Variant id, client name and serial are required", true));
-          controller.close();
-          return;
-        }
-        if (mode === "default" && !variantId) {
-          controller.enqueue(msg("Variant id is required", true));
-          controller.close();
-          return;
-        }
-        if (mode === "new-drone" && (!variantId || !clientId || !serial?.trim())) {
-          controller.enqueue(msg("Variant, client and serial are required", true));
-          controller.close();
-          return;
-        }
-        if (!/^\d+$/.test(versionLabel.trim())) {
-          controller.enqueue(msg("Invalid version format — must be a whole number (e.g. 1)", true));
-          controller.close();
-          return;
-        }
-
-        const fileBuffer = await file.arrayBuffer();
-        controller.enqueue(msg(`File read — ${(fileBuffer.byteLength / 1024).toFixed(1)} KB`));
-
-        const admin = createAdminClient();
-
-        // 3a. Default mode — find or create the variant's Default client_set
-        if (mode === "default") {
-          controller.enqueue(msg("Resolving Default param set…"));
-          const { data: existing } = await admin
-            .from("client_sets")
-            .select("id")
-            .eq("variant_id", variantId!)
-            .eq("is_default", true)
-            .maybeSingle();
-          if (existing) {
-            clientSetId = existing.id;
-          } else {
-            const { data: newCs, error: csError } = await admin.from("client_sets").insert({
-              client_name: "Default",
-              serial: "",
-              variant_id: variantId!,
-              is_default: true,
-              created_by: user.id,
-            }).select("id").single();
-            if (csError || !newCs) {
-              controller.enqueue(msg(`Failed to create Default param set: ${csError?.message ?? "unknown error"}`, true));
-              controller.close();
-              return;
-            }
-            clientSetId = newCs.id;
-          }
-        }
-
-        // 3a-bis. new-drone mode — register the drone, then fall through to
-        // client_set creation with the id we just minted.
-        if (mode === "new-drone") {
-          const trimmedSerial = serial!.trim();
-          controller.enqueue(msg(`Registering drone "${trimmedSerial}"…`));
-
-          // Reuse an existing drone with this serial for this client if one is
-          // already registered, so re-uploading a file is idempotent.
-          const { data: existingDrone } = await admin
-            .from("drones")
-            .select("id, variant_id")
-            .eq("client_id", clientId!)
-            .eq("serial", trimmedSerial)
-            .maybeSingle();
-
-          if (existingDrone) {
-            if (existingDrone.variant_id !== variantId) {
-              controller.enqueue(msg(
-                `Drone "${trimmedSerial}" is already registered to this client on a different variant`,
-                true
-              ));
-              controller.close();
-              return;
-            }
-            droneId = existingDrone.id;
-            controller.enqueue(msg("Drone already registered — reusing it"));
-          } else {
-            // Adopt a matching orphan drone (registered at bring-up with no
-            // client) rather than creating a duplicate serial.
-            const { data: orphan } = await admin
-              .from("drones")
-              .select("id, variant_id")
-              .is("client_id", null)
-              .eq("serial", trimmedSerial)
-              .maybeSingle();
-
-            if (orphan && orphan.variant_id === variantId) {
-              const { error: adoptError } = await admin
-                .from("drones")
-                .update({ client_id: clientId! })
-                .eq("id", orphan.id);
-              if (adoptError) {
-                controller.enqueue(msg(`Failed to assign drone to client: ${adoptError.message}`, true));
-                controller.close();
-                return;
-              }
-              droneId = orphan.id;
-              controller.enqueue(msg("Adopted existing unassigned drone"));
-            } else {
-              const { data: newDrone, error: droneError } = await admin
-                .from("drones")
-                .insert({
-                  serial: trimmedSerial,
-                  variant_id: variantId!,
-                  client_id: clientId!,
-                  created_by: user.id,
-                })
-                .select("id")
-                .single();
-              if (droneError || !newDrone) {
-                const errMsg = droneError?.code === "23505"
-                  ? `A drone with serial "${trimmedSerial}" already exists`
-                  : (droneError?.message ?? "unknown error");
-                controller.enqueue(msg(`Failed to register drone: ${errMsg}`, true));
-                controller.close();
-                return;
-              }
-              droneId = newDrone.id;
-              controller.enqueue(msg("Drone registered"));
-            }
-          }
-
-          // Reuse the drone's client_set on this variant if it already has one.
-          const { data: existingCs } = await admin
-            .from("client_sets")
-            .select("id")
-            .eq("drone_id", droneId)
-            .eq("variant_id", variantId!)
-            .maybeSingle();
-          if (existingCs) clientSetId = existingCs.id;
-        }
-
-        // 3b. Create new client set under existing variant if needed
-        if ((mode === "new-client-set" || mode === "new-drone") && !clientSetId) {
-          // new-drone mode identifies the client by id, so resolve its name here.
-          let resolvedClientName = clientName?.trim() ?? "";
-          if (!resolvedClientName && clientId) {
-            const { data: clientRow } = await admin
-              .from("clients")
-              .select("name")
-              .eq("id", clientId)
-              .maybeSingle();
-            resolvedClientName = clientRow?.name ?? "";
-          }
-          if (!resolvedClientName) {
-            controller.enqueue(msg("Could not resolve the client name", true));
-            controller.close();
-            return;
-          }
-          controller.enqueue(msg(`Creating client set "${resolvedClientName} · ${serial}"…`));
-          const { data: newCs, error: csError } = await admin.from("client_sets").insert({
-            client_name: resolvedClientName,
-            serial: serial!.trim(),
-            variant_id: variantId!,
-            client_id: clientId,
-            drone_id: droneId,
-            created_by: user.id,
-          }).select("id").single();
-          if (csError || !newCs) {
-            const errMsg = csError?.code === "23505"
-              ? "This client + serial already exists for this variant"
-              : (csError?.message ?? "unknown error");
-            controller.enqueue(msg(`Failed to create client set: ${errMsg}`, true));
-            controller.close();
-            return;
-          }
-          clientSetId = newCs.id;
-        }
-
-        // 4. Parse params. The file is stored as uploaded: nothing on the drone
-        //    records a version any more, so no markers are injected.
-        const fileText = Buffer.from(fileBuffer).toString("utf-8");
-        const parsedParams = parseParamFile(fileText);
-        const updatedFileText = writeParamFile(parsedParams);
-        const updatedBuffer = Buffer.from(updatedFileText, "utf-8");
-
-        // 5. Refuse a label that already exists rather than overwrite its file.
-        const { data: clash } = await admin
-          .from("param_versions")
-          .select("id")
-          .eq("client_set_id", clientSetId!)
-          .eq("version_label", versionLabel)
-          .maybeSingle();
-        if (clash) {
-          controller.enqueue(msg(`v${versionLabel} already exists — reload to get the next number`, true));
-          controller.close();
-          return;
-        }
-
-        // Upload the file to storage
-        const storagePath = `${clientSetId}/${versionLabel}.param`;
-        controller.enqueue(msg(`Uploading to storage (${storagePath})…`));
-        const { error: uploadError } = await admin.storage
-          .from("param-files")
-          .upload(storagePath, updatedBuffer, { contentType: "text/plain", upsert: false });
-
-        if (uploadError) {
-          controller.enqueue(msg(`Storage upload failed: ${uploadError.message}`, true));
-          controller.close();
-          return;
-        }
-        controller.enqueue(msg("File stored successfully"));
-
-        // 6. Only an admin's upload is approved at once; anyone else's waits for review.
-        const approved = profile.role === "admin";
-        if (approved) {
-          controller.enqueue(msg("Updating version history…"));
-          await admin.from("param_versions").update({ is_latest: false }).eq("client_set_id", clientSetId!);
-        }
-
-        // 7. Insert new version record
-        controller.enqueue(msg(`Creating version record (v${versionLabel})…`));
-        const { data: pv, error: pvError } = await admin.from("param_versions").insert({
-          client_set_id: clientSetId!,
-          version_label: versionLabel,
-          storage_path: storagePath,
-          changelog,
-          created_by: user.id,
-          is_latest: approved,
-          needs_review: !approved,
-          firmware,
-        }).select("id").single();
-
-        if (pvError || !pv) {
-          controller.enqueue(msg(`Failed to create version: ${pvError?.message ?? "unknown error"}`, true));
-          controller.close();
-          return;
-        }
-
-        // 8. Store param values — deduplicate by name first (last occurrence wins)
-        //    so .param files with duplicate entries don't create duplicate DB rows.
-        const paramMap = new Map(parsedParams.map(({ name, value }) => [name, value]));
-        const paramValues = Array.from(paramMap.entries()).map(([name, value]) => ({
-          param_version_id: pv.id,
-          name,
-          value,
-        }));
-
-        controller.enqueue(msg(`Indexing ${paramValues.length} parameters…`));
-        if (paramValues.length > 0) {
-          for (let i = 0; i < paramValues.length; i += 500) {
-            await admin.from("param_values").insert(paramValues.slice(i, i + 500));
-          }
-        }
-
-        controller.enqueue(msg(`Done — v${versionLabel} uploaded with ${paramValues.length} params`));
-        controller.enqueue(encoder.encode(JSON.stringify({ done: true, clientSetId }) + "\n"));
-      } catch (e) {
-        const msg2 = (e instanceof Error ? e.message : "Unexpected error");
-        controller.enqueue(encoder.encode(JSON.stringify({ text: msg2, error: true }) + "\n"));
-      } finally {
-        controller.close();
-      }
-    },
+  const result = await createVersion(admin, {
+    setId,
+    params: params.map((p) => ({ name: p.name, value: p.value })),
+    changelog,
+    firmware,
+    createdBy: caller.id,
+    approved: caller.role === "admin",
   });
-
-  return new Response(stream, {
-    headers: { "Content-Type": "text/plain; charset=utf-8", "X-Content-Type-Options": "nosniff" },
-  });
+  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 500 });
+  return NextResponse.json({ versionId: result.id, label: result.label, approved: caller.role === "admin" });
 }

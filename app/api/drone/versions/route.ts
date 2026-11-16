@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSessionClient, createAdminClient } from "@/lib/supabase/server";
 import { getCaller } from "@/lib/supabase/auth";
 import { CHIP_ID_PATTERN } from "@/lib/chip-id";
-import { writeParamFile } from "@/lib/param-engine";
+import { createVersion } from "@/lib/create-version";
 
 export const dynamic = "force-dynamic";
 
@@ -56,48 +56,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const admin = createAdminClient();
-  const { data: existing } = await admin.from("param_versions").select("version_label").eq("client_set_id", set.id);
-  const next = Math.max(0, ...(existing ?? []).map((v) => parseInt(v.version_label, 10)).filter(Number.isFinite)) + 1;
-  const label = String(next);
   const approved = caller.role === "admin";
-
-  // Dedupe by name (last wins) and keep a downloadable .param file like uploads do.
-  const unique = [...new Map(body.params.map((p) => [p.name, p.value])).entries()].map(([name, value]) => ({ name, value }));
-  const storagePath = `${set.id}/${label}.param`;
-  const { error: uploadError } = await admin.storage
-    .from("param-files")
-    .upload(storagePath, Buffer.from(writeParamFile(unique), "utf-8"), { contentType: "text/plain", upsert: false });
-  if (uploadError) return NextResponse.json({ error: `Storage upload failed: ${uploadError.message}` }, { status: 500 });
-
-  if (approved) await admin.from("param_versions").update({ is_latest: false }).eq("client_set_id", set.id);
-
-  const { data: version, error: versionError } = await admin
-    .from("param_versions")
-    .insert({
-      client_set_id: set.id,
-      version_label: label,
-      storage_path: storagePath,
-      changelog,
-      created_by: caller.id,
-      is_latest: approved,
-      needs_review: !approved,
-      firmware: body.firmware ?? null,
-    })
-    .select("id")
-    .single();
-  if (versionError || !version) {
-    return NextResponse.json({ error: versionError?.message ?? "Could not create the version" }, { status: 500 });
-  }
-
-  for (let i = 0; i < unique.length; i += 500) {
-    const { error } = await admin
-      .from("param_values")
-      .insert(unique.slice(i, i + 500).map((p) => ({ param_version_id: version.id, ...p })));
-    if (error) {
-      await admin.from("param_versions").delete().eq("id", version.id);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-  }
+  const created = await createVersion(admin, {
+    setId: set.id,
+    params: body.params,
+    changelog,
+    firmware: body.firmware ?? null,
+    createdBy: caller.id,
+    approved,
+  });
+  if ("error" in created) return NextResponse.json({ error: created.error }, { status: 500 });
+  const version = { id: created.id };
+  const label = created.label;
 
   await admin.from("drone_events").insert({
     drone_id: drone.id,

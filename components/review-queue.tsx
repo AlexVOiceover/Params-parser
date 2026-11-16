@@ -3,116 +3,98 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Check, Trash2, Eye } from "lucide-react";
+import { Check, GitCompareArrows, Trash2 } from "lucide-react";
+import { BusyButton } from "@/components/ui/busy";
 
-interface ReviewRow {
+export interface ReviewRow {
   id: string;
-  versionLabel: string;
+  label: string;
   createdAt: string;
-  clientSetId: string;
-  clientName: string;
-  droneSerial: string;
-}
-
-interface Props {
-  rows: ReviewRow[];
+  changelog: string | null;
+  author: string | null;
+  /** Drone serial, or "<variant> template". */
+  subject: string;
+  href: string;
+  targetId: string | null;
+  targetLabel: string | null;
 }
 
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  return new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-export function ReviewQueue({ rows }: Props) {
+export function ReviewQueue({ rows }: { rows: ReviewRow[] }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  async function handleAccept(id: string) {
-    setBusy(id);
+  async function act(id: string, method: "PATCH" | "DELETE") {
+    setBusy(`${method}-${id}`);
     setErrors((e) => { const n = { ...e }; delete n[id]; return n; });
-    const res = await fetch(`/api/admin/param-versions/${id}`, { method: "PATCH" });
+    const res = await fetch(`/api/admin/param-versions/${id}`, { method });
     setBusy(null);
     if (res.ok) {
       startTransition(() => router.refresh());
     } else {
       const body = await res.json().catch(() => ({})) as { error?: string };
-      setErrors((e) => ({ ...e, [id]: body.error ?? "Accept failed" }));
-    }
-  }
-
-  async function handleDiscard(id: string) {
-    setBusy(id);
-    setErrors((e) => { const n = { ...e }; delete n[id]; return n; });
-    const res = await fetch(`/api/admin/param-versions/${id}`, { method: "DELETE" });
-    setBusy(null);
-    if (res.ok) {
-      startTransition(() => router.refresh());
-    } else {
-      const body = await res.json().catch(() => ({})) as { error?: string };
-      setErrors((e) => ({ ...e, [id]: body.error ?? "Discard failed" }));
+      setErrors((e) => ({ ...e, [id]: body.error ?? "That did not work" }));
     }
   }
 
   if (rows.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-card px-6 py-10 text-center">
-        <p className="text-sm text-muted-foreground">No versions pending review.</p>
+        <p className="text-sm text-muted-foreground">Nothing to review.</p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <ol className="flex flex-col gap-3">
       {rows.map((row) => (
-        <div key={row.id} className="rounded-lg border border-amber-700/40 bg-amber-900/10 px-5 py-4">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <div className="flex flex-col gap-0.5">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-semibold text-foreground font-mono">v{row.versionLabel}</span>
-                <span className="text-xs text-muted-foreground">·</span>
-                <span className="text-xs text-foreground">{row.clientName}</span>
-                <span className="text-xs text-muted-foreground">·</span>
-                <span className="text-xs font-mono text-muted-foreground">{row.droneSerial}</span>
-              </div>
-              <span className="text-[11px] text-muted-foreground">{formatDate(row.createdAt)}</span>
-              {errors[row.id] && (
-                <p className="text-xs text-destructive mt-1">{errors[row.id]}</p>
-              )}
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Link
-                href={`/compare?v=${row.id}`}
-                title="View params"
-                className="flex items-center gap-1.5 rounded-md border border-border bg-secondary hover:bg-secondary/80 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer whitespace-nowrap"
-              >
-                <Eye className="h-3.5 w-3.5" />
-                View
-              </Link>
-              <button
-                type="button"
-                onClick={() => handleDiscard(row.id)}
-                disabled={busy === row.id}
-                title="Discard — permanently remove this version"
-                className="flex items-center gap-1.5 rounded-md border border-border bg-secondary hover:bg-destructive/20 hover:border-destructive/50 hover:text-destructive px-2.5 py-1.5 text-xs text-muted-foreground transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Discard
-              </button>
-              <button
-                type="button"
-                onClick={() => handleAccept(row.id)}
-                disabled={busy === row.id}
-                title="Accept — publish this version to the catalog"
-                className="flex items-center gap-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 border border-emerald-500/50 px-2.5 py-1.5 text-xs font-medium text-white transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap"
-              >
-                <Check className="h-3.5 w-3.5" />
-                Accept
-              </button>
-            </div>
+        <li key={row.id} className="rounded-lg border border-sky-500/40 bg-card px-4 py-3 flex flex-col gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link href={row.href} className="font-mono text-sm font-semibold text-foreground hover:text-primary cursor-pointer">{row.subject}</Link>
+            <span className="font-mono text-sm text-foreground">v{row.label}</span>
+            <span className="text-xs text-muted-foreground">
+              {formatDate(row.createdAt)}{row.author && <> · {row.author}</>}
+            </span>
           </div>
-        </div>
+          {row.changelog && <p className="text-sm text-foreground whitespace-pre-wrap">{row.changelog}</p>}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <BusyButton
+              type="button"
+              busy={busy === `PATCH-${row.id}`}
+              busyLabel="Approving…"
+              icon={<Check className="h-3.5 w-3.5" />}
+              onClick={() => act(row.id, "PATCH")}
+              className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              Approve
+            </BusyButton>
+            {row.targetId && (
+              <Link
+                href={`/compare?v=${row.targetId}&v=${row.id}`}
+                className="flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-secondary cursor-pointer whitespace-nowrap"
+              >
+                <GitCompareArrows className="h-3.5 w-3.5" /> Compare with v{row.targetLabel}
+              </Link>
+            )}
+            <BusyButton
+              type="button"
+              busy={busy === `DELETE-${row.id}`}
+              busyLabel="Rejecting…"
+              icon={<Trash2 className="h-3.5 w-3.5" />}
+              onClick={() => act(row.id, "DELETE")}
+              className="ml-auto rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground hover:text-destructive hover:border-destructive/50"
+            >
+              Reject
+            </BusyButton>
+          </div>
+          {errors[row.id] && <p className="text-xs text-destructive">{errors[row.id]}</p>}
+        </li>
       ))}
-    </div>
+    </ol>
   );
 }

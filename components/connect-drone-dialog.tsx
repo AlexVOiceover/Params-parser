@@ -267,10 +267,10 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
                   >
                     <div className="flex items-center gap-2 text-xs">
                       <AlertTriangle className="h-3 w-3 shrink-0 text-amber-500" />
-                      Register &amp; apply the Default
+                      Register &amp; install the model template
                     </div>
                     <div className="text-[10px] text-muted-foreground pl-5">
-                      Applies the variant&apos;s Default (keeping this drone&apos;s calibration), verifies it and saves the result as v1.
+                      Installs its model&apos;s template (keeping this drone&apos;s calibration and tuning), verifies it and saves the result as v1.
                     </div>
                   </button>
                 </div>

@@ -1,24 +1,4 @@
-import type { Param, Rule, ProtectionList, ParamGroup, ParamDefinition } from "./types";
-import defaultListsJson from "@/data/protection-lists.json";
-import volatileParamsJson from "@/data/volatile-params.json";
-import lockedParamsJson from "@/data/locked-params.json";
-
-/**
- * ArduPilot runtime/volatile params excluded from version diffs and drone
- * writes. Sourced from data/volatile-params.json — edit that file to add
- * or remove entries without touching TypeScript.
- */
-export const RUNTIME_PARAMS = new Set(
-  (volatileParamsJson as { params: { name: string }[] }).params.map((p) => p.name)
-);
-
-/**
- * Params that are shown in diffs and compare but cannot be manually edited.
- * Managed automatically by the app or system-critical.
- */
-export const LOCKED_PARAMS = new Set(
-  (lockedParamsJson as { params: { name: string }[] }).params.map((p) => p.name)
-);
+import type { Param, Rule, ParamDefinition } from "./types";
 
 /**
  * Extract the trailing integer from a drone serial string, used to match the
@@ -63,78 +43,22 @@ export function writeParamFile(params: Param[]): string {
   return params.map((p) => `${p.name},${p.value}`).join("\n") + "\n";
 }
 
+const patterns = new Map<string, RegExp>();
+function compiled(pattern: string): RegExp {
+  let re = patterns.get(pattern);
+  if (!re) { re = new RegExp(pattern); patterns.set(pattern, re); }
+  return re;
+}
+
 /**
  * Check if a param name matches a rule.
  */
 export function matchesRule(paramName: string, rule: Rule): boolean {
   if (rule.type === "exact") return paramName === rule.value;
   if (rule.type === "prefix") return paramName.startsWith(rule.value);
+  if (rule.type === "pattern") return compiled(rule.value).test(paramName);
   return false;
 }
-
-/**
- * Split params into protected and remaining based on rules.
- */
-export function applyFilter(
-  params: Param[],
-  rules: Rule[]
-): { protected: Param[]; remaining: Param[] } {
-  const protectedParams: Param[] = [];
-  const remaining: Param[] = [];
-  for (const param of params) {
-    if (rules.some((rule) => matchesRule(param.name, rule))) {
-      protectedParams.push(param);
-    } else {
-      remaining.push(param);
-    }
-  }
-  return { protected: protectedParams, remaining };
-}
-
-/**
- * Resolve which ArduPilot pdef group a param belongs to.
- * Matches the longest pdef group prefix.
- */
-function resolveGroup(name: string, pdefGroups: string[]): string {
-  let bestLen = 0;
-  let best = "";
-  for (const g of pdefGroups) {
-    const gPrefix = g.replace(/_$/, "");
-    if (!gPrefix) continue;
-    if (name === gPrefix || name.startsWith(gPrefix + "_")) {
-      if (gPrefix.length > bestLen) {
-        bestLen = gPrefix.length;
-        best = gPrefix;
-      }
-    }
-  }
-  if (best) return best;
-  return name.includes("_") ? name.split("_")[0] : name;
-}
-
-/**
- * Build grouped params from a flat list.
- */
-export function buildGroups(
-  params: Param[],
-  pdefGroups: string[]
-): ParamGroup[] {
-  const map: Record<string, Param[]> = {};
-  for (const param of params) {
-    const g = resolveGroup(param.name, pdefGroups);
-    if (!map[g]) map[g] = [];
-    map[g].push(param);
-  }
-  return Object.entries(map)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([label, params]) => ({ label, params }));
-}
-
-/**
- * Default protection lists loaded from data/protection-lists.json.
- */
-export const DEFAULT_PROTECTION_LISTS: ProtectionList[] =
-  defaultListsJson as ProtectionList[];
 
 /**
  * Validate a param value against its ArduPilot definition.

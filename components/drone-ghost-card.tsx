@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Usb, ChevronDown, ChevronUp, Bell, Link2, Info } from "lucide-react";
+import { Usb, ChevronDown, ChevronUp, Bell, Link2, Info, CheckCircle2 } from "lucide-react";
 import { BusyButton, Spinner } from "@/components/ui/busy";
 import { ApplyUpdateButton } from "@/components/apply-update-button";
 import { DiffList, SaveFromDroneForm } from "@/components/drone-status-panel";
 import { useAuth } from "@/components/auth-provider";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { useConnectedDroneMatch, refreshDroneMatch } from "@/lib/use-connected-drone-match";
+import { useSerialMode } from "@/lib/use-serial-mode";
+import { droneHref } from "@/lib/versions";
 
 interface Props {
   droneId: string;
@@ -20,18 +22,36 @@ interface Props {
 }
 
 /**
- * The connected drone, shown at the top of its own history: a ghost "next
- * version" card when it differs from the stored version (save it or restore),
- * an apply banner when an update is waiting, and nothing when it's in sync.
+ * The connected drone, shown at the top of its own page: a prompt to connect,
+ * a confirmation when it matches its target, an install banner when an update
+ * is waiting, and a draft "next version" when it was changed on the drone.
  * Every action requires the plugged-in chip to be linked to this record.
  */
 export function DroneGhostCard({ droneId, droneChipId, droneSerial, nextLabel, onChanged }: Props) {
-  const { droneParams } = useDroneParams();
+  const { droneParams, openImportDialog } = useDroneParams();
   const match = useConnectedDroneMatch();
   const { role } = useAuth();
+  const serialMode = useSerialMode();
   const [showDiff, setShowDiff] = useState(false);
 
-  if (!droneParams || droneParams.length === 0) return null;
+  if (!droneParams || droneParams.length === 0) {
+    if (serialMode === "unsupported") return null;
+    return (
+      <div className="flex items-center gap-3 flex-wrap rounded-lg border border-dashed border-border bg-card px-4 py-3">
+        <Usb className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground flex-1 min-w-48">
+          Plug {droneSerial ?? "the drone"} in to check it against its target, install updates, or save changes made in Mission Planner.
+        </span>
+        <button
+          type="button"
+          onClick={openImportDialog}
+          className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 cursor-pointer whitespace-nowrap"
+        >
+          <Usb className="h-3.5 w-3.5" /> Connect drone
+        </button>
+      </div>
+    );
+  }
 
   if (match.status === "loading" || match.status === "idle") {
     return (
@@ -58,13 +78,13 @@ export function DroneGhostCard({ droneId, droneChipId, droneSerial, nextLabel, o
   if (!drone) return null;
 
   if (drone.id !== droneId) {
-    const href = drone.family_slug && drone.client_set_id ? `/${drone.family_slug}/${drone.variant_id}/${drone.client_set_id}` : null;
+    const href = droneHref(drone.serial);
     return (
       <Note>
         <Usb className="h-3.5 w-3.5 shrink-0" />
         <span>
           The connected drone is <span className="font-mono text-foreground">{drone.serial}</span>, not this one.
-          {href && <> <Link href={href} className="text-primary hover:underline cursor-pointer whitespace-nowrap">Open its history</Link></>}
+          {" "}<Link href={href} className="text-primary hover:underline cursor-pointer whitespace-nowrap">Open {drone.serial}</Link>
         </span>
       </Note>
     );
@@ -80,6 +100,18 @@ export function DroneGhostCard({ droneId, droneChipId, droneSerial, nextLabel, o
         <DiffToggle open={showDiff} count={diff.length} onToggle={() => setShowDiff((v) => !v)} />
         <div className="ml-auto"><ApplyUpdateButton version={desired} label={`Install v${desired.label}`} /></div>
         {showDiff && <div className="w-full"><DiffList diff={diff} versionLabel={desired.label} /></div>}
+      </div>
+    );
+  }
+
+  if (state === "in_sync" || state === "pending_review") {
+    const label = state === "in_sync" ? desired?.label : match.pending?.label;
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-xs text-foreground">
+        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+        {state === "in_sync"
+          ? <>Connected and matching v{label}, its target.</>
+          : <>Connected and matching v{label}, which is waiting for review.</>}
       </div>
     );
   }
@@ -107,8 +139,7 @@ export function DroneGhostCard({ droneId, droneChipId, droneSerial, nextLabel, o
           </div>
           {showDiff && <DiffList diff={diff} versionLabel={desired.label} />}
           <p className="text-[11px] text-muted-foreground leading-snug">
-            Saving keeps what&apos;s on the drone as the next version. To put a stored version back on the drone, use
-            Install on drone on its card below.
+            To keep these changes, save them as v{nextLabel}. To undo them, install v{desired.label} from its card below.
           </p>
           <SaveFromDroneForm saveLabel={`Save as v${nextLabel}`} onSaved={onChanged} />
         </>

@@ -9,6 +9,7 @@ import { ParamInfoHover } from "@/components/param-info-hover";
 import { useAuth } from "@/components/auth-provider";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { refreshDroneMatch, type DroneMatchResult } from "@/lib/use-connected-drone-match";
+import { droneHref } from "@/lib/versions";
 import { firmwareMinor, type ParamDiff } from "@/lib/desired-state";
 
 interface Props {
@@ -141,19 +142,18 @@ export function SaveFromDroneForm({
   );
 }
 
-/** Sends the user to the drone's history page, where saving and installing happen. */
+/** Sends the user to the drone's page, where saving and installing happen. */
 function HistoryLink({ match, onNavigate, hint }: { match: DroneMatchResult; onNavigate?: () => void; hint: string }) {
   const drone = match.drone;
-  const setId = drone?.client_set_id ?? drone?.history_set_id;
-  if (!drone || !drone.family_slug || !setId) return null;
+  if (!drone) return null;
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <Link
-        href={`/${drone.family_slug}/${drone.variant_id}/${setId}`}
+        href={droneHref(drone.serial)}
         onClick={onNavigate}
         className="flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 cursor-pointer whitespace-nowrap"
       >
-        Open {drone.serial}&apos;s history <ArrowRight className="h-3.5 w-3.5" />
+        Open {drone.serial} <ArrowRight className="h-3.5 w-3.5" />
       </Link>
       <span className="text-[10px] text-muted-foreground">{hint}</span>
     </div>
@@ -326,7 +326,7 @@ export function DroneStatusPanel({ match, onRegister, onNavigate }: Props) {
       </div>
 
       {match.status === "loading" && (
-        <p className="flex items-center gap-2 text-xs text-muted-foreground"><Spinner /> Checking against the catalog…</p>
+        <p className="flex items-center gap-2 text-xs text-muted-foreground"><Spinner /> Checking it against its history…</p>
       )}
 
       {match.status === "no_chip" && (
@@ -338,7 +338,7 @@ export function DroneStatusPanel({ match, onRegister, onNavigate }: Props) {
 
       {match.status === "error" && (
         <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-xs text-amber-700 dark:text-amber-400">Couldn&apos;t check against the catalog.</p>
+          <p className="text-xs text-amber-700 dark:text-amber-400">Couldn&apos;t check it against its history.</p>
           <button
             type="button"
             onClick={refreshDroneMatch}
@@ -393,7 +393,7 @@ export function DroneStatusPanel({ match, onRegister, onNavigate }: Props) {
             {diff.length} param{diff.length === 1 ? "" : "s"}{state === "modified" ? ` differ from v${desired.label}` : ""}
           </p>
           <DiffList diff={diff} versionLabel={desired.label} />
-          <HistoryLink match={match} onNavigate={onNavigate} hint="to save it as a new version or install a stored one" />
+          <HistoryLink match={match} onNavigate={onNavigate} hint="to keep these changes as a new version, or undo them" />
         </div>
       )}
 

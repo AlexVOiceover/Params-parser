@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSessionClient } from "@/lib/supabase/server";
 import { writeParamFile } from "@/lib/param-engine";
+import { isUnmanaged } from "@/lib/desired-state";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/versions/[id]/file — the version as a .param file, built from its
- * stored params. RLS on the caller's session decides whether they may see it.
+ * GET /api/versions/[id]/file[?shareable=1] — the version as a .param file,
+ * built from its stored params. RLS on the caller's session decides whether
+ * they may see it. Shareable leaves out every per-drone param (calibration,
+ * tuning, radio, IDs), so it can be loaded onto another airframe.
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   const { id } = await params;
@@ -38,10 +41,16 @@ export async function GET(
     if (data.length < 1000) break;
   }
 
-  return new NextResponse(writeParamFile(rows), {
+  const shareable = request.nextUrl.searchParams.get("shareable") === "1";
+  const kept = shareable ? rows.filter((r) => !isUnmanaged(r.name)) : rows;
+  const body = shareable
+    ? `# v${version.version_label} without per-drone params (${rows.length - kept.length} left out: calibration, tuning, radio, IDs)\n${writeParamFile(kept)}`
+    : writeParamFile(kept);
+
+  return new NextResponse(body, {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
-      "Content-Disposition": `attachment; filename="v${version.version_label}.param"`,
+      "Content-Disposition": `attachment; filename="v${version.version_label}${shareable ? "-shareable" : ""}.param"`,
       "Cache-Control": "private, no-store",
     },
   });

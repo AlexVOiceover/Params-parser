@@ -33,7 +33,7 @@ export async function DELETE(
       .join(", ");
     return NextResponse.json(
       {
-        error: `This variant is still assigned to ${blockingDrones.length === 1 ? "1 drone" : `${blockingDrones.length}+ drones`} (${sample}). Reassign or remove them in Clients first.`,
+        error: `This variant is still assigned to ${blockingDrones.length === 1 ? "1 drone" : `${blockingDrones.length}+ drones`} (${sample}). Move or delete those drones first.`,
       },
       { status: 409 }
     );

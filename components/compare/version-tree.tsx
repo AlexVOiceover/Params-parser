@@ -142,7 +142,7 @@ export function VersionTree({ tree }: Props) {
 
         {tree.length === 0 && !hasDroneParams ? (
           <p className="px-6 py-6 text-sm text-muted-foreground">
-            No versions available in the catalog yet.
+            No versions yet.
           </p>
         ) : (
           tree.map((family) => {
@@ -214,7 +214,7 @@ export function VersionTree({ tree }: Props) {
                                     {clientSet.name}
                                   </span>
                                   {clientSet.isDefault && (
-                                    <span className="text-[10px] text-muted-foreground/60 font-normal">catalog default</span>
+                                    <span className="text-[10px] text-muted-foreground/60 font-normal">model template</span>
                                   )}
                                   <span className="text-muted-foreground/60 text-xs ml-auto">
                                     ({clientSet.versions.length})
