@@ -20,6 +20,7 @@ function loadDefs(): Promise<Defs> {
 }
 
 const MAX_OPTIONS = 16;
+const HOVER_DELAY_MS = 500;
 
 /**
  * A param name that shows the ArduPilot definition (description, units,
@@ -29,6 +30,9 @@ export function ParamInfoHover({ name, highlight = [] }: { name: string; highlig
   const ref = useRef<HTMLButtonElement>(null);
   const [def, setDef] = useState<ParamDefinition | null | undefined>(undefined);
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (hoverTimer.current) clearTimeout(hoverTimer.current); }, []);
 
   useEffect(() => {
     if (!pos || def !== undefined) return;
@@ -36,6 +40,17 @@ export function ParamInfoHover({ name, highlight = [] }: { name: string; highlig
     loadDefs().then((defs) => { if (live) setDef(defs[name] ?? null); });
     return () => { live = false; };
   }, [pos, def, name]);
+
+  function close() {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = null;
+    setPos(null);
+  }
+
+  function openAfterDelay() {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(open, HOVER_DELAY_MS);
+  }
 
   function open() {
     const r = ref.current?.getBoundingClientRect();
@@ -54,11 +69,11 @@ export function ParamInfoHover({ name, highlight = [] }: { name: string; highlig
       <button
         ref={ref}
         type="button"
-        onMouseEnter={open}
-        onMouseLeave={() => setPos(null)}
+        onMouseEnter={openAfterDelay}
+        onMouseLeave={close}
         onFocus={open}
-        onBlur={() => setPos(null)}
-        onClick={() => (pos ? setPos(null) : open())}
+        onBlur={close}
+        onClick={() => (pos ? close() : open())}
         className="text-left text-foreground underline decoration-dotted decoration-muted-foreground/50 underline-offset-2 cursor-pointer whitespace-nowrap"
       >
         {name}
