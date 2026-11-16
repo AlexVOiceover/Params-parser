@@ -23,26 +23,38 @@ function formatParamValue(value: number | string): string {
   return String(Number(n.toPrecision(7)));
 }
 
-function DiffList({ diff }: { diff: ParamDiff[] }) {
+function DiffList({ diff, versionLabel }: { diff: ParamDiff[]; versionLabel: string }) {
   const [all, setAll] = useState(false);
   const shown = all ? diff : diff.slice(0, 8);
   return (
-    <div className="rounded border border-border bg-background/50 divide-y divide-border max-h-48 overflow-y-auto">
-      {shown.map((d) => (
-        <div key={d.name} className="flex flex-wrap items-baseline justify-between gap-x-2 px-2 py-1 font-mono text-[11px]">
-          <ParamInfoHover name={d.name} highlight={[String(d.actual), String(d.desired)]} />
-          <span className="ml-auto text-muted-foreground text-right break-all">
-            {d.actual === null ? <span className="italic">missing</span> : formatParamValue(d.actual)}
-            <span className="mx-1">→</span>
-            <span className="text-amber-700 dark:text-amber-300">{formatParamValue(d.desired)}</span>
-          </span>
-        </div>
-      ))}
+    <div className="rounded border border-border bg-background/50 max-h-56 overflow-y-auto">
+      <table className="w-full font-mono text-[11px]">
+        <thead className="sticky top-0 z-10 bg-card font-sans text-[10px] uppercase tracking-wide">
+          <tr className="border-b border-border">
+            <th scope="col" className="px-2 py-1 text-left font-medium text-muted-foreground">Param</th>
+            <th scope="col" className="px-2 py-1 text-right font-medium text-muted-foreground">Read from drone</th>
+            <th scope="col" className="w-4" aria-hidden="true" />
+            <th scope="col" className="px-2 py-1 text-right font-medium text-amber-700 dark:text-amber-300">Stored v{versionLabel}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {shown.map((d) => (
+            <tr key={d.name}>
+              <td className="px-2 py-1"><ParamInfoHover name={d.name} highlight={[String(d.actual), String(d.desired)]} /></td>
+              <td className="px-2 py-1 text-right text-muted-foreground break-all">
+                {d.actual === null ? <span className="italic font-sans">not on drone</span> : formatParamValue(d.actual)}
+              </td>
+              <td className="text-center text-muted-foreground" aria-hidden="true">→</td>
+              <td className="px-2 py-1 text-right text-amber-700 dark:text-amber-300 break-all">{formatParamValue(d.desired)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
       {diff.length > 8 && (
         <button
           type="button"
           onClick={() => setAll((v) => !v)}
-          className="w-full px-2 py-1 text-[11px] text-primary hover:underline cursor-pointer whitespace-nowrap"
+          className="w-full border-t border-border px-2 py-1 text-[11px] text-primary hover:underline cursor-pointer whitespace-nowrap"
         >
           {all ? "Show fewer" : `Show all ${diff.length}`}
         </button>
@@ -310,7 +322,10 @@ export function DroneStatusPanel({ match, onRegister }: Props) {
             <Bell className="h-3.5 w-3.5 shrink-0" />
             AIR6 has an update for this drone: v{desired.label} — {diff.length} param{diff.length === 1 ? "" : "s"} change
           </p>
-          <DiffList diff={diff} />
+          <DiffList diff={diff} versionLabel={desired.label} />
+          <p className="text-[10px] text-muted-foreground leading-snug">
+            Apply writes the stored v{desired.label} values to the drone.
+          </p>
           <div><ApplyUpdateButton version={desired} label={`Apply v${desired.label}`} /></div>
         </div>
       )}
@@ -322,7 +337,11 @@ export function DroneStatusPanel({ match, onRegister }: Props) {
             {state === "modified" ? "Modified on the drone: " : "Differs from v" + desired.label + ": "}
             {diff.length} param{diff.length === 1 ? "" : "s"}{state === "modified" ? ` differ from v${desired.label}` : ""}
           </p>
-          <DiffList diff={diff} />
+          <DiffList diff={diff} versionLabel={desired.label} />
+          <p className="text-[10px] text-muted-foreground leading-snug">
+            Restore writes the stored v{desired.label} values to the drone.
+            {drone?.client_set_id && " Save as new version keeps the drone's values and stores them as the next version."}
+          </p>
           <div className="flex items-start gap-2 flex-wrap">
             <ApplyUpdateButton version={desired} label={`Restore v${desired.label}`} />
             {drone?.client_set_id && <SaveAsNewVersionButton />}
