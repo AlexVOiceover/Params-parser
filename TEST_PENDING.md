@@ -72,3 +72,11 @@ Things to verify when you have time. Tick them off as you go.
 ---
 
 *Add new entries here as features are shipped without immediate testing.*
+
+### Port memory (no Chrome picker)
+- [ ] After one connect, the button reads "Connect to CubeOrange+" and Chrome's picker does not open
+- [ ] With both Cube ports granted (MAVLink + SLCAN), it still lands on the MAVLink one
+- [ ] Mission Planner holding the port → falls back to the picker instead of hanging
+- [ ] "Use a different port…" always opens the picker
+- [ ] Apply/Restore writes also skip the picker
+- [ ] Android (WebUSB): reconnects without the device picker
