@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronRight } from "lucide-react";
-import { createSessionClient } from "@/lib/supabase/server";
+import { createSessionClient, createAdminClient } from "@/lib/supabase/server";
 import { ParamVersionList } from "@/components/param-version-list";
 import { RUNTIME_PARAMS, paramValuesEqual } from "@/lib/param-engine";
-import type { Family, Variant, ClientSet, ParamVersion } from "@/lib/types";
+import type { Family, Variant, ClientSet, ParamVersion, DroneEvent } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -29,13 +29,14 @@ async function getData(familySlug: string, variantId: string, clientSetId: strin
       .maybeSingle(),
     supabase
       .from("param_versions")
-      .select("id, client_set_id, version_label, storage_path, changelog, created_by, created_at, is_latest, needs_review")
+      .select("id, client_set_id, version_label, storage_path, changelog, created_by, created_at, is_latest, needs_review, firmware")
       .eq("client_set_id", clientSetId)
       .order("created_at", { ascending: false }),
   ]);
 
   // Resolve live name + serial via FK; fall back to captured text if missing.
   let resolvedClientSet: ClientSet | null = null;
+  let droneChipId: string | null = null;
   if (clientSet) {
     const cs = clientSet as ClientSet & { client_id: string | null; drone_id: string | null };
     const [{ data: live_client }, { data: live_drone }] = await Promise.all([
@@ -43,9 +44,10 @@ async function getData(familySlug: string, variantId: string, clientSetId: strin
         ? supabase.from("clients").select("name").eq("id", cs.client_id).maybeSingle()
         : Promise.resolve({ data: null }),
       cs.drone_id
-        ? supabase.from("drones").select("serial").eq("id", cs.drone_id).maybeSingle()
+        ? supabase.from("drones").select("serial, chip_id").eq("id", cs.drone_id).maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
+    droneChipId = live_drone?.chip_id ?? null;
     resolvedClientSet = {
       ...cs,
       client_name: live_client?.name ?? cs.client_name,
@@ -96,13 +98,106 @@ async function getData(familySlug: string, variantId: string, clientSetId: strin
     }
   }
 
+  const events = resolvedClientSet && !resolvedClientSet.is_default
+    ? await getEvents(supabase, (clientSet as { drone_id: string | null }).drone_id, versionList)
+    : [];
+
   return {
+    events,
+    droneChipId,
     family: family as Family | null,
     variant: variant as Variant | null,
     clientSet: resolvedClientSet,
     versions: versionList,
     diffVsPrev: Object.fromEntries(diffVsPrev),
   };
+}
+
+interface EventRow extends DroneEvent {
+  versionLabel: string | null;
+  actor: string | null;
+}
+
+/** The drone's append-only event log, with version labels and who did it. */
+async function getEvents(
+  supabase: Awaited<ReturnType<typeof createSessionClient>>,
+  droneId: string | null,
+  versions: ParamVersion[]
+): Promise<EventRow[]> {
+  if (!droneId) return [];
+  const { data } = await supabase
+    .from("drone_events")
+    .select("id, drone_id, param_version_id, chip_id, firmware, kind, diff_count, method, created_by, created_at")
+    .eq("drone_id", droneId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  const rows = (data ?? []) as DroneEvent[];
+  if (rows.length === 0) return [];
+
+  const labels = new Map(versions.map((v) => [v.id, v.version_label]));
+  const missing = [...new Set(rows.map((r) => r.param_version_id).filter((id): id is string => !!id && !labels.has(id)))];
+  if (missing.length) {
+    const { data: extra } = await supabase.from("param_versions").select("id, version_label").in("id", missing);
+    for (const v of extra ?? []) labels.set(v.id, v.version_label);
+  }
+  // Profiles are only readable by their owner under RLS; names are display-only here.
+  const actorIds = [...new Set(rows.map((r) => r.created_by).filter((id): id is string => !!id))];
+  const { data: profiles } = actorIds.length
+    ? await createAdminClient().from("profiles").select("id, username").in("id", actorIds)
+    : { data: [] as { id: string; username: string }[] };
+  const names = new Map((profiles ?? []).map((p) => [p.id, p.username]));
+
+  return rows.map((r) => ({
+    ...r,
+    versionLabel: r.param_version_id ? labels.get(r.param_version_id) ?? null : null,
+    actor: r.created_by ? names.get(r.created_by) ?? null : null,
+  }));
+}
+
+const METHOD_TEXT: Record<string, string> = {
+  connect: "at connect",
+  messages_line: "from a Mission Planner Messages line",
+  assembly: "at assembly",
+};
+
+function describeEvent(e: EventRow): string {
+  const v = e.versionLabel ? `v${e.versionLabel}` : "a deleted version";
+  const chip = e.chip_id ? ` · chip ${e.chip_id.slice(0, 8)}…` : "";
+  switch (e.kind) {
+    case "applied": return `${v} applied · verified`;
+    case "captured": return `${v} saved from the drone · verified`;
+    case "linked": return `Flight controller linked ${METHOD_TEXT[e.method ?? ""] ?? ""}${chip}`;
+    case "relinked": return `Flight controller replaced — re-linked ${METHOD_TEXT[e.method ?? ""] ?? ""}${chip}`;
+    case "unlinked": return `Flight controller unlinked${chip}`;
+  }
+}
+
+function DroneEventLog({ events }: { events: EventRow[] }) {
+  return (
+    <section className="mt-10">
+      <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Drone log</h2>
+      {events.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Nothing recorded yet. Applies, saves and flight-controller links appear here once they are verified.
+        </p>
+      ) : (
+        <ol className="rounded-lg border border-border divide-y divide-border">
+          {events.map((e) => (
+            <li key={e.id} className="flex items-baseline justify-between gap-4 px-4 py-2 text-xs">
+              <span className="text-foreground">
+                {describeEvent(e)}
+                {e.actor && <span className="text-muted-foreground"> · by {e.actor}</span>}
+                {e.firmware && <span className="text-muted-foreground font-mono"> · {e.firmware}</span>}
+              </span>
+              <time dateTime={e.created_at} className="shrink-0 text-muted-foreground">
+                {new Date(e.created_at).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+              </time>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
 }
 
 async function getIsAdmin(): Promise<boolean> {
@@ -122,7 +217,7 @@ export default async function ClientSetPage({
 }) {
   const { familySlug, variantId, clientSetId } = await params;
   const isAdmin = await getIsAdmin();
-  const { family, variant, clientSet, versions, diffVsPrev } = await getData(familySlug, variantId, clientSetId);
+  const { family, variant, clientSet, versions, diffVsPrev, events, droneChipId } = await getData(familySlug, variantId, clientSetId);
 
   if (!family || !variant || !clientSet) notFound();
 
@@ -168,11 +263,15 @@ export default async function ClientSetPage({
         isAdmin={isAdmin}
         isDefault={clientSet?.is_default ?? false}
         droneId={(clientSet as ClientSet & { drone_id: string | null })?.drone_id ?? null}
+        droneChipId={droneChipId}
+        droneSerial={clientSet.serial || null}
         diffVsPrev={diffVsPrev}
         familyName={family.name}
         variantName={variant.name}
         clientSetName={clientSet.serial ? `${clientSet.client_name} · ${clientSet.serial}` : clientSet.client_name}
       />
+
+      {!clientSet.is_default && <DroneEventLog events={events} />}
     </div>
   );
 }

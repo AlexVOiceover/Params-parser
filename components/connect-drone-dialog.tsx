@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Usb, X, Trash2, CheckCircle, AlertCircle, AlertTriangle, Loader2, ClipboardList } from "lucide-react";
-import { openDroneConnection } from "@/lib/mavlink-serial";
+import { Usb, X, Trash2, AlertTriangle, ClipboardList } from "lucide-react";
+import { openDroneConnection, type AutopilotInfo } from "@/lib/mavlink-serial";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
+import { DroneStatusPanel } from "@/components/drone-status-panel";
 import { useSerialMode } from "@/lib/use-serial-mode";
+import { getGrantedDronePorts, dronePortName } from "@/lib/serial-shim";
 import { RegisterDroneModal, type RegisterMode } from "@/components/register-drone-modal";
 import { useAuth } from "@/components/auth-provider";
 import type { Param } from "@/lib/types";
@@ -27,7 +29,7 @@ const BAUD_RATE = 115200;
 type Stage = "idle" | "running" | "done" | "error";
 
 interface Props {
-  onParamsLoaded: (params: Param[]) => void;
+  onParamsLoaded: (params: Param[], info: AutopilotInfo | null) => void;
   onClose: () => void;
   /** Called when user clicks "Forget" to clear stored drone params. */
   onForget?: () => void;
@@ -39,6 +41,7 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
   const [received, setReceived] = useState(0);
   const [total, setTotal] = useState(0);
   const [error, setError] = useState("");
+  const autopilotRef = useRef<AutopilotInfo | null>(null);
   const [mobile, setMobile] = useState(false);
   const [iosDevice, setIosDevice] = useState(false);
   const disconnectRef = useRef<(() => void) | null>(null);
@@ -48,9 +51,23 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
   const { droneParams } = useDroneParams();
   const storedCount = droneParams?.length ?? 0;
   const { role } = useAuth();
+  const isStaff = role === "admin" || role === "contributor";
   const [registerMode, setRegisterMode] = useState<RegisterMode | null>(null);
-  const [capturing, setCapturing] = useState(false);
-  const [captureResult, setCaptureResult] = useState<string | null>(null);
+  const [registerChoice, setRegisterChoice] = useState(false);
+  /** Board behind a port granted before; null when none, so the picker will show. */
+  const [knownBoard, setKnownBoard] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (serialMode === "unsupported") return;
+    let live = true;
+    getGrantedDronePorts()
+      .then((ports) => {
+        if (!live || ports.length === 0) return;
+        setKnownBoard(ports.map(dronePortName).find((n) => n !== null) ?? "flight controller");
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [serialMode]);
 
   useEffect(() => {
     setMobile(isMobile());
@@ -65,37 +82,17 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
     setLog((prev) => [...prev, msg]);
   }
 
-  async function handleCapture() {
-    if (!droneParams || !match.drone?.client_set_id || match.droneVersion === null) return;
-    setCapturing(true);
-    setCaptureResult(null);
-    const res = await fetch("/api/admin/capture", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        clientSetId: match.drone.client_set_id,
-        versionLabel: String(match.droneVersion),
-        params: droneParams,
-      }),
-    });
-    setCapturing(false);
-    if (res.ok) {
-      setCaptureResult(`Saved as v${match.droneVersion} — marked for review`);
-    } else {
-      const body = await res.json().catch(() => ({})) as { error?: string };
-      setCaptureResult(`Capture failed: ${body.error ?? "unknown error"}`);
-    }
-  }
-
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (choosePort: boolean) => {
     setStage("running");
     setLog([]);
     setError("");
     setReceived(0);
     setTotal(0);
+    autopilotRef.current = null;
 
     const disconnect = await openDroneConnection(BAUD_RATE, {
       onLog: addLog,
+      onAutopilotInfo(info) { autopilotRef.current = info; },
       onProgress(recv, tot) {
         setReceived(recv);
         if (tot > 0) setTotal(tot);
@@ -104,7 +101,7 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
         disconnectRef.current = null;
         setStage("done");
         setReceived(params.length);
-        onParamsLoaded(params.map((p) => ({ name: p.name, value: p.value })));
+        onParamsLoaded(params.map((p) => ({ name: p.name, value: p.value })), autopilotRef.current);
       },
       onError(msg) {
         disconnectRef.current = null;
@@ -112,7 +109,7 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
         setStage("error");
         addLog(`✗ ${msg}`);
       },
-    });
+    }, { choosePort });
 
     disconnectRef.current = disconnect;
   }, [onParamsLoaded]);
@@ -143,7 +140,7 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
         onClick={!busy ? handleClose : undefined}
       />
-      <div className="relative z-10 w-full max-w-sm rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
+      <div className="relative z-10 w-full max-w-xl rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
 
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border bg-toolbar px-5 py-3.5">
@@ -183,14 +180,27 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
                     Connect your flight controller using a <span className="font-semibold text-foreground">USB-OTG cable</span>.
                     A regular C-to-C cable will not work — you need an OTG adapter that puts the phone in host mode.
                   </p>
-                  <p>Tap your drone in the device picker. Keep the screen on while reading.</p>
+                  <p>
+                    {knownBoard ? `The app reconnects to the ${knownBoard} used before.` : "Tap your drone in the device picker."}{" "}
+                    Keep the screen on while reading.
+                  </p>
                 </>
               ) : (
                 <>
-                  <p>Connect your flight controller via USB. Chrome will show a COM port picker.</p>
-                  <p className="text-[10px] text-muted-foreground/70">
-                    Some boards expose multiple ports (e.g. Cube Orange shows SLCAN + MAVLink). If you get no data, retry and pick the other port — the MAVLink port is usually the one with the higher COM number.
-                  </p>
+                  {knownBoard ? (
+                    <p>
+                      Plug in the {knownBoard} via USB. The app finds the port it used before, so Chrome&apos;s port picker
+                      won&apos;t show.
+                    </p>
+                  ) : (
+                    <>
+                      <p>Connect your flight controller via USB. Chrome will show a COM port picker the first time.</p>
+                      <p className="text-[10px] text-muted-foreground/70">
+                        Some boards expose two ports (a Cube shows SLCAN + MAVLink). If you get no data, retry and pick the
+                        other port. The MAVLink port is usually the one with the higher COM number.
+                      </p>
+                    </>
+                  )}
                 </>
               )}
               {serialMode === "polyfill" && (
@@ -199,6 +209,16 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
                 </p>
               )}
             </div>
+          )}
+
+          {(stage === "idle" || stage === "error") && knownBoard && serialMode !== "unsupported" && !iosDevice && (
+            <button
+              type="button"
+              onClick={() => connect(true)}
+              className="self-start text-xs text-primary hover:underline cursor-pointer whitespace-nowrap"
+            >
+              Use a different port…
+            </button>
           )}
 
           {/* Progress bar */}
@@ -220,137 +240,41 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
           {stage === "done" && (
             <>
               <p className="text-xs text-emerald-400">✓ {received} parameters loaded.</p>
-              {match.status !== "idle" && (
-                <div className="rounded-md border border-border bg-secondary/50 px-3 py-2 flex flex-col gap-1">
-                  {match.status === "loading" && (
-                    <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Loader2 className="h-3 w-3 animate-spin" /> Looking up drone…
-                    </p>
-                  )}
-                  {match.status === "matched" && match.drone && (
-                    <>
-                      <p className="flex items-center gap-2 text-xs font-medium text-foreground">
-                        <CheckCircle className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                        Drone identified
-                      </p>
-                      <div className="flex flex-col gap-0.5 text-xs">
-                        {(() => {
-                          const scrUser1Param = droneParams?.find((p) => p.name === "SCR_USER1");
-                          const scrUser1 = scrUser1Param ? parseInt(scrUser1Param.value, 10) : null;
-                          const rows: [string, React.ReactNode][] = [
-                            ["Catalog serial", <span className="font-mono">{match.drone.serial}</span>],
-                          ];
-                          if (scrUser1 !== null && Number.isFinite(scrUser1) && scrUser1 > 0) {
-                            rows.push(["Drone reports", <span className="font-mono">{scrUser1}</span>]);
-                          }
-                          rows.push(["Client", match.isOrphan ? <span className="italic text-muted-foreground">No client</span> : (match.drone.client_name ?? "—")]);
-                          if (match.drone.family_name) rows.push(["Family", match.drone.family_name]);
-                          if (match.drone.variant_name) rows.push(["Variant", match.drone.variant_name]);
-                          return rows.map(([label, value]) => (
-                            <div key={label} className="flex items-baseline gap-1.5">
-                              <span className="text-muted-foreground shrink-0">{label}:</span>
-                              <span className="text-foreground">{value}</span>
-                            </div>
-                          ));
-                        })()}
-                      </div>
-                      {match.versionStatus === "up_to_date" && match.droneVersion !== null && (
-                        <p className="flex items-center gap-1.5 text-xs text-emerald-400">
-                          <CheckCircle className="h-3 w-3 shrink-0" />
-                          Version {match.droneVersion} — up to date
-                        </p>
-                      )}
-                      {match.versionStatus === "up_to_date_modified" && match.droneVersion !== null && match.drone?.latest_version_id && (
-                        <p className="flex items-center gap-1.5 text-xs text-amber-400 bg-amber-400/10 border border-amber-400/30 rounded px-2 py-1">
-                          <AlertTriangle className="h-3 w-3 shrink-0" />
-                          v{match.droneVersion} — {match.driftCount} param{match.driftCount === 1 ? "" : "s"} differ from catalog{" "}
-                          <a href={`/compare?v=__drone__&v=${match.drone.latest_version_id}`} className="underline cursor-pointer ml-1">Review</a>
-                        </p>
-                      )}
-                      {match.versionStatus === "update_available" && (
-                        <p className="flex items-center gap-1.5 text-xs text-amber-400 bg-amber-400/10 border border-amber-400/30 rounded px-2 py-1">
-                          <AlertTriangle className="h-3 w-3 shrink-0" />
-                          Update available — catalog is v{match.catalogVersion}, drone has v{match.droneVersion}
-                        </p>
-                      )}
-                      {match.versionStatus === "drone_ahead" && (
-                        <>
-                          <p className="flex items-center gap-1.5 text-xs text-sky-400 bg-sky-400/10 border border-sky-400/30 rounded px-2 py-1">
-                            <AlertCircle className="h-3 w-3 shrink-0" />
-                            Drone has v{match.droneVersion}, catalog latest is v{match.catalogVersion}
-                          </p>
-                          {(role === "admin" || role === "contributor") && match.drone?.client_set_id && droneParams && (
-                            captureResult ? (
-                              <p className={`text-xs px-2 py-1 rounded border ${captureResult.startsWith("Capture failed") ? "text-destructive border-destructive/40 bg-destructive/10" : "text-emerald-400 border-emerald-400/30 bg-emerald-400/10"}`}>
-                                {captureResult}
-                              </p>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={handleCapture}
-                                disabled={capturing}
-                                className="flex items-center gap-1.5 text-xs text-sky-300 bg-sky-400/10 border border-sky-400/30 hover:bg-sky-400/20 rounded px-2 py-1 cursor-pointer disabled:opacity-50 whitespace-nowrap transition-colors"
-                              >
-                                {capturing ? <Loader2 className="h-3 w-3 shrink-0 animate-spin" /> : <AlertCircle className="h-3 w-3 shrink-0" />}
-                                {capturing ? "Capturing…" : "Capture to catalog"}
-                              </button>
-                            )
-                          )}
-                        </>
-                      )}
-                    </>
-                  )}
-                  {match.status === "unmatched" && (
-                    <p className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
-                      <AlertCircle className="h-3 w-3 shrink-0" />
-                      Not registered in the catalog
-                    </p>
-                  )}
+              <DroneStatusPanel
+                match={match}
+                onRegister={isStaff ? () => setRegisterChoice(true) : undefined}
+                onNavigate={handleClose}
+              />
+              {registerChoice && (
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRegisterMode("capture")}
+                    className="flex flex-col items-start gap-0.5 rounded-md bg-primary hover:bg-primary/90 px-3 py-2.5 text-primary-foreground transition-colors cursor-pointer w-full text-left"
+                  >
+                    <div className="flex items-center gap-2 text-xs font-semibold">
+                      <ClipboardList className="h-3.5 w-3.5 shrink-0" />
+                      Register &amp; keep current params
+                    </div>
+                    <div className="text-[10px] opacity-80 pl-5">
+                      Links this flight controller and saves its params as v1. Writes nothing.
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRegisterMode("flash")}
+                    className="flex flex-col items-start gap-0.5 rounded-md border border-amber-500/30 hover:bg-amber-500/5 px-3 py-2 text-foreground transition-colors cursor-pointer w-full text-left"
+                  >
+                    <div className="flex items-center gap-2 text-xs">
+                      <AlertTriangle className="h-3 w-3 shrink-0 text-amber-500" />
+                      Register &amp; apply the Default
+                    </div>
+                    <div className="text-[10px] text-muted-foreground pl-5">
+                      Applies the variant&apos;s Default (keeping this drone&apos;s calibration), verifies it and saves the result as v1.
+                    </div>
+                  </button>
                 </div>
               )}
-              {/* Register prompt: unmatched, unversioned, or SCR_ENABLE=0 (fresh drone) */}
-              {(() => {
-                const scrEnable = droneParams?.find((p) => p.name === "SCR_ENABLE");
-                const isFreshDrone = scrEnable ? parseInt(scrEnable.value, 10) === 0 : false;
-                const ms = match.status as string;
-                const shouldShowRegister =
-                  isFreshDrone ||
-                  ms === "unmatched" ||
-                  (match.droneVersion === null && (ms === "matched" || ms === "unmatched"));
-                if (!shouldShowRegister) return null;
-                return (
-                  <div className="flex flex-col gap-2 mt-1">
-                    {/* Primary: safe, preserves params */}
-                    <button
-                      type="button"
-                      onClick={() => setRegisterMode("capture")}
-                      className="flex flex-col items-start gap-0.5 rounded-md bg-primary hover:bg-primary/90 px-3 py-2.5 text-primary-foreground transition-colors cursor-pointer w-full text-left"
-                    >
-                      <div className="flex items-center gap-2 text-xs font-semibold">
-                        <ClipboardList className="h-3.5 w-3.5 shrink-0" />
-                        Register &amp; keep current params
-                      </div>
-                      <div className="text-[10px] opacity-80 pl-5">
-                        Captures the drone&apos;s params as v1. Only writes SCR identifiers.
-                      </div>
-                    </button>
-                    {/* Secondary: destructive, factory-fresh only */}
-                    <button
-                      type="button"
-                      onClick={() => setRegisterMode("flash")}
-                      className="flex flex-col items-start gap-0.5 rounded-md border border-amber-500/30 hover:bg-amber-500/5 px-3 py-2 text-foreground transition-colors cursor-pointer w-full text-left"
-                    >
-                      <div className="flex items-center gap-2 text-xs">
-                        <AlertTriangle className="h-3 w-3 shrink-0 text-amber-500" />
-                        Register &amp; flash defaults
-                      </div>
-                      <div className="text-[10px] text-muted-foreground pl-5">
-                        Overwrites all params with catalog Default. Factory-fresh drones only.
-                      </div>
-                    </button>
-                  </div>
-                );
-              })()}
             </>
           )}
 
@@ -395,12 +319,12 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
           )}
           {(stage === "idle" || stage === "error") && (
             <button
-              onClick={connect}
+              onClick={() => connect(false)}
               disabled={iosDevice || serialMode === "unsupported"}
               className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap"
             >
               <Usb className="h-3.5 w-3.5" />
-              {stage === "error" ? "Retry" : "Connect"}
+              {stage === "error" ? "Retry" : knownBoard ? `Connect to ${knownBoard}` : "Connect"}
             </button>
           )}
           {busy && (

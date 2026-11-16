@@ -1,135 +1,86 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUpCircle, Loader2 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
+import { ArrowUpCircle } from "lucide-react";
+import { BusyButton } from "@/components/ui/busy";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { WriteDroneDialog, type WriteChange } from "@/components/write-drone-dialog";
-import { clearDroneMatchCache } from "@/lib/use-connected-drone-match";
-import { RUNTIME_PARAMS } from "@/lib/param-engine";
-import { flashParamsToDrone } from "@/lib/drone-flash-engine";
-import type { ParamWriteResult } from "@/lib/mavlink-serial";
+import { refreshDroneMatch } from "@/lib/use-connected-drone-match";
+import { applyVersion, changesFor, fetchVersionValues, type WriteOutcome } from "@/lib/drone-flash-engine";
+import { firmwareMinor, firmwareMismatch, type VersionRef } from "@/lib/desired-state";
 
 interface Props {
-  /** The param_version id to apply. */
-  versionId: string;
+  /** The version of the drone's history to bring the drone to. */
+  version: VersionRef;
   className?: string;
   label?: string;
+  /** Shown in the confirm dialog, e.g. when installing a version that isn't the target. */
+  notice?: string;
 }
 
 /**
- * Fetches the target version's params, diffs against the connected drone's
- * current params, and opens WriteDroneDialog with only the changed params.
+ * Brings the connected drone to `version`: writes only the differing managed
+ * params, reads them back, and logs the apply once the server confirms the
+ * drone now equals the version.
  */
-export function ApplyUpdateButton({ versionId, className, label = "Apply update" }: Props) {
+export function ApplyUpdateButton({ version, className, label = "Install update", notice }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  const { droneParams, setDroneParams } = useDroneParams();
+  const { droneParams, autopilot, setDroneParams } = useDroneParams();
   const [loading, setLoading] = useState(false);
   const [changes, setChanges] = useState<WriteChange[] | null>(null);
+  const [desired, setDesired] = useState<Map<string, number>>(new Map());
   const [error, setError] = useState<string | null>(null);
-  const [updated, setUpdated] = useState(false);
-  // Store the full target params so we can update droneParams fully on success.
-  const [targetParams, setTargetParams] = useState<Map<string, number>>(new Map());
 
   async function handleClick() {
-    if (!droneParams || droneParams.length === 0) {
-      setError("No drone connected.");
-      return;
-    }
+    if (!droneParams || droneParams.length === 0) return;
     setLoading(true);
     setError(null);
-
-    // Fetch target version params (paginated)
-    const supabase = createClient();
-    if (!supabase) { setError("Supabase not configured."); setLoading(false); return; }
-
-    const target = new Map<string, number>();
-    for (let from = 0; ; from += 1000) {
-      const { data, error: dbErr } = await supabase
-        .from("param_values")
-        .select("name, value")
-        .eq("param_version_id", versionId)
-        .order("name")
-        .range(from, from + 999);
-      if (dbErr) { setError(dbErr.message); setLoading(false); return; }
-      if (!data || data.length === 0) break;
-      for (const { name, value } of data) target.set(name, parseFloat(value));
-      if (data.length < 1000) break;
-    }
-
-    if (target.size === 0) { setError("Target version has no params."); setLoading(false); return; }
-
-    // Diff: only params that differ between drone and target,
-    // excluding runtime/read-only params that change automatically.
-    const droneMap = new Map(droneParams.map((p) => [p.name, parseFloat(p.value)]));
-    const diff: WriteChange[] = [];
-    for (const [name, targetVal] of target.entries()) {
-      if (RUNTIME_PARAMS.has(name)) continue;
-      const droneVal = droneMap.get(name);
-      if (droneVal === undefined || Math.abs(droneVal - targetVal) / Math.max(Math.abs(targetVal), 1e-10) >= 1e-5) {
-        diff.push({ name, value: targetVal });
-      }
-    }
-
-    if (diff.length === 0) {
-      setError("Drone is already up to date.");
+    try {
+      const values = await fetchVersionValues(version.id);
+      if (values.size === 0) { setError("This version has no params."); return; }
+      setDesired(values);
+      setChanges(changesFor(values, droneParams));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load the version");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setLoading(false);
-    setTargetParams(target);
-    setChanges(diff);
   }
 
-  function handleSuccess(_written: ParamWriteResult[]) {
-    if (!droneParams) return;
-    // Update droneParams to match the full target state so the match hook
-    // re-evaluates to up_to_date. Don't rely only on written[] because
-    // some writes may not be acknowledged even when successful.
-    const updated = droneParams.map((p) => {
-      const targetVal = targetParams.get(p.name);
-      return targetVal !== undefined ? { ...p, value: String(targetVal) } : p;
-    });
-    setDroneParams(updated);
-    setChanges(null);
-    setUpdated(true);
-    clearDroneMatchCache();
+  const handleSuccess = useCallback((outcome: WriteOutcome) => {
+    setDroneParams(outcome.params);
+    refreshDroneMatch();
     startTransition(() => router.refresh());
-  }
+  }, [setDroneParams, router]);
 
-  // Hide immediately after a successful update — don't wait for the async
-  // hook re-fetch to settle.
-  if (updated) return null;
+  const mismatch = firmwareMismatch(version.firmware, autopilot?.firmware ?? null);
 
   return (
     <>
-      <button
+      <BusyButton
         type="button"
+        busy={loading}
+        busyLabel="Loading…"
+        icon={<ArrowUpCircle className="h-3.5 w-3.5" />}
         onClick={handleClick}
-        disabled={loading || !droneParams?.length}
+        disabled={!droneParams?.length}
         title={error ?? undefined}
-        className={className ?? "btn-apply-update flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"}
+        className={className ?? "btn-apply-update rounded-md px-3 py-1.5 text-xs font-medium text-white"}
       >
-        {loading
-          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          : <ArrowUpCircle className="h-3.5 w-3.5" />
-        }
-        {loading ? "Loading…" : label}
-      </button>
+        {label}
+      </BusyButton>
       {changes && (
         <WriteDroneDialog
           changes={changes}
           onClose={() => setChanges(null)}
+          notice={notice}
           onSuccess={handleSuccess}
-          onStart={(addLog) => {
-            const current = new Map(
-              (droneParams ?? []).map((p) => [p.name, parseFloat(p.value)])
-            );
-            return flashParamsToDrone(targetParams, current, addLog);
-          }}
+          firmwareWarning={mismatch
+            ? `v${version.label} was made for ArduPilot ${firmwareMinor(version.firmware)}, this drone runs ${firmwareMinor(autopilot?.firmware ?? null)}. Params added or renamed between them will not match.`
+            : undefined}
+          onStart={(addLog) => applyVersion(version.id, version.label, desired, droneParams ?? [], autopilot, addLog)}
         />
       )}
     </>

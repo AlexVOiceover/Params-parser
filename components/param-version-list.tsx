@@ -4,10 +4,11 @@ import { useState, useEffect, useTransition, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Filter, Download, Trash2, Copy, X, AlertTriangle, Upload, Eye, Usb, GitCompareArrows, CheckSquare, Square, FileUp } from "lucide-react";
+import { DroneGhostCard } from "@/components/drone-ghost-card";
 import { ApplyUpdateButton } from "@/components/apply-update-button";
-import { useDroneParams } from "@/lib/drone-params-context";
-import { useConnectedDroneMatch, clearDroneMatchCache } from "@/lib/use-connected-drone-match";
-import { writeParamFile, parseParamFile } from "@/lib/param-engine";
+import { useAuth } from "@/components/auth-provider";
+import { useConnectedDroneMatch, refreshDroneMatch } from "@/lib/use-connected-drone-match";
+import { parseParamFile } from "@/lib/param-engine";
 import { FILE_VERSION_ID, writeCompareFile } from "@/lib/file-compare-shared";
 
 interface ParamVersionRow {
@@ -18,6 +19,7 @@ interface ParamVersionRow {
   created_at: string;
   is_latest: boolean;
   needs_review: boolean;
+  firmware: string | null;
 }
 
 interface FamilyOption {
@@ -47,6 +49,9 @@ interface Props {
   isDefault: boolean;
   /** FK drone_id on this client_set — used to match against the connected drone. */
   droneId: string | null;
+  /** Chip ID linked to that drone record, if any. */
+  droneChipId: string | null;
+  droneSerial: string | null;
   /** Diff count vs the previous version (oldest-first ordering). Key = version id. */
   diffVsPrev?: Record<string, number>;
   familyName: string;
@@ -95,6 +100,8 @@ export function ParamVersionList({
   isAdmin,
   isDefault,
   droneId,
+  droneChipId,
+  droneSerial,
   diffVsPrev,
   familyName,
   variantName,
@@ -102,13 +109,30 @@ export function ParamVersionList({
 }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  const { droneParams } = useDroneParams();
   const match = useConnectedDroneMatch();
+  const { role } = useAuth();
+  const isStaff = role === "admin" || role === "contributor";
   // This page belongs to a specific client_set. The drone matches this set
   // when the connected drone's id equals the FK stored on the client_set.
-  const droneMatchesThisSet = match.status === "matched" && droneId !== null && match.drone?.id === droneId;
-  const hasUpdate = droneMatchesThisSet && match.versionStatus === "update_available";
-  const droneVersion = droneMatchesThisSet ? match.droneVersion : null;
+  const droneMatchesThisSet = match.status === "linked" && droneId !== null && match.drone?.id === droneId;
+  // The version the drone currently equals, as judged by comparing its params.
+  const onDroneVersionId = !droneMatchesThisSet ? null
+    : match.state === "in_sync" ? match.desired?.id ?? null
+    : match.state === "update_available" ? match.lastVerified?.id ?? null
+    : match.state === "pending_review" ? match.pending?.id ?? null
+    : null;
+
+  /** Install on drone: the target version for everyone, any other version for staff only. */
+  function installNotice(v: ParamVersionRow): string | null | false {
+    if (!droneMatchesThisSet || onDroneVersionId === v.id) return false;
+    const target = match.desired;
+    if (target?.id === v.id) return null;
+    if (!isStaff) return false;
+    if (v.needs_review) return `v${v.version_label} is waiting for review. ${target ? `v${target.label} stays the target, so this drone will be offered v${target.label} again on its next connect.` : ""}`.trim();
+    return target
+      ? `v${target.label} is still the target, so this drone will be offered v${target.label} again on its next connect. To make v${v.version_label} the target, clone it as a new version instead.`
+      : null;
+  }
 
   // ── Compare mode ──────────────────────────────────────────
   // One entry point for all comparing: pick versions (auto-selected when there
@@ -180,8 +204,8 @@ export function ParamVersionList({
 
   // ── Upload state ──────────────────────────────────────────
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [uploadSource, setUploadSource] = useState<"file" | "drone">("file");
   const [uploadChangelog, setUploadChangelog] = useState("");
+  const [uploadFirmware, setUploadFirmware] = useState("");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadLog, setUploadLog] = useState<{ text: string; error?: boolean }[]>([]);
@@ -254,19 +278,14 @@ export function ParamVersionList({
 
   function openUpload() {
     setUploadChangelog("");
+    setUploadFirmware("");
     setUploadFile(null);
-    setUploadSource("file");
     setUploadLog([]);
     setUploadOpen(true);
   }
 
   async function handleUpload() {
-    let file = uploadFile;
-    if (uploadSource === "drone") {
-      if (!droneParams || droneParams.length === 0) return;
-      const content = writeParamFile(droneParams.map((p) => ({ name: p.name, value: p.value })));
-      file = new File([content], `${clientSetName.replace(/\s+/g, "_")}_from_drone.param`, { type: "text/plain" });
-    }
+    const file = uploadFile;
     if (!file || !uploadVersionLabel) return;
     setUploading(true);
     setUploadLog([]);
@@ -275,6 +294,8 @@ export function ParamVersionList({
     fd.set("clientSetId", clientSetId);
     fd.set("versionLabel", uploadVersionLabel);
     if (uploadChangelog) fd.set("changelog", uploadChangelog);
+    const fw = uploadFirmware.trim();
+    if (fw) fd.set("firmware", fw);
     fd.set("file", file);
 
     const res = await fetch("/api/upload", { method: "POST", body: fd });
@@ -302,7 +323,7 @@ export function ParamVersionList({
             setUploading(false);
             setTimeout(() => {
               setUploadOpen(false);
-              clearDroneMatchCache();
+              refreshDroneMatch();
               startTransition(() => router.refresh());
             }, 800);
             return;
@@ -336,7 +357,7 @@ export function ParamVersionList({
     if (res.ok) {
       setDeleteId(null);
       setDeleting(false);
-      clearDroneMatchCache();
+      refreshDroneMatch();
       startTransition(() => router.refresh());
     } else {
       const msg = await res.json().then((b) => b?.error).catch(() => null);
@@ -365,7 +386,7 @@ export function ParamVersionList({
     if (res.ok) {
       setCloneId(null);
       setCloning(false);
-      clearDroneMatchCache();
+      refreshDroneMatch();
       startTransition(() => router.refresh());
     } else {
       const msg = await res.json().then((b) => b?.error).catch(() => null);
@@ -383,7 +404,7 @@ export function ParamVersionList({
     (isNewClientSet && (!newClientName.trim() || !newSerial.trim()));
   // isNewDefault needs no extra fields — variant is sufficient
 
-  const uploadDisabled = uploading || (uploadSource === "file" ? !uploadFile : !droneParams?.length);
+  const uploadDisabled = uploading || !uploadFile;
   const uploadHasError = uploadLog.some((l) => l.error);
 
   return (
@@ -477,6 +498,16 @@ export function ParamVersionList({
       )}
 
       <div className="flex flex-col gap-3">
+        {!isDefault && droneId && (
+          <DroneGhostCard
+            droneId={droneId}
+            droneChipId={droneChipId}
+            droneSerial={droneSerial}
+            nextLabel={uploadVersionLabel}
+            onChanged={() => startTransition(() => router.refresh())}
+          />
+        )}
+
         {versions.length === 0 && !isAdmin && (
           <div className="rounded-lg border border-border bg-card px-6 py-10 text-center">
             <p className="text-sm text-muted-foreground">No versions uploaded yet.</p>
@@ -512,14 +543,29 @@ export function ParamVersionList({
                   {v.needs_review && (
                     <span className="rounded-full bg-amber-900/50 border border-amber-700/60 px-2 py-0.5 text-[10px] font-semibold text-amber-300 shrink-0">pending review</span>
                   )}
-                  {droneMatchesThisSet && droneVersion !== null && parseInt(v.version_label, 10) === droneVersion && (
+                  <span className="font-mono text-[10px] text-muted-foreground shrink-0" title="ArduPilot firmware this version was made for">
+                    {v.firmware ? `fw ${v.firmware}` : "fw unknown"}
+                  </span>
+                  {(() => {
+                    const notice = installNotice(v);
+                    if (notice === false) return null;
+                    const isTarget = match.desired?.id === v.id;
+                    return (
+                      <ApplyUpdateButton
+                        version={{ id: v.id, label: v.version_label, firmware: v.firmware }}
+                        label="Install on drone"
+                        notice={notice ?? undefined}
+                        className={isTarget
+                          ? "btn-apply-update rounded-md px-2.5 py-1 text-xs font-medium text-white"
+                          : "rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-secondary"}
+                      />
+                    );
+                  })()}
+                  {onDroneVersionId === v.id && (
                     <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 leading-none whitespace-nowrap shrink-0">
                       <Usb className="h-2.5 w-2.5" />
                       on drone
                     </span>
-                  )}
-                  {hasUpdate && v.is_latest && droneVersion !== null && parseInt(v.version_label, 10) > droneVersion && (
-                    <ApplyUpdateButton versionId={v.id} />
                   )}
                 </div>
                 <span className="text-xs text-muted-foreground shrink-0">{formatDate(v.created_at)}</span>
@@ -579,7 +625,7 @@ export function ParamVersionList({
                 className="flex w-full items-center gap-2 px-5 py-4 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/40 transition-colors cursor-pointer"
               >
                 <Upload className="h-4 w-4 shrink-0" />
-                Upload new version…
+                Upload new version from a file…
               </button>
             ) : (
               <div className="px-5 py-4 flex flex-col gap-3">
@@ -602,43 +648,9 @@ export function ParamVersionList({
 
                 <div className="flex flex-col gap-2">
                   <span className="text-xs font-medium text-muted-foreground">
-                    Source <span className="text-destructive">*</span>
+                    File <span className="text-destructive">*</span>
                   </span>
 
-                  {/* Source toggle — shown whenever a drone is connected */}
-                  {droneParams && droneParams.length > 0 && (
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <button
-                        type="button"
-                        disabled={uploading}
-                        onClick={() => setUploadSource("file")}
-                        className={`flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs transition-colors cursor-pointer disabled:opacity-40 ${
-                          uploadSource === "file"
-                            ? "border-primary bg-primary/10 text-primary font-medium"
-                            : "border-border bg-secondary text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        <Upload className="h-3.5 w-3.5 shrink-0" />
-                        From file
-                      </button>
-                      <button
-                        type="button"
-                        disabled={uploading}
-                        onClick={() => setUploadSource("drone")}
-                        className={`flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs transition-colors cursor-pointer disabled:opacity-40 ${
-                          uploadSource === "drone"
-                            ? "border-primary bg-primary/10 text-primary font-medium"
-                            : "border-border bg-secondary text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        <Usb className="h-3.5 w-3.5 shrink-0" />
-                        From drone
-                      </button>
-                    </div>
-                  )}
-
-                  {/* File picker — only when source is file */}
-                  {uploadSource === "file" && (
                     <div className="flex flex-col gap-1">
                       <input
                         type="file"
@@ -650,16 +662,19 @@ export function ParamVersionList({
                       {uploadFile && (
                         <span className="text-xs text-muted-foreground">{uploadFile.name} ({(uploadFile.size / 1024).toFixed(1)} KB)</span>
                       )}
+                      <label htmlFor="pvl-firmware" className="sr-only">Firmware</label>
+                      <input
+                        id="pvl-firmware"
+                        value={uploadFirmware}
+                        onChange={(e) => setUploadFirmware(e.target.value)}
+                        disabled={uploading}
+                        placeholder="Firmware it was made for, e.g. 4.5.7 (optional)"
+                        className="rounded-md border border-border bg-secondary px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
+                      />
+                      {uploadFirmware.trim() && !/^\d+\.\d+\.\d+$/.test(uploadFirmware.trim()) && (
+                        <span className="text-xs text-destructive">Use the form 4.5.7</span>
+                      )}
                     </div>
-                  )}
-
-                  {/* Drone source confirmation */}
-                  {uploadSource === "drone" && droneParams && droneParams.length > 0 && (
-                    <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
-                      <Usb className="h-3.5 w-3.5 text-primary shrink-0" />
-                      <span className="text-xs text-foreground">{droneParams.length} params from connected drone</span>
-                    </div>
-                  )}
                 </div>
 
                 {uploadLog.length > 0 && (

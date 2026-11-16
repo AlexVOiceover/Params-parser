@@ -58,6 +58,7 @@ export function UploadForm({ data, role, userClientId }: Props) {
   const [versionLabel, setVersionLabel] = useState("");
   const [versionTouched, setVersionTouched] = useState(false);
   const [changelog, setChangelog] = useState("");
+  const [firmware, setFirmware] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -123,6 +124,7 @@ export function UploadForm({ data, role, userClientId }: Props) {
     setVersionLabel("");
     setVersionTouched(false);
     setChangelog("");
+    setFirmware("");
     setFile(null);
     setError(null);
     setDone(false);
@@ -176,6 +178,7 @@ export function UploadForm({ data, role, userClientId }: Props) {
     }
     fd.set("versionLabel", versionLabel);
     if (changelog) fd.set("changelog", changelog);
+    if (firmware.trim()) fd.set("firmware", firmware.trim());
     fd.set("file", file);
 
     const res = await fetch("/api/upload", { method: "POST", body: fd });
@@ -419,6 +422,23 @@ export function UploadForm({ data, role, userClientId }: Props) {
               placeholder="What changed in this version? (optional)"
               className={inputClass + " resize-none"}
             />
+          </label>
+        )}
+
+        {/* Firmware */}
+        {((kind === "default" && variantId) || (kind === "client" && droneId)) && (
+          <label className={labelClass} htmlFor="uf-firmware">
+            <span className={labelTextClass}>Firmware</span>
+            <input
+              id="uf-firmware"
+              value={firmware}
+              onChange={(e) => setFirmware(e.target.value)}
+              placeholder="ArduPilot version the file was made for, e.g. 4.5.7 (optional)"
+              className={inputClass + " font-mono"}
+            />
+            {firmware.trim() && !/^\d+\.\d+\.\d+$/.test(firmware.trim()) && (
+              <p className="text-xs text-destructive mt-0.5">Use the form 4.5.7</p>
+            )}
           </label>
         )}
 

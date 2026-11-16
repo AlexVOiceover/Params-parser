@@ -26,9 +26,9 @@ export function DroneIdentityCard() {
   const match = useConnectedDroneMatch();
   const [uploadOpen, setUploadOpen] = useState(false);
 
-  if (!droneParams || match.status !== "matched" || !match.drone) return null;
+  if (!droneParams || match.status !== "linked" || !match.drone) return null;
 
-  const { drone, versionStatus, droneVersion, catalogVersion } = match;
+  const { drone, state, desired, diff } = match;
   const content = writeParamFile(droneParams);
   const suggestedName = `drone-${timestamp()}`;
 
@@ -84,17 +84,16 @@ export function DroneIdentityCard() {
         </dl>
 
         {/* Version status */}
-        {versionStatus !== "unknown" && droneVersion !== null && (
+        {desired && state && state !== "no_version" && (
           <div className={`text-xs rounded px-2 py-1 ${
-            versionStatus === "update_available"
-              ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
-              : versionStatus === "drone_ahead"
-              ? "bg-sky-500/15 text-sky-700 dark:text-sky-300"
-              : "text-emerald-700/80 dark:text-emerald-300/80"
+            state === "in_sync"
+              ? "text-emerald-700/80 dark:text-emerald-300/80"
+              : "bg-amber-500/15 text-amber-700 dark:text-amber-300"
           }`}>
-            {versionStatus === "up_to_date" && `v${droneVersion} — up to date`}
-            {versionStatus === "update_available" && `Update available — catalog v${catalogVersion}, drone v${droneVersion}`}
-            {versionStatus === "drone_ahead" && `Drone v${droneVersion} is ahead of catalog v${catalogVersion}`}
+            {state === "in_sync" && `In sync with v${desired.label}`}
+            {state === "update_available" && `Update available — v${desired.label}, ${diff.length} param${diff.length === 1 ? "" : "s"} change`}
+            {(state === "modified" || state === "differs") && `${diff.length} param${diff.length === 1 ? "" : "s"} differ from v${desired.label}`}
+            {state === "pending_review" && "Saved version waiting for review"}
           </div>
         )}
 
@@ -121,7 +120,7 @@ export function DroneIdentityCard() {
             <Upload className="h-3.5 w-3.5" />
             Upload
           </button>
-          {versionStatus === "update_available" && drone.variant_id && (
+          {state === "update_available" && drone.variant_id && (
             <Link
               href={`/${drone.family_slug}/${drone.variant_id}`}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-amber-500 hover:bg-amber-600 px-2 py-1.5 text-xs font-medium text-white transition-colors cursor-pointer whitespace-nowrap"

@@ -43,9 +43,9 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const match = useConnectedDroneMatch();
-  const connectedDroneId = match.status === "matched" ? match.drone?.id ?? null : null;
+  const connectedDroneId = match.status === "linked" ? match.drone?.id ?? null : null;
   // Orphan drones have no client_set — they track the Default instead.
-  const isOrphanDrone = match.isOrphan && match.status === "matched";
+  const isOrphanDrone = match.status === "linked" && match.drone?.is_orphan === true;
 
   // Only list clients that actually have an unused drone on this variant.
   const clientsWithDrones = useMemo(() => {
@@ -214,8 +214,9 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
     const isConnected = connectedDroneId !== null && c.droneId === connectedDroneId;
     // Orphan drones show on the Default card since they track the Default.
     const isOrphanOnDefault = isOrphanDrone && c.isDefault;
-    const hasUpdate = (isConnected || isOrphanOnDefault) && match.versionStatus === "update_available";
-    const isModified = (isConnected || isOrphanOnDefault) && match.versionStatus === "up_to_date_modified";
+    const hasUpdate = (isConnected || isOrphanOnDefault) && match.state === "update_available";
+    const isModified = (isConnected || isOrphanOnDefault) && (match.state === "modified" || match.state === "differs");
+    const diffCount = match.diff.length;
 
     return (
       <div className="relative group/row">
@@ -279,18 +280,18 @@ export function ClientSetList({ familySlug, variantId, clientSets, defaultLatest
                 Versions: {[...c.versions].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map((v) => v.version_label).join(", ")}
               </span>
             )}
-            {hasUpdate && match.droneVersion !== null && match.catalogVersion !== null && (
+            {hasUpdate && match.desired && (
               <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                Drone has v{match.droneVersion} · Catalog has v{match.catalogVersion}
+                v{match.desired.label} ready · {diffCount} param{diffCount === 1 ? "" : "s"} change
               </span>
             )}
-            {isModified && match.driftCount !== null && c.latestVersionId && (
+            {isModified && match.desired && (
               <span className="text-xs text-amber-600 dark:text-amber-400">
-                {match.driftCount} param{match.driftCount === 1 ? "" : "s"} differ from catalog{" "}
+                {diffCount} param{diffCount === 1 ? "" : "s"} differ from v{match.desired.label}{" "}
                 <button
                   type="button"
                   className="underline cursor-pointer"
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); router.push(`/compare?v=__drone__&v=${c.latestVersionId}`); }}
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); router.push(`/compare?v=__drone__&v=${match.desired?.id}`); }}
                 >
                   Review
                 </button>

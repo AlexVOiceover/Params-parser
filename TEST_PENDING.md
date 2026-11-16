@@ -35,4 +35,60 @@ Things to verify when you have time. Tick them off as you go.
 
 ---
 
+## Feature 20 — Chip-ID identity and desired-state config
+
+### Setup needed
+- Two drones you can plug in over USB (Cube, MAVLink 2 on the USB port).
+- A staff account (admin or contributor) and a client account for one of the drones' clients.
+- At least one existing drone record that is **not linked** yet (all records are unlinked right after release).
+
+### Identity and linking
+- [ ] Connect a drone: the modal shows **Chip ID** (24 hex) and **Firmware** (e.g. 4.5.7).
+- [ ] Staff, unlinked chip: "Which drone is it?" picker appears; the record whose serial ends in `SCR_USER1` is pre-selected; Link → status appears without reconnecting.
+- [ ] Client account, unlinked chip: shows "isn't set up for updates yet — contact AIR6", no picker.
+- [ ] Fleet page: the drone shows its chip ID; another drone shows **Not linked**.
+- [ ] Fleet page: link a drone by pasting the Mission Planner **Messages** line (`CubeOrangePlus xxxxxxxx xxxxxxxx xxxxxxxx`); then connect that drone in the app — it is recognised with the same chip ID.
+- [ ] Linking a chip already linked to another drone is refused with the other drone's serial.
+- [ ] Contributor trying to re-link an already-linked drone is refused; admin can re-link.
+- [ ] Unlink from the Fleet page → connecting shows the picker again.
+
+### Status and update popup
+- [ ] Drone equal to its latest version → **In sync with vN**.
+- [ ] Add a new version to the drone's history with a few params changed → reconnect → **AIR6 has an update for this drone** with the change list → Apply → each param is read back → **In sync**; the history page **Drone log** shows "vN applied · verified · <firmware> · by <user>".
+- [ ] Change a param in Mission Planner → reconnect in the app → **Modified on the drone** with the exact param → Restore vN works.
+- [ ] On a modified drone: **Save as new version** as admin → becomes the latest, drone shows **In sync**.
+- [ ] Same as a client/contributor → version is **pending review**; drone shows "Saved as vN — waiting for review" until an admin accepts it.
+- [ ] Saving a version from a drone no longer leaves "Update available" afterwards (the original bug).
+
+### Safety
+- [ ] Read drone A, swap to drone B without the unplug clearing the app (e.g. reload is not enough — use two USB ports), then Apply: refused with "This is not the drone that was read", nothing written.
+- [ ] Version uploaded with firmware 4.5.x applied to a drone on 4.6.x: warning shown and the write button stays disabled until "I understand" is ticked.
+- [ ] A param that needs a reboot (e.g. a `SERIALx_PROTOCOL`): after Apply, it reads back the new value and the apply is logged. If it reads back the old value until reboot, note it — open question in the spec.
+
+### Bring-up
+- [ ] Register a new drone with **Register & apply the Default**: calibration (`COMPASS_OFS*`, `INS_ACCOFFS*`) is untouched, the result is saved as v1, the Drone log shows "linked at assembly" and "v1 saved from the drone".
+- [ ] **Register & keep current params**: nothing is written to the drone; its params become the next version.
+
+---
+
 *Add new entries here as features are shipped without immediate testing.*
+
+### Port memory (no Chrome picker)
+- [ ] After one connect, the button reads "Connect to CubeOrange+" and Chrome's picker does not open
+- [ ] With both Cube ports granted (MAVLink + SLCAN), it still lands on the MAVLink one
+- [ ] Mission Planner holding the port → falls back to the picker instead of hanging
+- [ ] "Use a different port…" always opens the picker
+- [ ] Apply/Restore writes also skip the picker
+- [ ] Android (WebUSB): reconnects without the device picker
+
+### Ghost card on a drone's history page
+- [ ] Connected drone differs from v3 → dashed "v4 · from the connected drone" card above v3
+- [ ] Save as v4 is disabled until a changelog is typed; saving adds v4 and a "saved from the drone" log entry
+- [ ] Ghost card has only Save (no Install/Restore)
+- [ ] Install on drone on v3's card writes v3; the ghost card disappears and v3 shows "on drone"
+- [ ] Staff: Install on v2 shows the "v3 is still the target" notice; afterwards the drone shows "update available: v3"
+- [ ] Client: only the target version has Install on drone
+- [ ] Drone on an older version → amber "Install vN" banner, no Save
+- [ ] Another drone connected → "The connected drone is X, not this one" with a link to its history, no actions
+- [ ] Unlinked FC (staff) → "Link to <serial>"; record already linked to another chip → admin-only "Re-link"
+- [ ] "Upload new version from a file…" no longer offers "From drone"

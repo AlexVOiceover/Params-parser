@@ -1,8 +1,9 @@
 // MAVLink v1+v2 browser serial connection for ArduPilot parameter reading.
 // Frame parsing modelled after ArduPilot/node-mavlink (MIT).
 
-import { requestDronePort, getGrantedDronePorts, setLastUsedPort, getLastUsedPort } from "@/lib/serial-shim";
-import { getDroneIdentity, updateDroneIdentity, reportDroneMismatch, sameParamValue } from "@/lib/drone-params-shared";
+import { requestDronePort, getGrantedDronePorts, setLastUsedPort, getLastUsedPort, dronePortName } from "@/lib/serial-shim";
+import { getSnapshotChipId, reportDroneMismatch } from "@/lib/drone-params-shared";
+import { paramsEqual } from "@/lib/desired-state";
 
 // ── CRC_EXTRA (magic numbers) ─────────────────────────────────────────────────
 // Full common + ardupilotmega table subset — covers all messages ArduPilot
@@ -32,11 +33,13 @@ const CRC_EXTRA: Record<number, number> = {
   62: 183,  // NAV_CONTROLLER_OUTPUT
   65: 118,  // RC_CHANNELS
   74:  20,  // VFR_HUD
+  76: 152,  // COMMAND_LONG
   77: 143,  // COMMAND_ACK
   105: 93,  // HIGHRES_IMU
   116: 76,  // SCALED_IMU2
   125:  38, // POWER_STATUS
   147: 154, // BATTERY_STATUS
+  148: 178, // AUTOPILOT_VERSION
   163: 127, // AHRS
   165:  27, // HWSTATUS
   166:  59, // RADIO
@@ -116,6 +119,40 @@ export function buildParamRequestList(v1: boolean): Uint8Array {
   return v1 ? buildV1(21, p) : buildV2(21, p);
 }
 
+// COMMAND_LONG (76) MAV_CMD_REQUEST_MESSAGE (512) — ask the FC to send one message.
+//   [0-27] param1..7 float32, [28-29] command uint16, [30] target_system,
+//   [31] target_component, [32] confirmation
+export function buildRequestMessage(msgId: number, v1: boolean): Uint8Array {
+  const p = new Uint8Array(33);
+  const view = new DataView(p.buffer);
+  view.setFloat32(0, msgId, true);
+  view.setUint16(28, 512, true);
+  p[30] = TARGET_SYS; p[31] = TARGET_COMP;
+  return v1 ? buildV1(76, p) : buildV2(76, p);
+}
+
+// AUTOPILOT_VERSION (148) wire layout (largest fields first):
+//   [16-19] flight_sw_version uint32 — major<<24 | minor<<16 | patch<<8 | type
+//   [60-77] uid2 uint8[18]   — extension, MAVLink 2 only. ArduPilot fills the
+//           first 12 bytes with the MCU's factory-burned unique ID.
+// MAVLink 2 trims trailing zero bytes, so pad before reading.
+export interface AutopilotInfo {
+  chipId: string | null;
+  firmware: string | null;
+}
+
+function parseAutopilotInfo(payload: Uint8Array): AutopilotInfo {
+  const full = new Uint8Array(78);
+  full.set(payload.subarray(0, 78));
+  const uid2 = full.subarray(60, 72);
+  const chipId = uid2.every((b) => b === 0)
+    ? null
+    : Array.from(uid2, (b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+  const sw = new DataView(full.buffer).getUint32(16, true);
+  const firmware = sw === 0 ? null : `${sw >>> 24}.${(sw >>> 16) & 0xff}.${(sw >>> 8) & 0xff}`;
+  return { chipId, firmware };
+}
+
 // PARAM_REQUEST_READ wire layout (largest fields first):
 //   [0-1]  param_index      int16 (-1 = look up by param_id)
 //   [2]    target_system    uint8
@@ -177,6 +214,7 @@ function parseParamValue(payload: Uint8Array): ParamValue | null {
 interface SplitterResult {
   params: ParamValue[];
   statusTexts: string[];
+  autopilot: AutopilotInfo | null;
   detectedVersion: 1 | 2 | null;
   validFrames: number;
   heartbeats: number;
@@ -196,6 +234,7 @@ class MavlinkSplitter {
 
     const params: ParamValue[] = [];
     const statusTexts: string[] = [];
+    let autopilot: AutopilotInfo | null = null;
     let validFrames = 0;
     let heartbeats = 0;
 
@@ -243,6 +282,9 @@ class MavlinkSplitter {
             const pv = parseParamValue(payload);
             if (pv) params.push(pv);
           }
+          if (msgId === 148) {
+            autopilot = parseAutopilotInfo(frame.slice(headerLen, headerLen + payloadLen));
+          }
           // STATUSTEXT (253): severity uint8 at [0], text char[50] at [1..50]
           if (msgId === 253 && payloadLen >= 2) {
             const payload = frame.slice(headerLen, headerLen + payloadLen);
@@ -269,7 +311,7 @@ class MavlinkSplitter {
       }
     }
 
-    return { params, statusTexts, detectedVersion: this.detectedVersion, validFrames, heartbeats };
+    return { params, statusTexts, autopilot, detectedVersion: this.detectedVersion, validFrames, heartbeats };
   }
 }
 
@@ -280,10 +322,12 @@ export type MavlinkCallbacks = {
   onDone: (params: { name: string; value: string }[]) => void;
   onError: (msg: string) => void;
   onLog: (msg: string) => void;
+  onAutopilotInfo?: (info: AutopilotInfo) => void;
 };
 
 interface SerialPortSignals { dataTerminalReady?: boolean; requestToSend?: boolean; }
 interface SerialPort {
+  getInfo?(): { usbVendorId?: number; usbProductId?: number };
   open(options: { baudRate: number; bufferSize?: number }): Promise<void>;
   close(): Promise<void>;
   readable: ReadableStream<Uint8Array> | null;
@@ -291,16 +335,71 @@ interface SerialPort {
   setSignals?(signals: SerialPortSignals): Promise<void>;
 }
 
+/** Opens the port briefly and reports whether a MAVLink heartbeat arrives. */
+async function hearsHeartbeat(port: SerialPort, baudRate: number, ms: number): Promise<boolean> {
+  try {
+    await port.open({ baudRate, bufferSize: 16 * 1024 });
+  } catch {
+    return false; // unplugged, or held by another app such as Mission Planner
+  }
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  const timer = setTimeout(() => { reader?.cancel().catch(() => {}); }, ms);
+  try {
+    await port.setSignals?.({ dataTerminalReady: true, requestToSend: true });
+    reader = port.readable?.getReader();
+    if (!reader) return false;
+    const splitter = new MavlinkSplitter();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done || !value) return false;
+      if (splitter.feed(value).heartbeats > 0) return true;
+    }
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+    try { await reader?.cancel(); } catch {}
+    try { reader?.releaseLock(); } catch {}
+    try { await port.close(); } catch {}
+  }
+}
+
+/**
+ * Finds the flight controller without the browser picker: tries the last used
+ * port, then every port granted before, and keeps the first that sends a
+ * MAVLink heartbeat (this skips a Cube's SLCAN port). Falls back to the picker
+ * when none answers, or straight away when `choose` is set.
+ */
+async function pickDronePort(baudRate: number, choose: boolean, onLog: (msg: string) => void): Promise<SerialPort> {
+  if (!choose) {
+    const last = getLastUsedPort() as SerialPort | null;
+    const granted = (await getGrantedDronePorts()) as SerialPort[];
+    const candidates = last ? [last, ...granted.filter((p) => p !== last)] : granted;
+    if (candidates.length > 0) onLog("Looking for the flight controller on the port used before…");
+    for (const port of candidates) {
+      if (await hearsHeartbeat(port, baudRate, 2500)) {
+        onLog(`Found ${dronePortName(port) ?? "the flight controller"}`);
+        setLastUsedPort(port);
+        return port;
+      }
+    }
+    if (candidates.length > 0) onLog("No remembered port answered — choose the port");
+  }
+  const port = await requestDronePort() as SerialPort;
+  setLastUsedPort(port);
+  return port;
+}
+
 export async function openDroneConnection(
   baudRate: number,
-  callbacks: MavlinkCallbacks
+  callbacks: MavlinkCallbacks,
+  options: { choosePort?: boolean } = {}
 ): Promise<() => void> {
   const { onProgress, onDone, onError, onLog } = callbacks;
 
   let port: SerialPort;
   try {
-    port = await requestDronePort() as SerialPort;
-    setLastUsedPort(port); // remember for subsequent writes
+    port = await pickDronePort(baudRate, options.choosePort ?? false, onLog);
   } catch (e) {
     onError(`No port selected: ${e instanceof Error ? e.message : String(e)}`);
     return () => {};
@@ -333,6 +432,7 @@ export async function openDroneConnection(
   let versionLogged = false;
   let consecutiveHeartbeats = 0;
   let lastProgressLog = 0;
+  let autopilotReported = false;
 
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   const writer = port.writable?.getWriter();
@@ -456,9 +556,19 @@ export async function openDroneConnection(
             onLog("Autopilot ready (no version string received, falling back)…");
           }
           onLog("Autopilot ready — reading parameters…");
+          if (splitter.detectedVersion === 1) {
+            onLog("⚠ MAVLink v1 — the chip ID is only sent over MAVLink 2");
+          }
+          await sendFrame(buildRequestMessage(148, splitter.detectedVersion === 1));
           await sendFrame(buildParamRequestList(splitter.detectedVersion === 1));
           requestSent = true;
           scheduleRetry();
+        }
+
+        if (result.autopilot && !autopilotReported) {
+          autopilotReported = true;
+          onLog(`Chip ID: ${result.autopilot.chipId ?? "not reported"} · firmware ${result.autopilot.firmware ?? "unknown"}`);
+          callbacks.onAutopilotInfo?.(result.autopilot);
         }
 
         for (const pv of result.params) {
@@ -527,20 +637,7 @@ export async function writeDroneParams(
 
   let port: SerialPort;
   try {
-    // Prefer the port most recently used for import — avoids picker on multi-port FCs
-    const last = getLastUsedPort();
-    if (last) {
-      port = last as SerialPort;
-      onLog("Reusing previously-granted port");
-    } else {
-      const existing = await getGrantedDronePorts();
-      if (existing.length === 1) {
-        port = existing[0] as SerialPort;
-        onLog("Reusing previously-granted port");
-      } else {
-        port = await requestDronePort() as SerialPort;
-      }
-    }
+    port = await pickDronePort(baudRate, false, onLog);
   } catch (e) {
     onError(`No port selected: ${e instanceof Error ? e.message : String(e)}`);
     return () => {};
@@ -563,8 +660,9 @@ export async function writeDroneParams(
   let done = false;
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
 
-  // Promise/resolver for each PARAM_VALUE response
+  // Promise/resolver for each PARAM_VALUE response, and for AUTOPILOT_VERSION
   const pending = new Map<string, (pv: { name: string; value: number }) => void>();
+  const autopilotWaiter: { fn: ((info: AutopilotInfo) => void) | null } = { fn: null };
 
   async function sendFrame(frame: Uint8Array) {
     if (!writer) return;
@@ -589,6 +687,7 @@ export async function writeDroneParams(
         const { done: sd, value } = await reader.read();
         if (sd || !value) break;
         const result = splitter.feed(value);
+        if (result.autopilot) autopilotWaiter.fn?.(result.autopilot);
         for (const pv of result.params) {
           const resolver = pending.get(pv.name);
           if (resolver) {
@@ -635,72 +734,76 @@ export async function writeDroneParams(
     });
   }
 
-  // Refuse to write unless the plugged-in drone is the one whose params were read.
-  // The diff was computed against that read, so on any other airframe it is wrong.
-  const expected = getDroneIdentity();
-  if (!expected || expected.size === 0) {
+  // Refuse to write unless the plugged-in FC is the one whose params were read.
+  // The changes were computed against that read, so on any other airframe they are wrong.
+  const expectedChip = getSnapshotChipId();
+  if (!expectedChip) {
     await finish("No drone read in this session — read the drone before writing.");
     return () => {};
   }
-  onLog("Checking this is the drone that was read…");
-  for (const [name, want] of expected) {
-    let got: { name: string; value: number } | null = null;
-    for (let attempt = 0; attempt < 3 && !got; attempt++) {
+  onLog("Checking this is the flight controller that was read…");
+  let plugged: AutopilotInfo | null = null;
+  for (let attempt = 0; attempt < 3 && !plugged?.chipId; attempt++) {
+    plugged = await new Promise<AutopilotInfo | null>((resolve) => {
+      const timer = setTimeout(() => { autopilotWaiter.fn = null; resolve(null); }, 1500);
+      autopilotWaiter.fn = (info) => { clearTimeout(timer); autopilotWaiter.fn = null; resolve(info); };
+      void sendFrame(buildRequestMessage(148, v1));
+    });
+  }
+  if (!plugged?.chipId) {
+    await finish("The flight controller did not report its chip ID. Nothing was written.");
+    return () => {};
+  }
+  if (plugged.chipId !== expectedChip) {
+    onLog(`✗ Chip ID ${plugged.chipId} ≠ the one read (${expectedChip})`);
+    reportDroneMismatch();
+    await finish("This is not the drone that was read. Nothing was written — read this drone first.");
+    return () => {};
+  }
+  onLog("✓ Same flight controller as the last read");
+
+  async function readByName(name: string): Promise<{ name: string; value: number } | null> {
+    for (let attempt = 0; attempt < 3; attempt++) {
       const resp = waitFor(name, 1500);
       await sendFrame(buildParamRequestRead(-1, v1, name));
-      got = await resp;
+      const got = await resp;
+      if (got) return got;
     }
-    if (!got || !sameParamValue(got.value, want)) {
-      onLog(`✗ ${name}: read ${want}, drone reports ${got ? got.value : "nothing"}`);
-      reportDroneMismatch();
-      await finish("This is not the drone that was read. Nothing was written — read this drone first.");
-      return () => {};
-    }
+    return null;
   }
-  onLog("✓ Same drone as the last read");
 
-  // Write each change sequentially; up to 5 attempts per param with retry on wrong-value echo
+  // Write each change; retry when the echo shows a different value. The echo is
+  // only a hint — success is decided by the explicit read-back below.
   for (let i = 0; i < changes.length; i++) {
     if (aborted) break;
     const { name, value } = changes[i];
-
-    let confirmed: { name: string; value: number } | null = null;
-    let wrongValue = false;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const respPromise = waitFor(name, 2000);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const echo = waitFor(name, 1500);
       await sendFrame(buildParamSet(name, value, v1));
-      confirmed = await respPromise;
-      if (!confirmed) {
-        // No echo — silence means accepted (reboot-required or CAN params)
-        break;
-      }
-      wrongValue = Math.abs(confirmed.value - value) > 1e-5;
-      if (!wrongValue) break; // correct value confirmed
-      // Wrong value echoed — wait and retry
-      if (attempt < 4) await new Promise((r) => setTimeout(r, 300));
+      const got = await echo;
+      if (!got || paramsEqual(got.value, value)) break;
+      await new Promise((r) => setTimeout(r, 300));
     }
-
-    if (confirmed) {
-      const ok = !wrongValue;
-      results.push({
-        name,
-        requested: value,
-        actual: confirmed.value,
-        success: ok,
-        error: ok ? undefined : `returned ${confirmed.value}, expected ${value}`,
-      });
-      onLog(`${ok ? "✓" : "⚠"} ${name} = ${confirmed.value}${ok ? "" : ` (expected ${value})`}`);
-    } else {
-      // No echo — ArduPilot doesn't echo back params that require reboot
-      // or are stored on CAN nodes. Treat silence as accepted.
-      results.push({ name, requested: value, actual: value, success: true });
-      onLog(`✓ ${name} = ${value} (no echo — assumed written)`);
-    }
-
     onProgress(i + 1, changes.length, name);
   }
 
-  updateDroneIdentity(results.filter((r) => r.success).map((r) => ({ name: r.name, value: r.requested })));
+  // Verify: read every written param back by name. Nothing is assumed written.
+  onLog(`Verifying ${changes.length} param${changes.length === 1 ? "" : "s"}…`);
+  for (const { name, value } of changes) {
+    if (aborted) break;
+    const got = await readByName(name);
+    if (!got) {
+      results.push({ name, requested: value, success: false, error: "no response when read back" });
+      onLog(`⚠ ${name}: no response when read back`);
+    } else if (!paramsEqual(got.value, value)) {
+      results.push({ name, requested: value, actual: got.value, success: false, error: `reads ${got.value}, expected ${value}` });
+      onLog(`⚠ ${name} reads ${got.value} (expected ${value})`);
+    } else {
+      results.push({ name, requested: value, actual: got.value, success: true });
+      onLog(`✓ ${name} = ${got.value}`);
+    }
+  }
+
   await finish();
 
   return async function disconnect() {

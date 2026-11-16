@@ -73,6 +73,8 @@ export interface Drone {
   client_id: string;
   variant_id: string;
   serial: string;
+  /** FC chip ID (AUTOPILOT_VERSION.uid2, 24 hex chars); null until staff link it. */
+  chip_id: string | null;
   created_by: string | null;
   created_at: string;
 }
@@ -101,6 +103,24 @@ export interface ParamVersion {
   created_at: string;
   is_latest: boolean;
   needs_review: boolean;
+  /** ArduPilot firmware the version was made for ("4.5.7"); null = unknown. */
+  firmware: string | null;
+}
+
+export type DroneEventKind = "applied" | "captured" | "linked" | "relinked" | "unlinked";
+export type LinkMethod = "connect" | "messages_line" | "assembly";
+
+export interface DroneEvent {
+  id: string;
+  drone_id: string;
+  param_version_id: string | null;
+  chip_id: string | null;
+  firmware: string | null;
+  kind: DroneEventKind;
+  diff_count: number | null;
+  method: LinkMethod | null;
+  created_by: string | null;
+  created_at: string;
 }
 
 // ── Compare view types ────────────────────────────────────────────────────

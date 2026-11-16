@@ -27,7 +27,7 @@ export function FamilyGrid({ families, isAdmin }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const match = useConnectedDroneMatch();
-  const connectedFamilySlug = match.status === "matched" ? match.drone?.family_slug ?? null : null;
+  const connectedFamilySlug = match.status === "linked" ? match.drone?.family_slug ?? null : null;
 
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");

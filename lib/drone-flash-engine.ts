@@ -1,107 +1,103 @@
-import { writeDroneParams } from "@/lib/mavlink-serial";
-import type { ParamWriteResult } from "@/lib/mavlink-serial";
-import { RUNTIME_PARAMS } from "@/lib/param-engine";
+import { writeDroneParams, type AutopilotInfo, type ParamWriteResult } from "@/lib/mavlink-serial";
+import { createClient } from "@/lib/supabase/client";
+import { diffDesired, toValueMap } from "@/lib/desired-state";
 
-export interface FlashResult {
+const BAUD_RATE = 115200;
+
+export interface WriteOutcome {
+  /** True only when every change was read back with the requested value (and, for an apply, logged). */
   ok: boolean;
-  passes: number;
-  unresolved: string[];
-  reverted: boolean;
-  /** Set when the write never started (wrong drone, no port, …). */
+  /** Per param, decided by reading the drone back — nothing is assumed written. */
+  results: ParamWriteResult[];
+  /** The drone's params after the write: the snapshot with every read-back value merged in. */
+  params: { name: string; value: string }[];
+  /** Set when the write never ran, or the apply could not be verified/logged. */
   error?: string;
 }
 
-export type FlashTarget = Map<string, number>;
-
-const BAUD_RATE = 115200;
-const MAX_PASSES = 1;
-
-function diff(current: Map<string, number>, target: FlashTarget): { name: string; value: number }[] {
-  const toWrite: { name: string; value: number }[] = [];
-  for (const [name, targetVal] of target.entries()) {
-    if (RUNTIME_PARAMS.has(name)) continue;
-    const currentVal = current.get(name);
-    if (currentVal === undefined || Math.abs(currentVal - targetVal) / Math.max(Math.abs(targetVal), 1e-10) >= 1e-5) {
-      toWrite.push({ name, value: targetVal });
-    }
-  }
-  return toWrite;
-}
-
-async function writeParams(
+/** Write `changes`, then read each one back. */
+export function writeVerified(
   changes: { name: string; value: number }[],
+  snapshot: { name: string; value: string }[],
   onLog: (msg: string) => void
-): Promise<{ results: ParamWriteResult[]; error?: string }> {
+): Promise<WriteOutcome> {
   return new Promise((resolve) => {
-    writeDroneParams(BAUD_RATE, changes, {
+    void writeDroneParams(BAUD_RATE, changes, {
       onProgress: () => {},
       onLog,
-      onDone: (results) => resolve({ results }),
-      onError: (msg) => {
-        onLog(`⚠ Write failed: ${msg}`);
-        resolve({ results: [], error: msg });
+      onDone: (results) => {
+        const readBack = new Map(
+          results.filter((r) => r.actual !== undefined).map((r) => [r.name, String(r.actual)])
+        );
+        const params = snapshot.map((p) => (readBack.has(p.name) ? { name: p.name, value: readBack.get(p.name)! } : p));
+        for (const [name, value] of readBack) if (!snapshot.some((p) => p.name === name)) params.push({ name, value });
+        resolve({ ok: results.every((r) => r.success), results, params });
       },
+      onError: (msg) => resolve({ ok: false, results: [], params: snapshot, error: msg }),
     });
   });
 }
 
+/** A version's params, paginated past the 1000-row cap. */
+export async function fetchVersionValues(versionId: string): Promise<Map<string, number>> {
+  const supabase = createClient();
+  const rows: { name: string; value: string }[] = [];
+  if (!supabase) return new Map();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from("param_values")
+      .select("name, value")
+      .eq("param_version_id", versionId)
+      .order("name")
+      .range(from, from + 999);
+    if (error) throw new Error(error.message);
+    if (!data || data.length === 0) break;
+    rows.push(...data);
+    if (data.length < 1000) break;
+  }
+  return toValueMap(rows);
+}
+
+/** The managed params that must change for the drone to equal `desired`. */
+export function changesFor(desired: Map<string, number>, snapshot: { name: string; value: string }[]): { name: string; value: number }[] {
+  return diffDesired(desired, toValueMap(snapshot)).map((d) => ({ name: d.name, value: d.desired }));
+}
+
 /**
- * Diff → write loop, up to MAX_PASSES.
- * Verification is done via per-param write confirmations (no separate re-read,
- * which would require a new port request and a user gesture).
- * Failed params are retried up to MAX_PASSES times.
- * On giving up, attempts to revert to the pre-flash snapshot.
- *
- * @param target   The desired param state (name → value)
- * @param current  The drone's current param state before flashing (pre-flash snapshot)
- * @param onLog    Progress callback for the write dialog log
+ * Bring the drone to a version of its history: write the differing managed
+ * params, read them back, then have the server recompute the diff from the
+ * read-back state and log `applied` only if it is empty.
  */
-export async function flashParamsToDrone(
-  target: FlashTarget,
-  current: Map<string, number>,
-  onLog: (msg: string) => void,
-  /** Pre-computed changes — skips the internal diff (use when caller needs to bypass RUNTIME_PARAMS filter). */
-  initialChanges?: { name: string; value: number }[]
-): Promise<FlashResult> {
-  const snapshot = new Map(current);
+export async function applyVersion(
+  versionId: string,
+  versionLabel: string,
+  desired: Map<string, number>,
+  snapshot: { name: string; value: string }[],
+  autopilot: AutopilotInfo | null,
+  onLog: (msg: string) => void
+): Promise<WriteOutcome> {
+  const changes = changesFor(desired, snapshot);
+  const outcome: WriteOutcome = changes.length > 0
+    ? await writeVerified(changes, snapshot, onLog)
+    : { ok: true, results: [], params: snapshot };
+  if (!outcome.ok) return outcome;
 
-  let toWrite = initialChanges ?? diff(current, target);
-
-  if (toWrite.length === 0) {
-    return { ok: true, passes: 0, unresolved: [], reverted: false };
+  const res = await fetch("/api/drone/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chipId: autopilot?.chipId,
+      firmware: autopilot?.firmware ?? null,
+      versionId,
+      params: outcome.params,
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string };
+    const error = `Written, but not confirmed as v${versionLabel}: ${body.error ?? "the server refused it"}`;
+    onLog(`⚠ ${error}`);
+    return { ...outcome, ok: false, error };
   }
-
-  let passes = 0;
-
-  while (toWrite.length > 0 && passes < MAX_PASSES) {
-    passes++;
-    onLog(`Pass ${passes}/${MAX_PASSES} — writing ${toWrite.length} param${toWrite.length === 1 ? "" : "s"}…`);
-
-    const { results, error } = await writeParams(toWrite, onLog);
-
-    if (error) return { ok: false, passes, unresolved: [], reverted: false, error };
-    if (results.length === 0) break;
-
-    // Params that failed confirmation — retry on next pass
-    toWrite = results
-      .filter((r) => !r.success)
-      .map((r) => ({ name: r.name, value: r.requested }));
-
-    if (toWrite.length === 0) {
-      const msg = passes === 1 ? "Written in 1 pass" : `Written in ${passes} passes`;
-      onLog(`✓ ${msg}`);
-      return { ok: true, passes, unresolved: [], reverted: false };
-    }
-
-    onLog(`${toWrite.length} param${toWrite.length === 1 ? "" : "s"} failed — retrying (pass ${passes})…`);
-  }
-
-  // Gave up — these params could not be written (likely read-only on this FC)
-  const unresolvedNames = toWrite.map((p) => p.name);
-  onLog(`⚠ ${unresolvedNames.length} param${unresolvedNames.length === 1 ? "" : "s"} could not be written (read-only or hardware-specific): ${unresolvedNames.join(", ")}`);
-
-  // No revert needed — these params were never successfully written so the
-  // drone state is unchanged. Attempting a revert would require another port
-  // request (user gesture) and is pointless for read-only params.
-  return { ok: false, passes, unresolved: unresolvedNames, reverted: false };
+  onLog(`✓ Verified — logged as v${versionLabel} applied`);
+  return outcome;
 }

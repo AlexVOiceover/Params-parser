@@ -1,227 +1,143 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useDroneParams } from "@/lib/drone-params-context";
-
-export interface MatchedDrone {
-  id: string;
-  serial: string;
-  client_id: string | null;
-  variant_id: string;
-  client_name: string | null;
-  family_slug: string | null;
-  family_name: string | null;
-  variant_name: string | null;
-  catalog_version: number | null;
-  latest_version_id: string | null;
-  drone_version: number | null;
-  is_orphan: boolean;
-  drift_count: number | null;
-  client_set_id: string | null;
-  initialised_at: string | null;
-}
-
-export type DroneMatchStatus = "idle" | "loading" | "matched" | "unmatched";
-export type VersionStatus = "up_to_date" | "update_available" | "drone_ahead" | "unknown" | "up_to_date_modified";
-
-interface DroneMatchResult {
-  status: DroneMatchStatus;
-  drone: MatchedDrone | null;
-  versionStatus: VersionStatus;
-  droneVersion: number | null;
-  catalogVersion: number | null;
-  isOrphan: boolean;
-  driftCount: number | null;
-}
-
-// Cache key: "<scr_user1>_<scr_user2>" — busts when either changes.
-const cache = new Map<string, MatchedDrone | null>();
-
-/** Clear the entire match cache — call after catalog changes (delete, edit). */
-export function clearDroneMatchCache() { cache.clear(); }
-
-function computeVersionStatus(drone: MatchedDrone | null): VersionStatus {
-  if (!drone) return "unknown";
-  const { drone_version, catalog_version } = drone;
-  if (drone_version === null || catalog_version === null) return "unknown";
-  // 0 is ArduPilot's factory default for SCR_USER2 — means "never flashed",
-  // not "version 0". Treat it the same as missing.
-  if (drone_version === 0) return "unknown";
-  if (drone_version < catalog_version) return "update_available";
-  if (drone_version === catalog_version) {
-    // If a param-level diff was computed and found differences, flag as modified.
-    if (drone.drift_count !== null && drone.drift_count > 0) return "up_to_date_modified";
-    return "up_to_date";
-  }
-  return "drone_ahead";
-}
+import type {
+  DroneState,
+  LinkCandidate,
+  MatchedDrone,
+  MatchResponse,
+  ParamDiff,
+  VersionRef,
+} from "@/lib/desired-state";
 
 /**
- * Reads `SCR_USER1` (drone identity) and `SCR_USER2` (drone version) from the
- * connected drone params, resolves against the catalog via /api/drone/match,
- * and computes a version status comparison.
+ * idle     — no drone read
+ * no_chip  — the read has no chip ID (MAVLink v1, or the FC never answered)
+ * linked   — chip linked to a drone record; `state` says how it compares
+ * unlinked — chip not linked yet; staff get `candidates`
  */
+export type DroneMatchStatus = "idle" | "no_chip" | "loading" | "linked" | "unlinked" | "error";
+
+export interface DroneMatchResult {
+  status: DroneMatchStatus;
+  drone: MatchedDrone | null;
+  state: DroneState | null;
+  desired: VersionRef | null;
+  pending: VersionRef | null;
+  lastVerified: VersionRef | null;
+  diff: ParamDiff[];
+  firmwareMismatch: boolean;
+  droneFirmware: string | null;
+  candidates: LinkCandidate[];
+  suggestedId: string | null;
+}
+
+const IDLE: DroneMatchResult = {
+  status: "idle",
+  drone: null,
+  state: null,
+  desired: null,
+  pending: null,
+  lastVerified: null,
+  diff: [],
+  firmwareMismatch: false,
+  droneFirmware: null,
+  candidates: [],
+  suggestedId: null,
+};
+
+// One request per (chip, params) — every component using the hook shares it.
+const cache = new Map<string, Promise<MatchResponse | null>>();
+const listeners = new Set<() => void>();
+let generation = 0;
+
+/** Re-check the connected drone against the catalog (after a link, apply, save or catalog edit). */
+export function refreshDroneMatch(): void {
+  cache.clear();
+  generation++;
+  for (const fn of listeners) fn();
+}
+
+function checksum(params: { name: string; value: string }[]): number {
+  let acc = 0;
+  for (const p of params) {
+    let h = 0;
+    const s = p.name + "=" + p.value;
+    for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+    acc = (acc ^ h) | 0;
+  }
+  return acc;
+}
+
 export function useConnectedDroneMatch(): DroneMatchResult {
-  const { droneParams } = useDroneParams();
-  const idle: DroneMatchResult = { status: "idle", drone: null, versionStatus: "unknown", droneVersion: null, catalogVersion: null, isOrphan: false, driftCount: null };
-  const [result, setResult] = useState<DroneMatchResult>(idle);
-  const lastKeyRef = useRef<string | null>(null);
-  // When set to true by the interval below, forces a re-fetch on the next tick
-  // even if the cache key hasn't changed (used after clearDroneMatchCache).
-  const forceFetchRef = useRef(false);
+  const { droneParams, autopilot } = useDroneParams();
+  const [gen, setGen] = useState(generation);
+  const [result, setResult] = useState<DroneMatchResult>(IDLE);
+
   useEffect(() => {
-    const id = setInterval(() => {
-      if (lastKeyRef.current !== null && !cache.has(lastKeyRef.current)) {
-        forceFetchRef.current = true;
-        // Trigger re-render by calling a no-op setState so the main effect fires
-        setResult((prev) => ({ ...prev }));
-      }
-    }, 300);
-    return () => clearInterval(id);
+    const onRefresh = () => setGen(generation);
+    listeners.add(onRefresh);
+    return () => { listeners.delete(onRefresh); };
   }, []);
 
   useEffect(() => {
     if (!droneParams || droneParams.length === 0) {
-      lastKeyRef.current = null;
-      setResult(idle);
+      setResult(IDLE);
+      return;
+    }
+    const chipId = autopilot?.chipId ?? null;
+    const droneFirmware = autopilot?.firmware ?? null;
+    if (!chipId) {
+      setResult({ ...IDLE, status: "no_chip", droneFirmware });
       return;
     }
 
-    // SCR_USER1/2 require SCR_ENABLE=1. On a factory-fresh drone SCR_ENABLE=0
-    // and the SCR_ params may be absent entirely. Treat missing or zero SCR_USER1
-    // as a blank drone (wanted=0) so the match returns "unmatched" and the
-    // Register button appears — rather than returning idle and showing nothing.
-    const scrEnable = droneParams.find((p) => p.name === "SCR_ENABLE");
-    const scrUser1 = droneParams.find((p) => p.name === "SCR_USER1");
-    const scrEnabled = scrEnable ? parseInt(scrEnable.value, 10) !== 0 : false;
-
-    // If scripting is disabled and SCR_USER1 is absent, this is a blank drone.
-    // Use wanted=0 so the match API returns null → status "unmatched" → Register shows.
-    const rawWanted = scrUser1 ? parseInt(scrUser1.value, 10) : 0;
-    const wanted = Number.isFinite(rawWanted) ? rawWanted : 0;
-
-    // If SCR_ENABLE=0 and SCR_USER1 is missing/0, skip the network fetch entirely —
-    // we know it won't match anything. Set unmatched directly so Register shows immediately.
-    if (!scrEnabled && wanted === 0) {
-      lastKeyRef.current = `unscripted_${droneParams.length}`;
-      setResult({
-        status: "unmatched",
-        drone: null,
-        versionStatus: "unknown",
-        droneVersion: null,
-        catalogVersion: null,
-        isOrphan: false,
-        driftCount: null,
-      });
-      return;
-    }
-
-    const scrUser2 = droneParams.find((p) => p.name === "SCR_USER2");
-    const droneVersion = scrUser2 ? parseInt(scrUser2.value, 10) : null;
-    const droneVersionOut = (droneVersion !== null && Number.isFinite(droneVersion)) ? droneVersion : null;
-
-    // Include a lightweight checksum of all param values so the drift check
-    // re-runs whenever the drone is re-imported with different values.
-    const paramChecksum = droneParams.reduce((acc, p) => {
-      let h = 0;
-      for (let i = 0; i < p.value.length; i++) h = (Math.imul(31, h) + p.value.charCodeAt(i)) | 0;
-      return (acc ^ h) | 0;
-    }, 0);
-    const cacheKey = `${wanted}_${droneVersionOut ?? "null"}_${paramChecksum}`;
-    const forced = forceFetchRef.current;
-    forceFetchRef.current = false;
-    // Skip re-fetch if key is unchanged and cache entry still exists (not cleared).
-    if (lastKeyRef.current === cacheKey && cache.has(cacheKey) && !forced) return;
-    lastKeyRef.current = cacheKey;
-
-    // When the key changes (e.g. after SCR_USER2 is written), always
-    // clear the old cache entry so we re-fetch with the new version value.
-    if (lastKeyRef.current !== null && lastKeyRef.current !== cacheKey) {
-      cache.delete(lastKeyRef.current);
-    }
-
-    if (cache.has(cacheKey)) {
-      const cached = cache.get(cacheKey) ?? null;
-      setResult({
-        status: cached ? "matched" : "unmatched",
-        drone: cached,
-        versionStatus: computeVersionStatus(cached),
-        droneVersion: cached?.drone_version ?? null,
-        catalogVersion: cached?.catalog_version ?? null,
-        isOrphan: cached?.is_orphan ?? false,
-          driftCount: cached?.drift_count ?? null,
-      });
-      return;
-    }
-
-    setResult({ status: "loading", drone: null, versionStatus: "unknown", droneVersion: droneVersionOut, catalogVersion: null, isOrphan: false, driftCount: null });
-    let cancelled = false;
-
-    let url = `/api/drone/match?id=${wanted}`;
-    if (droneVersionOut !== null) url += `&scr_user2=${droneVersionOut}`;
-
-    fetch(url)
-      .then((r) => r.json())
-      .then(async (body: { drone: MatchedDrone | null }) => {
-        if (cancelled) return;
-
-        let drone = body.drone;
-        const initialStatus = computeVersionStatus(drone);
-
-        // If version matches, run drift check via a separate POST so we don't
-        // blow the URL length limit with ~50KB of encoded params.
-        if (
-          drone &&
-          initialStatus === "up_to_date" &&
-          drone.latest_version_id &&
-          droneParams &&
-          droneParams.length > 0
-        ) {
-          try {
-            const paramObj: Record<string, string> = {};
-            for (const p of droneParams) paramObj[p.name] = p.value;
-            const driftRes = await fetch("/api/drone/drift", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ versionId: drone.latest_version_id, params: paramObj }),
-            });
-            if (!cancelled && driftRes.ok) {
-              const { drift_count } = await driftRes.json() as { drift_count: number | null };
-              drone = { ...drone, drift_count };
-            }
-          } catch { /* drift check failed — treat as no drift */ }
-        }
-
-        if (cancelled) return;
-        cache.set(cacheKey, drone);
-
-        // If the drone has SCR_USER2 > 0 it has been physically initialised —
-        // mark it in the DB if not already set, so Clients & Drones reflects reality.
-        if (drone && drone.drone_version !== null && drone.drone_version > 0 && !drone.initialised_at) {
-          fetch(`/api/admin/drones/${drone.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ initialisedAt: true }),
-          }).catch(() => {});
-        }
-
-        setResult({
-          status: drone ? "matched" : "unmatched",
-          drone,
-          versionStatus: computeVersionStatus(drone),
-          droneVersion: drone?.drone_version ?? droneVersionOut,
-          catalogVersion: drone?.catalog_version ?? null,
-          isOrphan: drone?.is_orphan ?? false,
-          driftCount: drone?.drift_count ?? null,
-        });
+    const key = `${chipId}_${checksum(droneParams)}`;
+    let request = cache.get(key);
+    if (!request) {
+      const hint = parseInt(droneParams.find((p) => p.name === "SCR_USER1")?.value ?? "", 10);
+      request = fetch("/api/drone/match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chipId,
+          firmware: droneFirmware,
+          params: droneParams,
+          scrUser1Hint: Number.isFinite(hint) && hint > 0 ? hint : null,
+        }),
       })
-      .catch(() => {
-        if (cancelled) return;
-        setResult({ status: "unmatched", drone: null, versionStatus: "unknown", droneVersion: droneVersionOut, catalogVersion: null, isOrphan: false, driftCount: null });
-      });
+        .then((r) => (r.ok ? (r.json() as Promise<MatchResponse>) : null))
+        .catch(() => null);
+      cache.set(key, request);
+    }
 
+    let cancelled = false;
+    setResult((prev) => (prev.status === "idle" || prev.status === "no_chip" ? { ...IDLE, status: "loading", droneFirmware } : prev));
+    void request.then((res) => {
+      if (cancelled) return;
+      if (!res) {
+        cache.delete(key);
+        setResult({ ...IDLE, status: "error", droneFirmware });
+      } else if (res.linked) {
+        setResult({
+          ...IDLE,
+          status: "linked",
+          drone: res.drone,
+          state: res.state,
+          desired: res.desired,
+          pending: res.pending,
+          lastVerified: res.lastVerified,
+          diff: res.diff,
+          firmwareMismatch: res.firmwareMismatch,
+          droneFirmware,
+        });
+      } else {
+        setResult({ ...IDLE, status: "unlinked", candidates: res.candidates, suggestedId: res.suggestedId, droneFirmware });
+      }
+    });
     return () => { cancelled = true; };
-  }, [droneParams]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [droneParams, autopilot, gen]);
 
   return result;
 }

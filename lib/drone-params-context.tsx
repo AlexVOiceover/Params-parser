@@ -7,10 +7,10 @@ import type { ReactNode } from "react";
 import {
   DRONE_VERSION_ID,
   DRONE_STORAGE_KEY,
-  rememberDroneIdentity,
-  forgetDroneIdentity,
+  setSnapshotChipId,
   onDroneMismatch,
 } from "@/lib/drone-params-shared";
+import type { AutopilotInfo } from "@/lib/mavlink-serial";
 import { ConnectDroneDialog } from "@/components/connect-drone-dialog";
 import type { Param } from "@/lib/types";
 export { DRONE_VERSION_ID };
@@ -24,6 +24,8 @@ interface DroneParamsContextValue {
   droneParams: DroneParam[] | null;
   /** When the params were last read from the drone (ms epoch). */
   readAt: number | null;
+  /** Chip ID and firmware the FC reported during that read; null if it reported none. */
+  autopilot: AutopilotInfo | null;
   setDroneParams: (params: DroneParam[]) => void;
   clearDroneParams: () => void;
   openImportDialog: () => void;
@@ -32,6 +34,7 @@ interface DroneParamsContextValue {
 const DroneParamsContext = createContext<DroneParamsContextValue>({
   droneParams: null,
   readAt: null,
+  autopilot: null,
   setDroneParams: () => {},
   clearDroneParams: () => {},
   openImportDialog: () => {},
@@ -44,6 +47,7 @@ type DisconnectSource = Navigator & { serial?: EventTarget; usb?: EventTarget };
 export function DroneParamsProvider({ children }: { children: ReactNode }) {
   const [droneParams, setDroneParamsState] = useState<DroneParam[] | null>(null);
   const [readAt, setReadAt] = useState<number | null>(null);
+  const [autopilot, setAutopilot] = useState<AutopilotInfo | null>(null);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
@@ -52,7 +56,8 @@ export function DroneParamsProvider({ children }: { children: ReactNode }) {
   const resetSnapshot = useCallback(() => {
     setDroneParamsState(null);
     setReadAt(null);
-    forgetDroneIdentity();
+    setAutopilot(null);
+    setSnapshotChipId(null);
   }, []);
 
   // Older versions kept the snapshot in localStorage indefinitely — drop it.
@@ -87,16 +92,16 @@ export function DroneParamsProvider({ children }: { children: ReactNode }) {
 
   const openImportDialog = useCallback(() => setImportDialogOpen(true), []);
 
-  const handleParamsLoaded = useCallback((params: Param[]) => {
-    const fresh = params.map((p) => ({ name: p.name, value: p.value }));
-    rememberDroneIdentity(fresh);
-    setDroneParamsState(fresh);
+  const handleParamsLoaded = useCallback((params: Param[], info: AutopilotInfo | null) => {
+    setSnapshotChipId(info?.chipId ?? null);
+    setAutopilot(info);
+    setDroneParamsState(params.map((p) => ({ name: p.name, value: p.value })));
     setReadAt(Date.now());
   }, []);
 
   return (
     <DroneParamsContext.Provider
-      value={{ droneParams, readAt, setDroneParams, clearDroneParams, openImportDialog }}
+      value={{ droneParams, readAt, autopilot, setDroneParams, clearDroneParams, openImportDialog }}
     >
       {children}
       {importDialogOpen && (
