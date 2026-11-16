@@ -63,7 +63,7 @@ export function WriteDroneDialog({ changes, onClose, onSuccess, onStart }: Props
         setError("Flash failed — reverted to previous state.");
         setStage("error");
       } else {
-        setError("Flash failed — check connection and retry.");
+        setError(flashResult.error ?? "Flash failed — check connection and retry.");
         setStage("error");
       }
       return;

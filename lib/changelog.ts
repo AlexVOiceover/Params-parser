@@ -6,6 +6,15 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.23.1",
+    date: "2026-11-16",
+    items: [
+      "Drone data is no longer kept after the drone is unplugged or the app is reloaded, so the header never shows a previous drone's read",
+      "The header shows how long ago the drone was read",
+      "Writes check that the plugged-in drone is the one that was read, and refuse otherwise",
+    ],
+  },
+  {
     version: "0.23.0",
     date: "2026-09-11",
     items: [

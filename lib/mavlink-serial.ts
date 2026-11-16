@@ -2,6 +2,7 @@
 // Frame parsing modelled after ArduPilot/node-mavlink (MIT).
 
 import { requestDronePort, getGrantedDronePorts, setLastUsedPort, getLastUsedPort } from "@/lib/serial-shim";
+import { getDroneIdentity, updateDroneIdentity, reportDroneMismatch, sameParamValue } from "@/lib/drone-params-shared";
 
 // ── CRC_EXTRA (magic numbers) ─────────────────────────────────────────────────
 // Full common + ardupilotmega table subset — covers all messages ArduPilot
@@ -115,10 +116,16 @@ export function buildParamRequestList(v1: boolean): Uint8Array {
   return v1 ? buildV1(21, p) : buildV2(21, p);
 }
 
-export function buildParamRequestRead(index: number, v1: boolean): Uint8Array {
+// PARAM_REQUEST_READ wire layout (largest fields first):
+//   [0-1]  param_index      int16 (-1 = look up by param_id)
+//   [2]    target_system    uint8
+//   [3]    target_component uint8
+//   [4-19] param_id         char[16]
+export function buildParamRequestRead(index: number, v1: boolean, name = ""): Uint8Array {
   const p = new Uint8Array(20);
-  p[0] = TARGET_SYS; p[1] = TARGET_COMP;
-  p[18] = index & 0xff; p[19] = (index >> 8) & 0xff;
+  new DataView(p.buffer).setInt16(0, index, true);
+  p[2] = TARGET_SYS; p[3] = TARGET_COMP;
+  for (let i = 0; i < Math.min(16, name.length); i++) p[4 + i] = name.charCodeAt(i);
   return v1 ? buildV1(20, p) : buildV2(20, p);
 }
 
@@ -628,6 +635,30 @@ export async function writeDroneParams(
     });
   }
 
+  // Refuse to write unless the plugged-in drone is the one whose params were read.
+  // The diff was computed against that read, so on any other airframe it is wrong.
+  const expected = getDroneIdentity();
+  if (!expected || expected.size === 0) {
+    await finish("No drone read in this session — read the drone before writing.");
+    return () => {};
+  }
+  onLog("Checking this is the drone that was read…");
+  for (const [name, want] of expected) {
+    let got: { name: string; value: number } | null = null;
+    for (let attempt = 0; attempt < 3 && !got; attempt++) {
+      const resp = waitFor(name, 1500);
+      await sendFrame(buildParamRequestRead(-1, v1, name));
+      got = await resp;
+    }
+    if (!got || !sameParamValue(got.value, want)) {
+      onLog(`✗ ${name}: read ${want}, drone reports ${got ? got.value : "nothing"}`);
+      reportDroneMismatch();
+      await finish("This is not the drone that was read. Nothing was written — read this drone first.");
+      return () => {};
+    }
+  }
+  onLog("✓ Same drone as the last read");
+
   // Write each change sequentially; up to 5 attempts per param with retry on wrong-value echo
   for (let i = 0; i < changes.length; i++) {
     if (aborted) break;
@@ -669,6 +700,7 @@ export async function writeDroneParams(
     onProgress(i + 1, changes.length, name);
   }
 
+  updateDroneIdentity(results.filter((r) => r.success).map((r) => ({ name: r.name, value: r.requested })));
   await finish();
 
   return async function disconnect() {

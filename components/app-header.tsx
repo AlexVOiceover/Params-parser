@@ -24,13 +24,28 @@ import { useSerialMode } from "@/lib/use-serial-mode";
 import { WhatsNewDialog } from "@/components/whats-new-dialog";
 import { CURRENT_VERSION } from "@/lib/changelog";
 
+function formatReadAge(ms: number, short: boolean): string {
+  const min = Math.floor(ms / 60_000);
+  if (min < 1) return short ? "now" : "just now";
+  if (min < 60) return short ? `${min}m` : `${min} min ago`;
+  const h = Math.floor(min / 60);
+  return short ? `${h}h` : `${h} h ago`;
+}
+
 const navLinkClass =
   "flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap";
 
 export function AppHeader() {
   const pathname = usePathname();
   const isMission = pathname === "/mission";
-  const { droneParams, openImportDialog } = useDroneParams();
+  const { droneParams, readAt, openImportDialog } = useDroneParams();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!readAt) return;
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, [readAt]);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
@@ -104,6 +119,7 @@ export function AppHeader() {
   }, [userMenuOpen]);
 
   const hasParams = droneParams !== null && droneParams.length > 0;
+  const readAge = readAt ? Math.max(0, now - readAt) : 0;
 
   return (
     <>
@@ -137,8 +153,8 @@ export function AppHeader() {
       {hasWebSerial && (
         <button
           onClick={openImportDialog}
-          title="Import from drone"
-          aria-label="Import from drone"
+          title={hasParams ? `${droneParams.length} params read ${formatReadAge(readAge, false)} — click to read again` : "Import from drone"}
+          aria-label={hasParams ? `Drone params read ${formatReadAge(readAge, false)}` : "Import from drone"}
           className={`flex items-center gap-1.5 rounded-md border px-2 sm:px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
             hasParams
               ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/25"
@@ -146,8 +162,8 @@ export function AppHeader() {
           }`}
         >
           <Usb className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">{hasParams ? `Drone (${droneParams.length} params)` : "Import from drone"}</span>
-          {hasParams && <span className="sm:hidden">{droneParams.length}</span>}
+          <span className="hidden sm:inline">{hasParams ? `Drone · read ${formatReadAge(readAge, false)}` : "Import from drone"}</span>
+          {hasParams && <span className="sm:hidden">{formatReadAge(readAge, true)}</span>}
         </button>
       )}
 
