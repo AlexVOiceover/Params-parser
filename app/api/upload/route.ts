@@ -253,12 +253,25 @@ export async function POST(request: NextRequest) {
         const updatedFileText = writeParamFile(parsedParams);
         const updatedBuffer = Buffer.from(updatedFileText, "utf-8");
 
-        // 5. Upload (updated) file to storage
+        // 5. Refuse a label that already exists rather than overwrite its file.
+        const { data: clash } = await admin
+          .from("param_versions")
+          .select("id")
+          .eq("client_set_id", clientSetId!)
+          .eq("version_label", versionLabel)
+          .maybeSingle();
+        if (clash) {
+          controller.enqueue(msg(`v${versionLabel} already exists — reload to get the next number`, true));
+          controller.close();
+          return;
+        }
+
+        // Upload the file to storage
         const storagePath = `${clientSetId}/${versionLabel}.param`;
         controller.enqueue(msg(`Uploading to storage (${storagePath})…`));
         const { error: uploadError } = await admin.storage
           .from("param-files")
-          .upload(storagePath, updatedBuffer, { contentType: "text/plain", upsert: true });
+          .upload(storagePath, updatedBuffer, { contentType: "text/plain", upsert: false });
 
         if (uploadError) {
           controller.enqueue(msg(`Storage upload failed: ${uploadError.message}`, true));
@@ -267,9 +280,12 @@ export async function POST(request: NextRequest) {
         }
         controller.enqueue(msg("File stored successfully"));
 
-        // 6. Mark previous versions of this client set as not latest
-        controller.enqueue(msg("Updating version history…"));
-        await admin.from("param_versions").update({ is_latest: false }).eq("client_set_id", clientSetId!);
+        // 6. Only an admin's upload is approved at once; anyone else's waits for review.
+        const approved = profile.role === "admin";
+        if (approved) {
+          controller.enqueue(msg("Updating version history…"));
+          await admin.from("param_versions").update({ is_latest: false }).eq("client_set_id", clientSetId!);
+        }
 
         // 7. Insert new version record
         controller.enqueue(msg(`Creating version record (v${versionLabel})…`));
@@ -279,7 +295,8 @@ export async function POST(request: NextRequest) {
           storage_path: storagePath,
           changelog,
           created_by: user.id,
-          is_latest: true,
+          is_latest: approved,
+          needs_review: !approved,
           firmware,
         }).select("id").single();
 

@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import { defaultCache } from "@serwist/next/worker";
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
-import { Serwist, NetworkOnly, CacheFirst, ExpirationPlugin } from "serwist";
+import { Serwist, NetworkOnly } from "serwist";
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -18,28 +18,11 @@ const serwist = new Serwist({
   clientsClaim: true,
   navigationPreload: true,
   runtimeCaching: [
-    // Supabase REST + auth — never cache (RLS, sessions, mutations)
+    // Supabase (REST, auth, storage) and param files — never cache: RLS and sessions decide access
     {
       matcher: ({ url }) =>
-        url.hostname.endsWith(".supabase.co") &&
-        !url.pathname.startsWith("/storage/"),
+        url.hostname.endsWith(".supabase.co") || url.pathname.startsWith("/api/versions/"),
       handler: new NetworkOnly(),
-    },
-    // Supabase storage (param files) — cache; immutable per storage_path
-    {
-      matcher: ({ url }) =>
-        url.hostname.endsWith(".supabase.co") &&
-        url.pathname.startsWith("/storage/"),
-      handler: new CacheFirst({
-        cacheName: "param-files",
-        plugins: [
-          new ExpirationPlugin({
-            maxEntries: 30,
-            maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
-            purgeOnQuotaError: true,
-          }),
-        ],
-      }),
     },
     // ArduPilot pdef.json (proxied via /api/param-definitions) — long stale-while-revalidate
     ...defaultCache,
@@ -59,6 +42,11 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
   if (event.data && event.data.type === "SKIP_WAITING") {
     self.skipWaiting();
   }
+});
+
+// Param files used to be cached here; drop that cache so nothing outlives a revoked login.
+self.addEventListener("activate", (event: ExtendableEvent) => {
+  event.waitUntil(caches.delete("param-files"));
 });
 
 serwist.addEventListeners();

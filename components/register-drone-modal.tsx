@@ -9,7 +9,7 @@ import { refreshDroneMatch } from "@/lib/use-connected-drone-match";
 import { WriteDroneDialog, type WriteChange } from "@/components/write-drone-dialog";
 import { WriteNFCButton } from "@/components/write-nfc-button";
 import { parseSerialId } from "@/lib/param-engine";
-import { changesFor, fetchVersionValues, type WriteOutcome } from "@/lib/drone-flash-engine";
+import { applyVersion, changesFor, fetchVersionValues, type WriteOutcome } from "@/lib/drone-flash-engine";
 
 
 type Stage = "form" | "confirm" | "flashing" | "done" | "error";
@@ -93,6 +93,7 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
 
   // Flash
   const [writeChanges, setWriteChanges] = useState<WriteChange[] | null>(null);
+  const [defaultTarget, setDefaultTarget] = useState<{ id: string; label: string; desired: Map<string, number> } | null>(null);
   const [flashedVersion, setFlashedVersion] = useState<string>("1");
   const [needsReview, setNeedsReview] = useState(false);
 
@@ -311,6 +312,7 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
       if (await saveVersion(droneParams ?? [], `Registered — Default v${latest.version_label} already applied`)) finishRegistration();
       return;
     }
+    setDefaultTarget({ id: latest.id, label: latest.version_label, desired });
     setWriteChanges(changes);
   }
 
@@ -319,7 +321,9 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
     setWriteChanges(null);
     if (!outcome.ok) {
       const failed = outcome.results.filter((r) => !r.success).map((r) => r.name);
-      fail(`Not every Default param took (${failed.join(", ")}). The drone is linked; apply again from its history.`);
+      fail(failed.length
+        ? `Not every Default param took (${failed.join(", ")}). The drone is linked; apply again from its history.`
+        : outcome.error ?? "The Default could not be verified. The drone is linked; apply again from its history.");
       return;
     }
     // The verified result becomes v1 of the drone's history.
@@ -590,6 +594,9 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
           changes={writeChanges}
           onClose={() => { if (stage === "flashing") { setWriteChanges(null); fail("Cancelled — the drone is linked but the Default was not applied."); } }}
           onSuccess={handleWriteSuccess}
+          onStart={defaultTarget
+            ? (addLog) => applyVersion(defaultTarget.id, defaultTarget.label, defaultTarget.desired, droneParams ?? [], autopilot, addLog)
+            : undefined}
         />
       )}
     </>

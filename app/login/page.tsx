@@ -39,7 +39,9 @@ export default function LoginPage() {
 function LoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") ?? "/";
+  const rawNext = searchParams.get("next") ?? "/";
+  // Only same-site paths: "//host" or "https://…" would be an open redirect.
+  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") && !rawNext.startsWith("/\\") ? rawNext : "/";
   const errParam = searchParams.get("error");
   const urlError =
     errParam === "link_used"

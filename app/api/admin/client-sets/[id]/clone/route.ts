@@ -32,7 +32,7 @@ export async function POST(
   // Fetch all versions of the original
   const { data: versions } = await admin
     .from("param_versions")
-    .select("id, version_label, storage_path, changelog, is_latest, firmware")
+    .select("id, version_label, storage_path, changelog, is_latest, needs_review, firmware")
     .eq("client_set_id", id)
     .order("created_at", { ascending: true });
 
@@ -70,6 +70,7 @@ export async function POST(
         changelog: v.changelog,
         created_by: user.id,
         is_latest: v.is_latest,
+        needs_review: v.needs_review,
         firmware: v.firmware,
       })
       .select("id")

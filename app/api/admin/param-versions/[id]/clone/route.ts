@@ -99,6 +99,7 @@ export async function POST(
       changelog: changelog?.trim() || null,
       created_by: user.id,
       is_latest: true,
+      needs_review: false,
       firmware: original.firmware,
     })
     .select("id")

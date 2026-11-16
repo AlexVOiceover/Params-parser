@@ -106,7 +106,7 @@ export function ParamFilterApp({ loadUrl, catalogSource }: { loadUrl?: string; c
 
   useEffect(() => {
     if (!loadUrl) return;
-    const filename = decodeURIComponent(loadUrl.split("/").pop() ?? "catalog.param");
+    const filename = catalogSource ? `v${catalogSource.version}.param` : "catalog.param";
     fetch(loadUrl)
       .then((r) => r.text())
       .then((content) => {

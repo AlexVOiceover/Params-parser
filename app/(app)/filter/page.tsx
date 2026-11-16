@@ -9,15 +9,15 @@ export const metadata: Metadata = {
 export default async function FilterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ load?: string; family?: string; variant?: string; client?: string; version?: string }>;
+  searchParams: Promise<{ versionId?: string; family?: string; variant?: string; client?: string; version?: string }>;
 }) {
-  const { load, family, variant, client, version } = await searchParams;
+  const { versionId, family, variant, client, version } = await searchParams;
   const catalogSource = family && variant && client && version
     ? { family, variant, client, version }
     : undefined;
   return (
     <AppProvider>
-      <ParamFilterApp loadUrl={load} catalogSource={catalogSource} />
+      <ParamFilterApp loadUrl={versionId && /^[0-9a-f-]{36}$/i.test(versionId) ? `/api/versions/${versionId}/file` : undefined} catalogSource={catalogSource} />
     </AppProvider>
   );
 }

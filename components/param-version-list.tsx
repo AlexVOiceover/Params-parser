@@ -66,12 +66,9 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-function storageUrl(path: string) {
-  return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/param-files/${path}`;
-}
-
-async function downloadParamFile(path: string, filename: string) {
-  const res = await fetch(storageUrl(path));
+async function downloadParamFile(versionId: string, filename: string) {
+  const res = await fetch(`/api/versions/${versionId}/file`);
+  if (!res.ok) return;
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -577,13 +574,13 @@ export function ParamVersionList({
                     className="rounded-md border border-border bg-secondary hover:bg-secondary/80 p-1.5 text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
                     <Eye className="h-3.5 w-3.5" />
                   </Link>
-                  <Link href={`/filter?load=${encodeURIComponent(storageUrl(v.storage_path))}&family=${encodeURIComponent(familyName)}&variant=${encodeURIComponent(variantName)}&client=${encodeURIComponent(clientSetName)}&version=${encodeURIComponent(v.version_label)}`}
+                  <Link href={`/filter?versionId=${v.id}&family=${encodeURIComponent(familyName)}&variant=${encodeURIComponent(variantName)}&client=${encodeURIComponent(clientSetName)}&version=${encodeURIComponent(v.version_label)}`}
                     title="Open in Filter"
                     className="rounded-md border border-border bg-secondary hover:bg-secondary/80 p-1.5 text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
                     <Filter className="h-3.5 w-3.5" />
                   </Link>
                   <button type="button" title="Download .param file"
-                    onClick={() => downloadParamFile(v.storage_path, `${clientSetName}-v${v.version_label}.param`.replace(/\s+/g, "_"))}
+                    onClick={() => downloadParamFile(v.id, `${clientSetName}-v${v.version_label}.param`.replace(/\s+/g, "_"))}
                     className="flex items-center gap-1.5 rounded-md bg-primary/15 border border-primary/30 hover:bg-primary/25 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors cursor-pointer whitespace-nowrap">
                     <Download className="h-3.5 w-3.5" />
                     Download

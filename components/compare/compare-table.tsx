@@ -1,28 +1,14 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { SlidersHorizontal, Info, Upload, X, RotateCcw, Search, GitCompareArrows, FileDown, Copy, Check, EyeOff } from "lucide-react";
+import { SlidersHorizontal, Info, X, Search, FileDown, Copy, Check, EyeOff } from "lucide-react";
 import { PrefixFilterModal, prefixOf, readHiddenPrefixes } from "@/components/compare/prefix-filter";
-import { validateParam, paramValuesEqual, LOCKED_PARAMS } from "@/lib/param-engine";
-import { FILE_VERSION_ID } from "@/lib/file-compare-shared";
+import { validateParam, paramValuesEqual } from "@/lib/param-engine";
 import type { CompareVersion, CompareRow, ParamDefinition } from "@/lib/types";
 
 interface Props {
   versions: CompareVersion[];
   rows: CompareRow[];
-  writableVersionId?: string;
-  writeMode?: boolean;
-  pendingEdits?: Map<string, number>;
-  /** Called with the version id to toggle edit mode on that column. */
-  onToggleWriteMode?: (versionId: string) => void;
-  onEditParam?: (name: string, value: number) => void;
-  onClearEdit?: (name: string) => void;
-  onClearAllEdits?: () => void;
-  /** Present only when the writable column is the connected drone. */
-  onWriteToDrone?: () => void;
-  /** Present only when the writable column is a catalog version. */
-  onSaveCatalog?: () => void;
-  savingCatalog?: boolean;
   hasDroneVersion?: boolean;
 }
 
@@ -33,16 +19,6 @@ const COL_MIN = 60;
 export function CompareTable({
   versions,
   rows,
-  writableVersionId,
-  writeMode = false,
-  pendingEdits,
-  onToggleWriteMode,
-  onEditParam,
-  onClearEdit,
-  onClearAllEdits,
-  onWriteToDrone,
-  onSaveCatalog,
-  savingCatalog = false,
   hasDroneVersion = false,
 }: Props) {
   const [showDiffsOnly, setShowDiffsOnly] = useState(false);
@@ -53,18 +29,9 @@ export function CompareTable({
   useEffect(() => { setHiddenPrefixes(readHiddenPrefixes()); }, []);
   const [csvCopied, setCsvCopied] = useState(false);
   const [paramDefs, setParamDefs] = useState<Record<string, ParamDefinition> | null>(null);
-  const [editingCell, setEditingCell] = useState<string | null>(null);
-  const [editInput, setEditInput] = useState("");
   const [expandedParam, setExpandedParam] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMode, setSearchMode] = useState<"name" | "value" | "both">("name");
-  const [showModifiedOnly, setShowModifiedOnly] = useState(false);
-  // Reset "modified only" filter when write mode exits
-  const prevWriteMode = React.useRef(writeMode);
-  if (prevWriteMode.current !== writeMode) {
-    prevWriteMode.current = writeMode;
-    if (!writeMode && showModifiedOnly) setShowModifiedOnly(false);
-  }
 
   // column widths: index 0 = param name col, 1..n = version cols.
   // The table is sized to the sum of these, so they stay authoritative while
@@ -207,9 +174,6 @@ export function CompareTable({
   const visibleDiffCount = prefixFiltered.filter((r) => r.isDiff).length;
 
   let visibleRows = showDiffsOnly && canDiff ? prefixFiltered.filter((r) => r.isDiff) : prefixFiltered;
-  if (showModifiedOnly && pendingEdits && pendingEdits.size > 0) {
-    visibleRows = visibleRows.filter((r) => pendingEdits.has(r.name));
-  }
   if (trimmedQuery) visibleRows = visibleRows.filter(rowMatchesSearch);
 
   function ResizeHandle({ colIndex }: { colIndex: number }) {
@@ -243,9 +207,6 @@ export function CompareTable({
               <>{rows.length} total</>
             )}
             {trimmedQuery && <span className="ml-2 text-primary font-medium">· {visibleRows.length} match{visibleRows.length === 1 ? "" : "es"}</span>}
-            {writeMode && pendingEdits && pendingEdits.size > 0 && (
-              <span className="ml-2 text-amber-600 dark:text-amber-400 font-medium">· {pendingEdits.size} pending</span>
-            )}
           </span>
 
           {/* Search */}
@@ -319,52 +280,6 @@ export function CompareTable({
                 <span className="hidden sm:inline">{showDiffsOnly ? "Differences only" : "Show differences"}</span>
               </button>
             )}
-            {writeMode && pendingEdits && pendingEdits.size > 0 && (
-              <>
-                <button
-                  onClick={() => setShowModifiedOnly((v) => !v)}
-                  title={showModifiedOnly ? "Show all" : `Show modified (${pendingEdits.size})`}
-                  className={`flex items-center gap-1.5 rounded-md border px-2 sm:px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                    showModifiedOnly ? "border-primary bg-primary/10 text-primary" : "border-border text-foreground hover:bg-secondary"
-                  }`}
-                >
-                  <GitCompareArrows className="h-3.5 w-3.5 shrink-0" />
-                  <span className="hidden sm:inline">{showModifiedOnly ? `Modified (${pendingEdits.size})` : `Show modified (${pendingEdits.size})`}</span>
-                  <span className="sm:hidden text-xs">{pendingEdits.size}</span>
-                </button>
-                <button
-                  onClick={onClearAllEdits}
-                  title="Discard all pending edits"
-                  className="flex items-center gap-1.5 rounded-md border border-border px-2 sm:px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  <RotateCcw className="h-3.5 w-3.5 shrink-0" />
-                  <span className="hidden sm:inline">Discard</span>
-                </button>
-                {onWriteToDrone && (
-                  <button
-                    onClick={onWriteToDrone}
-                    title={`Write ${pendingEdits.size} params to drone`}
-                    className="flex items-center gap-1.5 rounded-md bg-amber-500 px-2 sm:px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600 transition-colors cursor-pointer whitespace-nowrap"
-                  >
-                    <Upload className="h-3.5 w-3.5 shrink-0" />
-                    <span className="hidden sm:inline">Write {pendingEdits.size}</span>
-                    <span className="sm:hidden">{pendingEdits.size}</span>
-                  </button>
-                )}
-                {onSaveCatalog && (
-                  <button
-                    onClick={onSaveCatalog}
-                    disabled={savingCatalog}
-                    title={savingCatalog ? "Saving…" : `Save ${pendingEdits.size} changes`}
-                    className="flex items-center gap-1.5 rounded-md bg-primary px-2 sm:px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
-                  >
-                    <Upload className="h-3.5 w-3.5 shrink-0" />
-                    <span className="hidden sm:inline">{savingCatalog ? "Saving…" : `Save ${pendingEdits.size}`}</span>
-                    <span className="sm:hidden">{pendingEdits.size}</span>
-                  </button>
-                )}
-              </>
-            )}
           </div>
         </div>
       </div>
@@ -395,9 +310,6 @@ export function CompareTable({
                 >
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="rounded bg-primary/20 border border-primary/40 px-1.5 py-px font-mono text-[10px] font-bold text-primary shrink-0">v{v.label}</span>
-                    {writableVersionId === v.id && writeMode && (
-                      <span className="rounded px-1 py-px text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 shrink-0">editing</span>
-                    )}
                   </div>
                   <div className="text-foreground font-semibold truncate text-xs mt-0.5">{v.clientName}</div>
                   <div className="text-[10px] text-muted-foreground truncate">{v.familyName} / {v.variantName}</div>
@@ -424,9 +336,6 @@ export function CompareTable({
                         <span className="font-mono text-xs text-foreground truncate min-w-0">
                           {row.name}
                         </span>
-                        {LOCKED_PARAMS.has(row.name) && (
-                          <span className="ml-1 text-[9px] text-muted-foreground/60 shrink-0" title="Managed by app — cannot be edited manually">🔒</span>
-                        )}
                         <button
                           onClick={() => setExpandedParam(isExpanded ? null : row.name)}
                           className={`ml-1 shrink-0 transition-colors cursor-pointer opacity-0 group-hover/name:opacity-100 ${
@@ -443,20 +352,12 @@ export function CompareTable({
                     {versionIds.map((vid) => {
                       const rawValue = row.values[vid];
                       const isMissing = rawValue === undefined;
-                      const isWritable = writeMode && vid === writableVersionId && !isMissing && !LOCKED_PARAMS.has(row.name);
-                      const pendingValue = pendingEdits?.get(row.name);
-                      const hasPending = isWritable && pendingValue !== undefined;
-                      const displayValue = hasPending ? String(pendingValue) : rawValue;
-                      const isInvalid = !isMissing && def ? validateParam(displayValue ?? "", def) !== null : false;
+                      const isInvalid = !isMissing && def ? validateParam(rawValue ?? "", def) !== null : false;
                       const isDiffCell = row.isDiff && !isMissing;
-                      const cellKey = `${row.name}:${vid}`;
-                      const isEditing = editingCell === cellKey;
 
                       const rowBg = i % 2 === 0 ? "" : "bg-secondary/30";
                       let cellClass = "px-4 py-2 font-mono text-xs overflow-hidden whitespace-nowrap transition-colors max-w-0 ";
-                      if (hasPending) {
-                        cellClass += "bg-amber-500/25 text-amber-900 dark:text-amber-100 font-semibold";
-                      } else if (isInvalid) {
+                      if (isInvalid) {
                         cellClass += "bg-destructive/20 text-destructive";
                       } else if (isDiffCell) {
                         cellClass += "bg-amber-400/15 text-amber-900 dark:text-amber-200";
@@ -466,80 +367,9 @@ export function CompareTable({
                         cellClass += `${rowBg} text-foreground`;
                       }
 
-                      if (isEditing) {
-                        return (
-                          <td key={vid} className="px-2 py-1 max-w-0 bg-amber-400/20">
-                            <div className="flex items-center gap-1">
-                              <input
-                                autoFocus
-                                type="text"
-                                value={editInput}
-                                onChange={(e) => setEditInput(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    (e.target as HTMLInputElement).blur();
-                                  } else if (e.key === "Escape") {
-                                    setEditInput("__cancel__");
-                                    setTimeout(() => setEditingCell(null), 0);
-                                  }
-                                }}
-                                onBlur={() => {
-                                  if (editInput === "__cancel__") {
-                                    setEditingCell(null);
-                                    return;
-                                  }
-                                  const trimmed = editInput.trim();
-                                  const originalValue = displayValue ?? "";
-                                  if (trimmed === "" || trimmed === String(originalValue)) {
-                                    setEditingCell(null);
-                                    return;
-                                  }
-                                  const num = parseFloat(trimmed);
-                                  if (!isNaN(num)) onEditParam?.(row.name, num);
-                                  setEditingCell(null);
-                                }}
-                                className="flex-1 min-w-0 rounded-sm border border-amber-500 bg-card px-1.5 py-1 font-mono text-xs text-foreground outline-none focus:ring-1 focus:ring-amber-500"
-                              />
-                              {hasPending && (
-                                <button
-                                  onMouseDown={(e) => {
-                                    e.preventDefault();
-                                    onClearEdit?.(row.name);
-                                    setEditingCell(null);
-                                  }}
-                                  title="Discard edit"
-                                  className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
-                                >
-                                  <X className="h-3 w-3" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        );
-                      }
-
-                      // Cells in editable columns: clicking activates write mode
-                      // for that column and immediately opens the input.
-                      const isLocked = LOCKED_PARAMS.has(row.name);
-                      const isEditable = onToggleWriteMode && vid !== "live" && vid !== FILE_VERSION_ID && !isMissing && !isLocked;
                       return (
-                        <td
-                          key={vid}
-                          className={cellClass + (isWritable ? " cursor-text hover:bg-amber-400/20" : isEditable ? " cursor-text hover:bg-secondary/60" : "")}
-                          onClick={() => {
-                            if (isWritable) {
-                              setEditInput(displayValue ?? "");
-                              setEditingCell(cellKey);
-                            } else if (isEditable) {
-                              // Activate write mode for this column, then start editing
-                              onToggleWriteMode(vid);
-                              setEditInput(displayValue ?? "");
-                              setEditingCell(cellKey);
-                            }
-                          }}
-                          title={isLocked ? "Managed by app — cannot be edited" : isWritable || isEditable ? "Click to edit" : undefined}
-                        >
-                          {isMissing ? "—" : displayValue}
+                        <td key={vid} className={cellClass}>
+                          {isMissing ? "—" : rawValue}
                         </td>
                       );
                     })}
@@ -608,9 +438,7 @@ export function CompareTable({
                   colSpan={versions.length + 1}
                   className="px-4 py-12 text-center text-sm text-muted-foreground"
                 >
-                  {showModifiedOnly
-                    ? "No modified params yet."
-                    : showDiffsOnly
+                  {showDiffsOnly
                     ? "All params are identical across selected versions."
                     : "No params found."}
                 </td>

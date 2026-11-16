@@ -66,7 +66,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const storagePath = `${set.id}/${label}.param`;
   const { error: uploadError } = await admin.storage
     .from("param-files")
-    .upload(storagePath, Buffer.from(writeParamFile(unique), "utf-8"), { contentType: "text/plain", upsert: true });
+    .upload(storagePath, Buffer.from(writeParamFile(unique), "utf-8"), { contentType: "text/plain", upsert: false });
   if (uploadError) return NextResponse.json({ error: `Storage upload failed: ${uploadError.message}` }, { status: 500 });
 
   if (approved) await admin.from("param_versions").update({ is_latest: false }).eq("client_set_id", set.id);
@@ -99,8 +99,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  await supabase.from("drone_events").insert({
+  await admin.from("drone_events").insert({
     drone_id: drone.id,
+    created_by: caller.id,
     param_version_id: version.id,
     chip_id: chipId,
     firmware: body.firmware ?? null,
