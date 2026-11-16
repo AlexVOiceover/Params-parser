@@ -6,6 +6,15 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.24.0",
+    date: "2026-11-16",
+    items: [
+      "Drones are recognised by their flight controller's chip ID and compared param by param against their latest version, with clear update, modified and in-sync states",
+      "On a drone's history page the connected drone appears as a draft next version to save, and any version can be installed on it with a verified read-back",
+      "Connecting skips the browser's port picker after the first time, and hovering a param shows its ArduPilot description",
+    ],
+  },
+  {
     version: "0.23.1",
     date: "2026-11-16",
     items: [
