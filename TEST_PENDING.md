@@ -80,3 +80,12 @@ Things to verify when you have time. Tick them off as you go.
 - [ ] "Use a different port…" always opens the picker
 - [ ] Apply/Restore writes also skip the picker
 - [ ] Android (WebUSB): reconnects without the device picker
+
+### Ghost card on a drone's history page
+- [ ] Connected drone differs from v3 → dashed "v4 · from the connected drone" card above v3
+- [ ] Save as v4 is disabled until a changelog is typed; saving adds v4 and a "saved from the drone" log entry
+- [ ] Restore v3 from the card writes v3 and the card disappears (in sync)
+- [ ] Drone on an older version → amber "Apply vN" banner, no Save
+- [ ] Another drone connected → "The connected drone is X, not this one" with a link to its history, no actions
+- [ ] Unlinked FC (staff) → "Link to <serial>"; record already linked to another chip → admin-only "Re-link"
+- [ ] "Upload new version from a file…" no longer offers "From drone"
