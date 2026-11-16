@@ -3,7 +3,7 @@
 import { useId, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, X } from "lucide-react";
+import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import { BusyButton } from "@/components/ui/busy";
 import { modelHref } from "@/lib/versions";
 
@@ -24,106 +24,155 @@ export interface FamilyGroup {
 export function ModelList({ families, isAdmin }: { families: FamilyGroup[]; isAdmin: boolean }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  const [adding, setAdding] = useState(false);
-  const [deleting, setDeleting] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function deleteFamily(id: string) {
-    setDeleting(id);
-    setError(null);
-    const res = await fetch(`/api/admin/families/${id}`, { method: "DELETE" });
-    setDeleting(null);
-    if (!res.ok) {
-      const b = await res.json().catch(() => ({})) as { error?: string };
-      setError(b.error ?? "Could not delete");
-      return;
-    }
-    startTransition(() => router.refresh());
-  }
+  const [adding, setAdding] = useState<string | null>(null);
+  const refresh = () => startTransition(() => router.refresh());
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-xl font-semibold text-foreground">Models</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Each model has a template: the reference params a new drone of that model starts from.
+            Product lines and their variants. Each variant has a template: the reference params a new drone of that model starts from.
           </p>
         </div>
         {isAdmin && (
           <button
             type="button"
-            onClick={() => setAdding(true)}
+            onClick={() => setAdding("__new__")}
             className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 cursor-pointer whitespace-nowrap"
           >
-            <Plus className="h-3.5 w-3.5" /> Add model
+            <Plus className="h-3.5 w-3.5" /> Add product line
           </button>
         )}
       </div>
-      {error && <p className="text-xs text-destructive">{error}</p>}
 
-      <div className="rounded-lg border border-border overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-secondary text-[11px] uppercase tracking-wider text-muted-foreground">
-              <th className="px-4 py-2 text-left font-semibold">Model</th>
-              <th className="px-4 py-2 text-left font-semibold">Template</th>
-              <th className="px-4 py-2 text-left font-semibold">Drones</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {families.map((f) => (
-              <FamilyRows key={f.id} family={f} isAdmin={isAdmin} deleting={deleting === f.id} onDelete={() => deleteFamily(f.id)} />
-            ))}
-            {families.length === 0 && (
-              <tr><td colSpan={3} className="px-4 py-8 text-center text-xs text-muted-foreground">No models yet.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {families.length === 0 && (
+        <div className="rounded-lg border border-border bg-card px-6 py-10 text-center text-sm text-muted-foreground">No models yet.</div>
+      )}
 
-      {adding && <AddModelDialog families={families} onClose={() => setAdding(false)} onAdded={() => { setAdding(false); startTransition(() => router.refresh()); }} />}
+      {families.map((f) => (
+        <FamilyCard key={f.id} family={f} isAdmin={isAdmin} onAddVariant={() => setAdding(f.id)} onChanged={refresh} />
+      ))}
+
+      {adding && (
+        <AddModelDialog
+          families={families}
+          initialFamilyId={adding}
+          onClose={() => setAdding(null)}
+          onAdded={() => { setAdding(null); refresh(); }}
+        />
+      )}
     </div>
   );
 }
 
-function FamilyRows({ family, isAdmin, deleting, onDelete }: { family: FamilyGroup; isAdmin: boolean; deleting: boolean; onDelete: () => void }) {
+function FamilyCard({ family, isAdmin, onAddVariant, onChanged }: {
+  family: FamilyGroup;
+  isAdmin: boolean;
+  onAddVariant: () => void;
+  onChanged: () => void;
+}) {
   const router = useRouter();
-  if (family.models.length === 0) {
-    return (
-      <tr>
-        <td className="px-4 py-2.5 text-foreground">{family.name}</td>
-        <td className="px-4 py-2.5 text-xs text-muted-foreground" colSpan={isAdmin ? 1 : 2}>No variants</td>
-        {isAdmin && (
-          <td className="px-4 py-2.5 text-right">
-            <BusyButton type="button" busy={deleting} aria-label={`Delete ${family.name}`} onClick={onDelete} icon={<Trash2 className="h-3.5 w-3.5" />} className="rounded p-1 text-muted-foreground hover:text-destructive" />
-          </td>
-        )}
-      </tr>
-    );
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState(family.name);
+  const [busy, setBusy] = useState<"rename" | "delete" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const nameId = useId();
+  const drones = family.models.reduce((n, m) => n + m.drones, 0);
+
+  async function call(method: "PATCH" | "DELETE") {
+    setBusy(method === "PATCH" ? "rename" : "delete");
+    setError(null);
+    const res = await fetch(`/api/admin/families/${family.id}`, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: method === "PATCH" ? JSON.stringify({ name: name.trim() }) : undefined,
+    });
+    setBusy(null);
+    if (!res.ok) {
+      const b = await res.json().catch(() => ({})) as { error?: string };
+      setError(b.error ?? "That did not work");
+      return;
+    }
+    setRenaming(false);
+    onChanged();
   }
+
   return (
-    <>
-      {family.models.map((m) => (
-        <tr key={m.id} onClick={() => router.push(modelHref(m.id))} className="cursor-pointer hover:bg-secondary/40 transition-colors">
-          <td className="px-4 py-2.5">
-            <Link href={modelHref(m.id)} onClick={(e) => e.stopPropagation()} className="font-medium text-foreground hover:text-primary cursor-pointer whitespace-nowrap">
-              {m.name}
-            </Link>
-          </td>
-          <td className="px-4 py-2.5 text-xs">
-            {m.template ? <span className="font-mono">v{m.template}</span> : <span className="text-muted-foreground">No template yet</span>}
-            {m.pending && <span className="ml-2 text-sky-700 dark:text-sky-300">v{m.pending} to review</span>}
-          </td>
-          <td className="px-4 py-2.5 text-xs text-muted-foreground">{m.drones}</td>
-        </tr>
-      ))}
-    </>
+    <section className="rounded-lg border border-border bg-card overflow-hidden">
+      <header className="flex items-center gap-3 flex-wrap border-b border-border bg-secondary px-4 py-2.5">
+        {renaming ? (
+          <form onSubmit={(e) => { e.preventDefault(); call("PATCH"); }} className="flex items-center gap-1.5">
+            <label htmlFor={nameId} className="sr-only">Product line name</label>
+            <input id={nameId} value={name} onChange={(e) => setName(e.target.value)} className="rounded-md border border-border bg-card px-2 py-1 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring" />
+            <BusyButton type="submit" busy={busy === "rename"} disabled={!name.trim()} aria-label="Save name" icon={<Check className="h-3.5 w-3.5" />} className="rounded p-1 text-primary hover:bg-card" />
+            <button type="button" aria-label="Cancel rename" onClick={() => { setRenaming(false); setName(family.name); }} className="rounded p-1 text-muted-foreground hover:bg-card cursor-pointer"><X className="h-3.5 w-3.5" /></button>
+          </form>
+        ) : (
+          <h2 className="text-sm font-semibold text-foreground">{family.name}</h2>
+        )}
+        <span className="text-xs text-muted-foreground">
+          {family.models.length} variant{family.models.length === 1 ? "" : "s"} · {drones} drone{drones === 1 ? "" : "s"}
+        </span>
+        {isAdmin && (
+          <div className="ml-auto flex items-center gap-1">
+            <button type="button" onClick={onAddVariant} className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-card cursor-pointer whitespace-nowrap">
+              <Plus className="h-3.5 w-3.5" /> Add variant
+            </button>
+            {!renaming && (
+              <button type="button" aria-label={`Rename ${family.name}`} onClick={() => setRenaming(true)} className="rounded p-1.5 text-muted-foreground hover:text-foreground hover:bg-card cursor-pointer">
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+            {family.models.length === 0 && (
+              <BusyButton type="button" busy={busy === "delete"} aria-label={`Delete ${family.name}`} onClick={() => call("DELETE")} icon={<Trash2 className="h-3.5 w-3.5" />} className="rounded p-1.5 text-muted-foreground hover:text-destructive hover:bg-card" />
+            )}
+          </div>
+        )}
+      </header>
+      {error && <p className="px-4 pt-2 text-xs text-destructive">{error}</p>}
+
+      {family.models.length === 0 ? (
+        <p className="px-4 py-3 text-xs text-muted-foreground">No variants yet.</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground">
+              <th className="px-4 py-1.5 text-left font-semibold">Variant</th>
+              <th className="px-4 py-1.5 text-left font-semibold">Template</th>
+              <th className="px-4 py-1.5 text-left font-semibold w-24">Drones</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {family.models.map((m) => (
+              <tr key={m.id} onClick={() => router.push(modelHref(m.id))} className="cursor-pointer hover:bg-secondary/40 transition-colors">
+                <td className="px-4 py-2.5">
+                  <Link href={modelHref(m.id)} onClick={(e) => e.stopPropagation()} className="font-medium text-foreground hover:text-primary cursor-pointer whitespace-nowrap">
+                    {m.name}
+                  </Link>
+                </td>
+                <td className="px-4 py-2.5 text-xs">
+                  {m.template ? <span className="font-mono">v{m.template}</span> : <span className="text-muted-foreground">No template yet</span>}
+                  {m.pending && <span className="ml-2 text-sky-700 dark:text-sky-300">v{m.pending} to review</span>}
+                </td>
+                <td className="px-4 py-2.5 text-xs text-muted-foreground">{m.drones}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
   );
 }
 
-function AddModelDialog({ families, onClose, onAdded }: { families: FamilyGroup[]; onClose: () => void; onAdded: () => void }) {
-  const [familyId, setFamilyId] = useState(families[0]?.id ?? "__new__");
+function AddModelDialog({ families, initialFamilyId, onClose, onAdded }: {
+  families: FamilyGroup[];
+  initialFamilyId: string;
+  onClose: () => void;
+  onAdded: () => void;
+}) {
+  const [familyId, setFamilyId] = useState(initialFamilyId);
   const [familyName, setFamilyName] = useState("");
   const [variant, setVariant] = useState("Base");
   const [busy, setBusy] = useState(false);
@@ -161,7 +210,7 @@ function AddModelDialog({ families, onClose, onAdded }: { families: FamilyGroup[
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !busy && onClose()} />
       <form onSubmit={submit} className="relative z-10 w-full max-w-md rounded-xl border border-border bg-card shadow-2xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
-          <h2 className="text-sm font-semibold text-foreground">Add model</h2>
+          <h2 className="text-sm font-semibold text-foreground">{isNew ? "Add product line" : "Add variant"}</h2>
           <button type="button" aria-label="Close" onClick={onClose} disabled={busy} className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground cursor-pointer">
             <X className="h-4 w-4" />
           </button>
@@ -189,7 +238,7 @@ function AddModelDialog({ families, onClose, onAdded }: { families: FamilyGroup[
         <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
           <button type="button" onClick={onClose} disabled={busy} className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary cursor-pointer whitespace-nowrap disabled:opacity-50">Cancel</button>
           <BusyButton type="submit" busy={busy} busyLabel="Adding…" disabled={!variant.trim() || (isNew && !familyName.trim())} className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">
-            Add model
+            {isNew ? "Add product line" : "Add variant"}
           </BusyButton>
         </div>
       </form>

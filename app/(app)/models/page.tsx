@@ -37,7 +37,7 @@ export default async function ModelsPage() {
         const history = templateByVariant.get(v.id) ?? [];
         return {
           id: v.id,
-          name: `${f.name} · ${v.name}`,
+          name: v.name,
           template: latestApproved(history)?.version_label ?? null,
           pending: pendingProposal(history)?.version_label ?? null,
           drones: droneCount.get(v.id) ?? 0,
