@@ -6,12 +6,13 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
-    version: "0.24.1",
+    version: "0.25.0",
     date: "2026-11-16",
     items: [
-      "Every page now requires signing in, and param files download only for people allowed to see them",
-      "New versions from anyone but an admin wait for review, and approved versions can no longer be edited in place",
-      "Compare is read-only: drones are changed only through Install, which verifies and logs every write",
+      "The app now starts from your drones: a list with each drone's status, and one page per drone with its whole history, the connected drone on top and its settings",
+      "The header always shows the connected drone and whether it is up to date; models and their templates have their own page",
+      "Restore saves an old version as the next one, new versions from a file show what they change before saving, and Download can leave out per-drone params",
+      "Every page requires signing in, files download only for people allowed to see them, and only admins' versions are approved without review",
     ],
   },
   {

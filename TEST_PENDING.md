@@ -81,14 +81,59 @@ Things to verify when you have time. Tick them off as you go.
 - [ ] Apply/Restore writes also skip the picker
 - [ ] Android (WebUSB): reconnects without the device picker
 
-### Ghost card on a drone's history page
-- [ ] Connected drone differs from v3 → dashed "v4 · from the connected drone" card above v3
-- [ ] Save as v4 is disabled until a changelog is typed; saving adds v4 and a "saved from the drone" log entry
-- [ ] Ghost card has only Save (no Install/Restore)
-- [ ] Install on drone on v3's card writes v3; the ghost card disappears and v3 shows "on drone"
-- [ ] Staff: Install on v2 shows the "v3 is still the target" notice; afterwards the drone shows "update available: v3"
-- [ ] Client: only the target version has Install on drone
-- [ ] Drone on an older version → amber "Install vN" banner, no Save
-- [ ] Another drone connected → "The connected drone is X, not this one" with a link to its history, no actions
-- [ ] Unlinked FC (staff) → "Link to <serial>"; record already linked to another chip → admin-only "Re-link"
-- [ ] "Upload new version from a file…" no longer offers "From drone"
+### Drone page live card (replaces the ghost-card list above)
+- [ ] No drone read → "Plug <serial> in…" with Connect drone
+- [ ] Connected and in sync → green "Connected and matching vN, its target"
+- [ ] Changed on the drone → dashed "vN+1 · from the connected drone · not saved" with Show diff and Save (changelog required)
+- [ ] Saving adds vN+1 and the drone shows as saved from the drone in its history
+- [ ] Drone on an older version → amber "Install vN" banner
+- [ ] Another drone connected → "The connected drone is X, not this one" with "Open X"
+- [ ] Unlinked FC (staff) → "Link to <serial>"; record already linked → admin-only "Re-link"
+
+---
+
+## 0.25.0 — Drone-first redesign + security lockdown
+
+### Before testing
+- Test on this branch (`fix/security-lockdown`) with `npm run dev --turbopack`. It points at the live database, so saves and installs are real.
+- The migration `20261116180000_security_lockdown.sql` is NOT applied yet. Apply it only after the code is deployed (see below).
+
+### Navigation
+- [ ] Signed out: every page redirects to /login and comes back to the same page after signing in
+- [ ] Header shows Drones · Models · Review · Clients for admin; clients only see "My drones"
+- [ ] Header chip: "Connect drone" → after reading, "<serial> · Up to date / Update to vN / Changed on drone"; clicking it opens that drone; ↻ reads again
+- [ ] Old links redirect: /AIR4Rugged → Models, /AIR4Rugged/<variant> → model page, /…/<client set> → drone page, /drone/<serial> (NFC) → drone page, /filter, /upload, /admin/drones → Drones
+
+### Drones list
+- [ ] Every drone listed with model, client, status, target, last verified; drones needing attention first
+- [ ] Search and status chips filter; client filter works; Clients page "N drones →" opens the list filtered
+- [ ] The connected drone shows a "connected" tag
+- [ ] Add drone (serial, model, client, "start from template") opens the new drone's page with v1 copied from the template
+- [ ] Client with one drone lands straight on its page; with several, sees only theirs
+
+### Drone page
+- [ ] History interleaves versions and log lines (installed, linked) newest first; the target has a "Target" badge
+- [ ] "What changed" opens Compare with the previous version; "Compare versions" → tick two → Compare
+- [ ] Download → Full file / Shareable (shareable has no COMPASS_, INS_ offsets, ATC_, RCn_MIN/MAX/TRIM, SRn_ …)
+- [ ] Restore v2 → "Save as vN+1" → becomes the target (admin) or a proposal (client)
+- [ ] Install button only on the target, only when this drone is connected and not on it
+- [ ] Delete: a proposal can be deleted; a version a drone was verified on cannot (error explains)
+- [ ] New version from file: diff vs target listed before saving; per-drone params hidden behind a checkbox; changelog required
+- [ ] Settings: rename serial (URL follows), change client/model (admin), link FC, write NFC tag, delete drone
+
+### Models
+- [ ] Models list shows template version, proposals and drone counts; Add model (existing or new product line)
+- [ ] Model page: template history with New version from file, Restore, Download; drones of this model; rename/delete (delete blocked while drones use it)
+
+### Review
+- [ ] Proposals show drone/template, author, note; Approve makes it the target; "Compare with vN"; Reject deletes it
+- [ ] Approving an old proposal after a newer version was approved is refused with an explanation
+
+### Per-drone params
+- [ ] A drone that differs only in ATC_ gains, SRn_ rates or RC calibration shows as Up to date
+- [ ] A drone whose SERIALn_ settings differ from its target now shows as changed, and Install writes them
+
+### Security (after the migration is applied)
+- [ ] A client cannot insert versions or drone-log rows through the Supabase API
+- [ ] Stored-file URLs (…/storage/v1/object/public/param-files/…) return 400/404
+- [ ] Downloads still work from the drone page
