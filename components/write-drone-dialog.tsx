@@ -19,9 +19,11 @@ interface Props {
   onStart?: (addLog: (msg: string) => void) => Promise<WriteOutcome>;
   /** Shown above the list; the write button stays disabled until it is acknowledged. */
   firmwareWarning?: string;
+  /** Informational note shown above the list. */
+  notice?: string;
 }
 
-export function WriteDroneDialog({ changes, onClose, onSuccess, onStart, firmwareWarning }: Props) {
+export function WriteDroneDialog({ changes, onClose, onSuccess, onStart, firmwareWarning, notice }: Props) {
   const { droneParams } = useDroneParams();
   const [stage, setStage] = useState<Stage>("confirm");
   const [log, setLog] = useState<string[]>([]);
@@ -86,6 +88,11 @@ export function WriteDroneDialog({ changes, onClose, onSuccess, onStart, firmwar
         <div className="px-5 py-4 flex flex-col gap-3">
           {stage === "confirm" && (
             <>
+              {notice && (
+                <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200 leading-relaxed">
+                  {notice}
+                </p>
+              )}
               {firmwareWarning && (
                 <div className="rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 flex flex-col gap-2">
                   <p className="text-xs text-rose-700 dark:text-rose-300 leading-relaxed">{firmwareWarning}</p>

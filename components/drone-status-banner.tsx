@@ -53,7 +53,7 @@ export function DroneStatusBanner() {
             <span className="text-xs text-amber-600 dark:text-amber-400">update v{desired.label} · {n} param{n === 1 ? "" : "s"}</span>
             <ApplyUpdateButton
               version={desired}
-              label="Apply update"
+              label="Install update"
               className="btn-apply-update rounded-md px-2.5 py-1 text-xs font-medium text-white"
             />
           </>

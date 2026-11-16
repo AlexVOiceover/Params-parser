@@ -15,6 +15,8 @@ interface Props {
   version: VersionRef;
   className?: string;
   label?: string;
+  /** Shown in the confirm dialog, e.g. when installing a version that isn't the target. */
+  notice?: string;
 }
 
 /**
@@ -22,7 +24,7 @@ interface Props {
  * params, reads them back, and logs the apply once the server confirms the
  * drone now equals the version.
  */
-export function ApplyUpdateButton({ version, className, label = "Apply update" }: Props) {
+export function ApplyUpdateButton({ version, className, label = "Install update", notice }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const { droneParams, autopilot, setDroneParams } = useDroneParams();
@@ -73,6 +75,7 @@ export function ApplyUpdateButton({ version, className, label = "Apply update" }
         <WriteDroneDialog
           changes={changes}
           onClose={() => setChanges(null)}
+          notice={notice}
           onSuccess={handleSuccess}
           firmwareWarning={mismatch
             ? `v${version.label} was made for ArduPilot ${firmwareMinor(version.firmware)}, this drone runs ${firmwareMinor(autopilot?.firmware ?? null)}. Params added or renamed between them will not match.`

@@ -84,8 +84,11 @@ Things to verify when you have time. Tick them off as you go.
 ### Ghost card on a drone's history page
 - [ ] Connected drone differs from v3 → dashed "v4 · from the connected drone" card above v3
 - [ ] Save as v4 is disabled until a changelog is typed; saving adds v4 and a "saved from the drone" log entry
-- [ ] Restore v3 from the card writes v3 and the card disappears (in sync)
-- [ ] Drone on an older version → amber "Apply vN" banner, no Save
+- [ ] Ghost card has only Save (no Install/Restore)
+- [ ] Install on drone on v3's card writes v3; the ghost card disappears and v3 shows "on drone"
+- [ ] Staff: Install on v2 shows the "v3 is still the target" notice; afterwards the drone shows "update available: v3"
+- [ ] Client: only the target version has Install on drone
+- [ ] Drone on an older version → amber "Install vN" banner, no Save
 - [ ] Another drone connected → "The connected drone is X, not this one" with a link to its history, no actions
 - [ ] Unlinked FC (staff) → "Link to <serial>"; record already linked to another chip → admin-only "Re-link"
 - [ ] "Upload new version from a file…" no longer offers "From drone"

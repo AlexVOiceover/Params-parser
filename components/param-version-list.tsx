@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Filter, Download, Trash2, Copy, X, AlertTriangle, Upload, Eye, Usb, GitCompareArrows, CheckSquare, Square, FileUp } from "lucide-react";
 import { DroneGhostCard } from "@/components/drone-ghost-card";
+import { ApplyUpdateButton } from "@/components/apply-update-button";
+import { useAuth } from "@/components/auth-provider";
 import { useConnectedDroneMatch, refreshDroneMatch } from "@/lib/use-connected-drone-match";
 import { parseParamFile } from "@/lib/param-engine";
 import { FILE_VERSION_ID, writeCompareFile } from "@/lib/file-compare-shared";
@@ -108,6 +110,8 @@ export function ParamVersionList({
   const router = useRouter();
   const [, startTransition] = useTransition();
   const match = useConnectedDroneMatch();
+  const { role } = useAuth();
+  const isStaff = role === "admin" || role === "contributor";
   // This page belongs to a specific client_set. The drone matches this set
   // when the connected drone's id equals the FK stored on the client_set.
   const droneMatchesThisSet = match.status === "linked" && droneId !== null && match.drone?.id === droneId;
@@ -117,6 +121,18 @@ export function ParamVersionList({
     : match.state === "update_available" ? match.lastVerified?.id ?? null
     : match.state === "pending_review" ? match.pending?.id ?? null
     : null;
+
+  /** Install on drone: the target version for everyone, any other version for staff only. */
+  function installNotice(v: ParamVersionRow): string | null | false {
+    if (!droneMatchesThisSet || onDroneVersionId === v.id) return false;
+    const target = match.desired;
+    if (target?.id === v.id) return null;
+    if (!isStaff) return false;
+    if (v.needs_review) return `v${v.version_label} is waiting for review. ${target ? `v${target.label} stays the target, so this drone will be offered v${target.label} again on its next connect.` : ""}`.trim();
+    return target
+      ? `v${target.label} is still the target, so this drone will be offered v${target.label} again on its next connect. To make v${v.version_label} the target, clone it as a new version instead.`
+      : null;
+  }
 
   // ── Compare mode ──────────────────────────────────────────
   // One entry point for all comparing: pick versions (auto-selected when there
@@ -530,6 +546,21 @@ export function ParamVersionList({
                   <span className="font-mono text-[10px] text-muted-foreground shrink-0" title="ArduPilot firmware this version was made for">
                     {v.firmware ? `fw ${v.firmware}` : "fw unknown"}
                   </span>
+                  {(() => {
+                    const notice = installNotice(v);
+                    if (notice === false) return null;
+                    const isTarget = match.desired?.id === v.id;
+                    return (
+                      <ApplyUpdateButton
+                        version={{ id: v.id, label: v.version_label, firmware: v.firmware }}
+                        label="Install on drone"
+                        notice={notice ?? undefined}
+                        className={isTarget
+                          ? "btn-apply-update rounded-md px-2.5 py-1 text-xs font-medium text-white"
+                          : "rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-secondary"}
+                      />
+                    );
+                  })()}
                   {onDroneVersionId === v.id && (
                     <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 leading-none whitespace-nowrap shrink-0">
                       <Usb className="h-2.5 w-2.5" />

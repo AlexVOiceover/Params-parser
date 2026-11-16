@@ -78,7 +78,7 @@ export function DroneGhostCard({ droneId, droneChipId, droneSerial, nextLabel, o
           The connected drone is on v{match.lastVerified?.label}. v{desired.label} changes {diff.length} param{diff.length === 1 ? "" : "s"}.
         </span>
         <DiffToggle open={showDiff} count={diff.length} onToggle={() => setShowDiff((v) => !v)} />
-        <div className="ml-auto"><ApplyUpdateButton version={desired} label={`Apply v${desired.label}`} /></div>
+        <div className="ml-auto"><ApplyUpdateButton version={desired} label={`Install v${desired.label}`} /></div>
         {showDiff && <div className="w-full"><DiffList diff={diff} versionLabel={desired.label} /></div>}
       </div>
     );
@@ -107,14 +107,10 @@ export function DroneGhostCard({ droneId, droneChipId, droneSerial, nextLabel, o
           </div>
           {showDiff && <DiffList diff={diff} versionLabel={desired.label} />}
           <p className="text-[11px] text-muted-foreground leading-snug">
-            <span className="text-foreground font-medium">Save as v{nextLabel}</span> keeps what&apos;s on the drone as the next version.{" "}
-            <span className="text-foreground font-medium">Restore v{desired.label}</span> writes v{desired.label} back to the drone.
+            Saving keeps what&apos;s on the drone as the next version. To put a stored version back on the drone, use
+            Install on drone on its card below.
           </p>
-          <SaveFromDroneForm
-            saveLabel={`Save as v${nextLabel}`}
-            onSaved={onChanged}
-            extraAction={<ApplyUpdateButton version={desired} label={`Restore v${desired.label}`} />}
-          />
+          <SaveFromDroneForm saveLabel={`Save as v${nextLabel}`} onSaved={onChanged} />
         </>
       ) : (
         <>

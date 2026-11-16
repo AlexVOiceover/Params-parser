@@ -63,7 +63,7 @@ export function DiffList({ diff, versionLabel }: { diff: ParamDiff[]; versionLab
 
 /**
  * Saves the live read as the next version of the drone's own history, with a
- * required changelog. `extraAction` sits next to Save (e.g. Restore).
+ * required changelog. `extraAction` sits next to Save (e.g. Install).
  */
 export function SaveFromDroneForm({
   saveLabel,
@@ -360,9 +360,9 @@ export function DroneStatusPanel({ match, onRegister }: Props) {
           </p>
           <DiffList diff={diff} versionLabel={desired.label} />
           <p className="text-[10px] text-muted-foreground leading-snug">
-            Apply writes the stored v{desired.label} values to the drone.
+            Install writes the stored v{desired.label} values to the drone.
           </p>
-          <div><ApplyUpdateButton version={desired} label={`Apply v${desired.label}`} /></div>
+          <div><ApplyUpdateButton version={desired} label={`Install v${desired.label}`} /></div>
         </div>
       )}
 
@@ -375,16 +375,16 @@ export function DroneStatusPanel({ match, onRegister }: Props) {
           </p>
           <DiffList diff={diff} versionLabel={desired.label} />
           <p className="text-[10px] text-muted-foreground leading-snug">
-            Restore writes the stored v{desired.label} values to the drone.
+            Install writes the stored v{desired.label} values to the drone.
             {drone?.client_set_id && " Save as new version keeps the drone's values and stores them as the next version."}
           </p>
           {drone?.client_set_id ? (
             <SaveFromDroneForm
               saveLabel="Save as new version"
-              extraAction={<ApplyUpdateButton version={desired} label={`Restore v${desired.label}`} />}
+              extraAction={<ApplyUpdateButton version={desired} label={`Install v${desired.label}`} />}
             />
           ) : (
-            <div><ApplyUpdateButton version={desired} label={`Restore v${desired.label}`} /></div>
+            <div><ApplyUpdateButton version={desired} label={`Install v${desired.label}`} /></div>
           )}
         </div>
       )}
