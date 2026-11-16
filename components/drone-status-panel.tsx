@@ -15,18 +15,25 @@ interface Props {
   onRegister?: () => void;
 }
 
+/** Drones store 32-bit floats; 7 significant digits drops the float noise. */
+function formatParamValue(value: number | string): string {
+  const n = Number(value);
+  if (!Number.isFinite(n) || Number.isInteger(n)) return String(value);
+  return String(Number(n.toPrecision(7)));
+}
+
 function DiffList({ diff }: { diff: ParamDiff[] }) {
   const [all, setAll] = useState(false);
   const shown = all ? diff : diff.slice(0, 8);
   return (
     <div className="rounded border border-border bg-background/50 divide-y divide-border max-h-48 overflow-y-auto">
       {shown.map((d) => (
-        <div key={d.name} className="flex items-center justify-between gap-2 px-2 py-1 font-mono text-[11px]">
-          <span className="text-foreground truncate">{d.name}</span>
-          <span className="shrink-0 text-muted-foreground">
-            {d.actual === null ? <span className="italic">missing</span> : d.actual}
+        <div key={d.name} className="flex flex-wrap items-baseline justify-between gap-x-2 px-2 py-1 font-mono text-[11px]">
+          <span className="text-foreground break-all">{d.name}</span>
+          <span className="ml-auto text-muted-foreground text-right break-all">
+            {d.actual === null ? <span className="italic">missing</span> : formatParamValue(d.actual)}
             <span className="mx-1">→</span>
-            <span className="text-amber-700 dark:text-amber-300">{d.desired}</span>
+            <span className="text-amber-700 dark:text-amber-300">{formatParamValue(d.desired)}</span>
           </span>
         </div>
       ))}
