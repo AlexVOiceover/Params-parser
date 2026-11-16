@@ -29,11 +29,11 @@ function DiffList({ diff, versionLabel }: { diff: ParamDiff[]; versionLabel: str
   return (
     <div className="rounded border border-border bg-background/50 max-h-56 overflow-auto">
       <table className="w-full font-mono text-[11px] whitespace-nowrap">
-        <thead className="sticky top-0 z-10 bg-card font-sans text-[10px] uppercase tracking-wide">
-          <tr className="border-b border-border">
-            <th scope="col" className="px-2 py-1 text-left font-bold text-foreground">Param</th>
-            <th scope="col" className="px-2 py-1 text-right font-bold text-sky-700 dark:text-sky-300">Read from drone</th>
-            <th scope="col" className="px-2 py-1 text-right font-bold text-amber-700 dark:text-amber-300">Stored v{versionLabel}</th>
+        <thead className="sticky top-0 z-10 bg-secondary font-sans text-[10px] uppercase tracking-wider">
+          <tr className="border-b-2 border-border">
+            <th scope="col" className="px-2 py-1.5 text-left font-semibold text-foreground">Param</th>
+            <th scope="col" className="px-2 py-1.5 text-right font-semibold text-sky-700 dark:text-sky-300">Read from drone</th>
+            <th scope="col" className="px-2 py-1.5 text-right font-semibold text-amber-700 dark:text-amber-300">Stored v{versionLabel}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
