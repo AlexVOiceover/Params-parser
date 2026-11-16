@@ -27,8 +27,8 @@ function DiffList({ diff, versionLabel }: { diff: ParamDiff[]; versionLabel: str
   const [all, setAll] = useState(false);
   const shown = all ? diff : diff.slice(0, 8);
   return (
-    <div className="rounded border border-border bg-background/50 max-h-56 overflow-y-auto">
-      <table className="w-full font-mono text-[11px]">
+    <div className="rounded border border-border bg-background/50 max-h-56 overflow-auto">
+      <table className="w-full font-mono text-[11px] whitespace-nowrap">
         <thead className="sticky top-0 z-10 bg-card font-sans text-[10px] uppercase tracking-wide">
           <tr className="border-b border-border">
             <th scope="col" className="px-2 py-1 text-left font-medium text-muted-foreground">Param</th>
@@ -41,11 +41,11 @@ function DiffList({ diff, versionLabel }: { diff: ParamDiff[]; versionLabel: str
           {shown.map((d) => (
             <tr key={d.name}>
               <td className="px-2 py-1"><ParamInfoHover name={d.name} highlight={[String(d.actual), String(d.desired)]} /></td>
-              <td className="px-2 py-1 text-right text-muted-foreground break-all">
+              <td className="px-2 py-1 text-right text-muted-foreground">
                 {d.actual === null ? <span className="italic font-sans">not on drone</span> : formatParamValue(d.actual)}
               </td>
               <td className="text-center text-muted-foreground" aria-hidden="true">→</td>
-              <td className="px-2 py-1 text-right text-amber-700 dark:text-amber-300 break-all">{formatParamValue(d.desired)}</td>
+              <td className="px-2 py-1 text-right text-amber-700 dark:text-amber-300">{formatParamValue(d.desired)}</td>
             </tr>
           ))}
         </tbody>

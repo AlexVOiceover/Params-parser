@@ -140,7 +140,7 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
         onClick={!busy ? handleClose : undefined}
       />
-      <div className="relative z-10 w-full max-w-sm rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
+      <div className="relative z-10 w-full max-w-xl rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
 
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border bg-toolbar px-5 py-3.5">
