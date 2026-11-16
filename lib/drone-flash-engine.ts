@@ -7,6 +7,8 @@ export interface FlashResult {
   passes: number;
   unresolved: string[];
   reverted: boolean;
+  /** Set when the write never started (wrong drone, no port, …). */
+  error?: string;
 }
 
 export type FlashTarget = Map<string, number>;
@@ -29,15 +31,15 @@ function diff(current: Map<string, number>, target: FlashTarget): { name: string
 async function writeParams(
   changes: { name: string; value: number }[],
   onLog: (msg: string) => void
-): Promise<ParamWriteResult[]> {
+): Promise<{ results: ParamWriteResult[]; error?: string }> {
   return new Promise((resolve) => {
     writeDroneParams(BAUD_RATE, changes, {
       onProgress: () => {},
       onLog,
-      onDone: (results) => resolve(results),
+      onDone: (results) => resolve({ results }),
       onError: (msg) => {
         onLog(`⚠ Write failed: ${msg}`);
-        resolve([]);
+        resolve({ results: [], error: msg });
       },
     });
   });
@@ -75,9 +77,10 @@ export async function flashParamsToDrone(
     passes++;
     onLog(`Pass ${passes}/${MAX_PASSES} — writing ${toWrite.length} param${toWrite.length === 1 ? "" : "s"}…`);
 
-    const results = await writeParams(toWrite, onLog);
+    const { results, error } = await writeParams(toWrite, onLog);
 
-    if (results.length === 0) break; // port error
+    if (error) return { ok: false, passes, unresolved: [], reverted: false, error };
+    if (results.length === 0) break;
 
     // Params that failed confirmation — retry on next pass
     toWrite = results

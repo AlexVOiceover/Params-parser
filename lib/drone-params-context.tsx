@@ -4,7 +4,13 @@ import { createContext, useContext, useState, useCallback, useEffect } from "rea
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 
-import { DRONE_VERSION_ID, DRONE_STORAGE_KEY as STORAGE_KEY } from "@/lib/drone-params-shared";
+import {
+  DRONE_VERSION_ID,
+  DRONE_STORAGE_KEY,
+  rememberDroneIdentity,
+  forgetDroneIdentity,
+  onDroneMismatch,
+} from "@/lib/drone-params-shared";
 import { ConnectDroneDialog } from "@/components/connect-drone-dialog";
 import type { Param } from "@/lib/types";
 export { DRONE_VERSION_ID };
@@ -16,6 +22,8 @@ interface DroneParam {
 
 interface DroneParamsContextValue {
   droneParams: DroneParam[] | null;
+  /** When the params were last read from the drone (ms epoch). */
+  readAt: number | null;
   setDroneParams: (params: DroneParam[]) => void;
   clearDroneParams: () => void;
   openImportDialog: () => void;
@@ -23,60 +31,72 @@ interface DroneParamsContextValue {
 
 const DroneParamsContext = createContext<DroneParamsContextValue>({
   droneParams: null,
+  readAt: null,
   setDroneParams: () => {},
   clearDroneParams: () => {},
   openImportDialog: () => {},
 });
 
-function readStorage(): DroneParam[] | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-  } catch {}
-  return null;
-}
+type DisconnectSource = Navigator & { serial?: EventTarget; usb?: EventTarget };
 
+// The snapshot lives in memory only. It describes whichever drone was plugged
+// in at read time, so it must not outlive the USB connection or the session.
 export function DroneParamsProvider({ children }: { children: ReactNode }) {
   const [droneParams, setDroneParamsState] = useState<DroneParam[] | null>(null);
+  const [readAt, setReadAt] = useState<number | null>(null);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  // Hydrate from localStorage on mount
-  useEffect(() => {
-    const stored = readStorage();
-    setDroneParamsState(stored);
+  const resetSnapshot = useCallback(() => {
+    setDroneParamsState(null);
+    setReadAt(null);
+    forgetDroneIdentity();
   }, []);
+
+  // Older versions kept the snapshot in localStorage indefinitely — drop it.
+  useEffect(() => {
+    try { localStorage.removeItem(DRONE_STORAGE_KEY); } catch {}
+  }, []);
+
+  // Unplugging any USB serial device invalidates the snapshot: the next drone
+  // plugged in is not known to be the same one.
+  useEffect(() => {
+    const nav = navigator as DisconnectSource;
+    const sources = [nav.serial, nav.usb].filter((s): s is EventTarget => !!s);
+    for (const s of sources) s.addEventListener("disconnect", resetSnapshot);
+    const unsubscribe = onDroneMismatch(resetSnapshot);
+    return () => {
+      for (const s of sources) s.removeEventListener("disconnect", resetSnapshot);
+      unsubscribe();
+    };
+  }, [resetSnapshot]);
 
   const setDroneParams = useCallback((params: DroneParam[]) => {
     setDroneParamsState(params);
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(params)); } catch {}
   }, []);
 
   const clearDroneParams = useCallback(() => {
-    setDroneParamsState(null);
-    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    resetSnapshot();
     const viewing = searchParams.getAll("v");
     if (pathname === "/compare" && viewing.includes(DRONE_VERSION_ID)) {
       router.push("/");
     }
-  }, [pathname, searchParams, router]);
+  }, [resetSnapshot, pathname, searchParams, router]);
 
   const openImportDialog = useCallback(() => setImportDialogOpen(true), []);
 
-  const handleParamsLoaded = useCallback(
-    (params: Param[]) => {
-      setDroneParams(params.map((p) => ({ name: p.name, value: p.value })));
-    },
-    [setDroneParams]
-  );
+  const handleParamsLoaded = useCallback((params: Param[]) => {
+    const fresh = params.map((p) => ({ name: p.name, value: p.value }));
+    rememberDroneIdentity(fresh);
+    setDroneParamsState(fresh);
+    setReadAt(Date.now());
+  }, []);
 
   return (
     <DroneParamsContext.Provider
-      value={{ droneParams, setDroneParams, clearDroneParams, openImportDialog }}
+      value={{ droneParams, readAt, setDroneParams, clearDroneParams, openImportDialog }}
     >
       {children}
       {importDialogOpen && (
@@ -92,24 +112,4 @@ export function DroneParamsProvider({ children }: { children: ReactNode }) {
 
 export function useDroneParams(): DroneParamsContextValue {
   return useContext(DroneParamsContext);
-}
-
-/** Save drone params from outside the context (e.g., from the filter page). */
-export function saveDroneParamsToStorage(params: DroneParam[]): void {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(params)); } catch {}
-}
-
-/** Count of params currently stored (0 if none / unavailable). */
-export function getStoredDroneParamsCount(): number {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return 0;
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.length : 0;
-  } catch { return 0; }
-}
-
-/** Clear drone params from localStorage (used from pages without the provider). */
-export function clearDroneParamsFromStorage(): void {
-  try { localStorage.removeItem(STORAGE_KEY); } catch {}
 }

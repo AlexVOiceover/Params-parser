@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Usb, X, Trash2, CheckCircle, AlertCircle, AlertTriangle, Loader2, ClipboardList } from "lucide-react";
 import { openDroneConnection } from "@/lib/mavlink-serial";
-import { getStoredDroneParamsCount, useDroneParams } from "@/lib/drone-params-context";
+import { useDroneParams } from "@/lib/drone-params-context";
 import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
 import { useSerialMode } from "@/lib/use-serial-mode";
 import { RegisterDroneModal, type RegisterMode } from "@/components/register-drone-modal";
@@ -39,7 +39,6 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
   const [received, setReceived] = useState(0);
   const [total, setTotal] = useState(0);
   const [error, setError] = useState("");
-  const [storedCount, setStoredCount] = useState(0);
   const [mobile, setMobile] = useState(false);
   const [iosDevice, setIosDevice] = useState(false);
   const disconnectRef = useRef<(() => void) | null>(null);
@@ -47,13 +46,13 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
   const serialMode = useSerialMode();
   const match = useConnectedDroneMatch();
   const { droneParams } = useDroneParams();
+  const storedCount = droneParams?.length ?? 0;
   const { role } = useAuth();
   const [registerMode, setRegisterMode] = useState<RegisterMode | null>(null);
   const [capturing, setCapturing] = useState(false);
   const [captureResult, setCaptureResult] = useState<string | null>(null);
 
   useEffect(() => {
-    setStoredCount(getStoredDroneParamsCount());
     setMobile(isMobile());
     setIosDevice(isIOS());
   }, []);
@@ -125,7 +124,6 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
 
   function handleForget() {
     onForget?.();
-    setStoredCount(0);
   }
 
   const pct = total > 0 ? Math.round((received / total) * 100) : 0;
