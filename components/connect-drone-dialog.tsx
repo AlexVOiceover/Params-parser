@@ -7,6 +7,7 @@ import { useDroneParams } from "@/lib/drone-params-context";
 import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
 import { DroneStatusPanel } from "@/components/drone-status-panel";
 import { useSerialMode } from "@/lib/use-serial-mode";
+import { getGrantedDronePorts, dronePortName } from "@/lib/serial-shim";
 import { RegisterDroneModal, type RegisterMode } from "@/components/register-drone-modal";
 import { useAuth } from "@/components/auth-provider";
 import type { Param } from "@/lib/types";
@@ -53,6 +54,20 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
   const isStaff = role === "admin" || role === "contributor";
   const [registerMode, setRegisterMode] = useState<RegisterMode | null>(null);
   const [registerChoice, setRegisterChoice] = useState(false);
+  /** Board behind a port granted before; null when none, so the picker will show. */
+  const [knownBoard, setKnownBoard] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (serialMode === "unsupported") return;
+    let live = true;
+    getGrantedDronePorts()
+      .then((ports) => {
+        if (!live || ports.length === 0) return;
+        setKnownBoard(ports.map(dronePortName).find((n) => n !== null) ?? "flight controller");
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [serialMode]);
 
   useEffect(() => {
     setMobile(isMobile());
@@ -67,7 +82,7 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
     setLog((prev) => [...prev, msg]);
   }
 
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (choosePort: boolean) => {
     setStage("running");
     setLog([]);
     setError("");
@@ -94,7 +109,7 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
         setStage("error");
         addLog(`✗ ${msg}`);
       },
-    });
+    }, { choosePort });
 
     disconnectRef.current = disconnect;
   }, [onParamsLoaded]);
@@ -165,14 +180,27 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
                     Connect your flight controller using a <span className="font-semibold text-foreground">USB-OTG cable</span>.
                     A regular C-to-C cable will not work — you need an OTG adapter that puts the phone in host mode.
                   </p>
-                  <p>Tap your drone in the device picker. Keep the screen on while reading.</p>
+                  <p>
+                    {knownBoard ? `The app reconnects to the ${knownBoard} used before.` : "Tap your drone in the device picker."}{" "}
+                    Keep the screen on while reading.
+                  </p>
                 </>
               ) : (
                 <>
-                  <p>Connect your flight controller via USB. Chrome will show a COM port picker.</p>
-                  <p className="text-[10px] text-muted-foreground/70">
-                    Some boards expose multiple ports (e.g. Cube Orange shows SLCAN + MAVLink). If you get no data, retry and pick the other port — the MAVLink port is usually the one with the higher COM number.
-                  </p>
+                  {knownBoard ? (
+                    <p>
+                      Plug in the {knownBoard} via USB. The app finds the port it used before, so Chrome&apos;s port picker
+                      won&apos;t show.
+                    </p>
+                  ) : (
+                    <>
+                      <p>Connect your flight controller via USB. Chrome will show a COM port picker the first time.</p>
+                      <p className="text-[10px] text-muted-foreground/70">
+                        Some boards expose two ports (a Cube shows SLCAN + MAVLink). If you get no data, retry and pick the
+                        other port. The MAVLink port is usually the one with the higher COM number.
+                      </p>
+                    </>
+                  )}
                 </>
               )}
               {serialMode === "polyfill" && (
@@ -181,6 +209,16 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
                 </p>
               )}
             </div>
+          )}
+
+          {(stage === "idle" || stage === "error") && knownBoard && serialMode !== "unsupported" && !iosDevice && (
+            <button
+              type="button"
+              onClick={() => connect(true)}
+              className="self-start text-xs text-primary hover:underline cursor-pointer whitespace-nowrap"
+            >
+              Use a different port…
+            </button>
           )}
 
           {/* Progress bar */}
@@ -280,12 +318,12 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
           )}
           {(stage === "idle" || stage === "error") && (
             <button
-              onClick={connect}
+              onClick={() => connect(false)}
               disabled={iosDevice || serialMode === "unsupported"}
               className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer whitespace-nowrap"
             >
               <Usb className="h-3.5 w-3.5" />
-              {stage === "error" ? "Retry" : "Connect"}
+              {stage === "error" ? "Retry" : knownBoard ? `Connect to ${knownBoard}` : "Connect"}
             </button>
           )}
           {busy && (

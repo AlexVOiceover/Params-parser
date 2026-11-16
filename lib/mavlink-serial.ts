@@ -1,7 +1,7 @@
 // MAVLink v1+v2 browser serial connection for ArduPilot parameter reading.
 // Frame parsing modelled after ArduPilot/node-mavlink (MIT).
 
-import { requestDronePort, getGrantedDronePorts, setLastUsedPort, getLastUsedPort } from "@/lib/serial-shim";
+import { requestDronePort, getGrantedDronePorts, setLastUsedPort, getLastUsedPort, dronePortName } from "@/lib/serial-shim";
 import { getSnapshotChipId, reportDroneMismatch } from "@/lib/drone-params-shared";
 import { paramsEqual } from "@/lib/desired-state";
 
@@ -327,6 +327,7 @@ export type MavlinkCallbacks = {
 
 interface SerialPortSignals { dataTerminalReady?: boolean; requestToSend?: boolean; }
 interface SerialPort {
+  getInfo?(): { usbVendorId?: number; usbProductId?: number };
   open(options: { baudRate: number; bufferSize?: number }): Promise<void>;
   close(): Promise<void>;
   readable: ReadableStream<Uint8Array> | null;
@@ -334,16 +335,71 @@ interface SerialPort {
   setSignals?(signals: SerialPortSignals): Promise<void>;
 }
 
+/** Opens the port briefly and reports whether a MAVLink heartbeat arrives. */
+async function hearsHeartbeat(port: SerialPort, baudRate: number, ms: number): Promise<boolean> {
+  try {
+    await port.open({ baudRate, bufferSize: 16 * 1024 });
+  } catch {
+    return false; // unplugged, or held by another app such as Mission Planner
+  }
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  const timer = setTimeout(() => { reader?.cancel().catch(() => {}); }, ms);
+  try {
+    await port.setSignals?.({ dataTerminalReady: true, requestToSend: true });
+    reader = port.readable?.getReader();
+    if (!reader) return false;
+    const splitter = new MavlinkSplitter();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done || !value) return false;
+      if (splitter.feed(value).heartbeats > 0) return true;
+    }
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+    try { await reader?.cancel(); } catch {}
+    try { reader?.releaseLock(); } catch {}
+    try { await port.close(); } catch {}
+  }
+}
+
+/**
+ * Finds the flight controller without the browser picker: tries the last used
+ * port, then every port granted before, and keeps the first that sends a
+ * MAVLink heartbeat (this skips a Cube's SLCAN port). Falls back to the picker
+ * when none answers, or straight away when `choose` is set.
+ */
+async function pickDronePort(baudRate: number, choose: boolean, onLog: (msg: string) => void): Promise<SerialPort> {
+  if (!choose) {
+    const last = getLastUsedPort() as SerialPort | null;
+    const granted = (await getGrantedDronePorts()) as SerialPort[];
+    const candidates = last ? [last, ...granted.filter((p) => p !== last)] : granted;
+    if (candidates.length > 0) onLog("Looking for the flight controller on the port used before…");
+    for (const port of candidates) {
+      if (await hearsHeartbeat(port, baudRate, 2500)) {
+        onLog(`Found ${dronePortName(port) ?? "the flight controller"}`);
+        setLastUsedPort(port);
+        return port;
+      }
+    }
+    if (candidates.length > 0) onLog("No remembered port answered — choose the port");
+  }
+  const port = await requestDronePort() as SerialPort;
+  setLastUsedPort(port);
+  return port;
+}
+
 export async function openDroneConnection(
   baudRate: number,
-  callbacks: MavlinkCallbacks
+  callbacks: MavlinkCallbacks,
+  options: { choosePort?: boolean } = {}
 ): Promise<() => void> {
   const { onProgress, onDone, onError, onLog } = callbacks;
 
   let port: SerialPort;
   try {
-    port = await requestDronePort() as SerialPort;
-    setLastUsedPort(port); // remember for subsequent writes
+    port = await pickDronePort(baudRate, options.choosePort ?? false, onLog);
   } catch (e) {
     onError(`No port selected: ${e instanceof Error ? e.message : String(e)}`);
     return () => {};
@@ -581,20 +637,7 @@ export async function writeDroneParams(
 
   let port: SerialPort;
   try {
-    // Prefer the port most recently used for import — avoids picker on multi-port FCs
-    const last = getLastUsedPort();
-    if (last) {
-      port = last as SerialPort;
-      onLog("Reusing previously-granted port");
-    } else {
-      const existing = await getGrantedDronePorts();
-      if (existing.length === 1) {
-        port = existing[0] as SerialPort;
-        onLog("Reusing previously-granted port");
-      } else {
-        port = await requestDronePort() as SerialPort;
-      }
-    }
+    port = await pickDronePort(baudRate, false, onLog);
   } catch (e) {
     onError(`No port selected: ${e instanceof Error ? e.message : String(e)}`);
     return () => {};

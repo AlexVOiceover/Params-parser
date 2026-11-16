@@ -83,6 +83,7 @@ export const ARDUPILOT_USB_FILTERS: UsbFilter[] = [
  */
 // Use a local interface compatible with the SerialPort shape used by callers
 interface OpenableSerialPort {
+  getInfo?(): { usbVendorId?: number; usbProductId?: number };
   open(options: { baudRate: number; bufferSize?: number }): Promise<void>;
   close(): Promise<void>;
   readable: ReadableStream<Uint8Array> | null;
@@ -142,4 +143,23 @@ export async function getGrantedDronePorts(): Promise<OpenableSerialPort[]> {
   const polyfillModule = await import("web-serial-polyfill");
   const PolyfillSerialPort = (polyfillModule as unknown as { SerialPort: new (d: unknown) => OpenableSerialPort }).SerialPort;
   return devices.map((d) => new PolyfillSerialPort(d));
+}
+
+/** USB product IDs from ArduPilot's hwdef files (the browser hides COM names). */
+const BOARD_NAMES: Record<string, string> = {
+  "2dae:1011": "CubeBlack",
+  "2dae:1012": "CubeYellow",
+  "2dae:1015": "CubePurple",
+  "2dae:1016": "CubeOrange",
+  "2dae:1058": "CubeOrange+",
+  "2dae:1059": "CubeRed",
+};
+
+const hex4 = (n: number): string => n.toString(16).padStart(4, "0");
+
+/** Board name for a granted port, or null when its USB IDs are unknown. */
+export function dronePortName(port: OpenableSerialPort): string | null {
+  const info = port.getInfo?.();
+  if (info?.usbVendorId === undefined || info.usbProductId === undefined) return null;
+  return BOARD_NAMES[`${hex4(info.usbVendorId)}:${hex4(info.usbProductId)}`] ?? null;
 }
