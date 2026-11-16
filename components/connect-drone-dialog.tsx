@@ -243,6 +243,7 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
               <DroneStatusPanel
                 match={match}
                 onRegister={isStaff ? () => setRegisterChoice(true) : undefined}
+                onNavigate={handleClose}
               />
               {registerChoice && (
                 <div className="flex flex-col gap-2">

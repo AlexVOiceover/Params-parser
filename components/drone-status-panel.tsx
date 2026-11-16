@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
-import { CheckCircle, AlertTriangle, AlertCircle, Bell, Link2, Save, RefreshCw } from "lucide-react";
+import Link from "next/link";
+import { CheckCircle, AlertTriangle, AlertCircle, Bell, Link2, Save, RefreshCw, ArrowRight } from "lucide-react";
 import { BusyButton, Spinner } from "@/components/ui/busy";
 import { ApplyUpdateButton } from "@/components/apply-update-button";
 import { ParamInfoHover } from "@/components/param-info-hover";
@@ -14,6 +15,8 @@ interface Props {
   match: DroneMatchResult;
   /** Staff action for an unknown chip that isn't any existing record. */
   onRegister?: () => void;
+  /** Called when a link leaves the current view, e.g. to close the connect dialog. */
+  onNavigate?: () => void;
 }
 
 /** Drones store 32-bit floats; 7 significant digits drops the float noise. */
@@ -63,15 +66,13 @@ export function DiffList({ diff, versionLabel }: { diff: ParamDiff[]; versionLab
 
 /**
  * Saves the live read as the next version of the drone's own history, with a
- * required changelog. `extraAction` sits next to Save (e.g. Install).
+ * required changelog.
  */
 export function SaveFromDroneForm({
   saveLabel,
-  extraAction,
   onSaved,
 }: {
   saveLabel: string;
-  extraAction?: React.ReactNode;
   onSaved?: () => void;
 }) {
   const { droneParams, autopilot } = useDroneParams();
@@ -132,11 +133,29 @@ export function SaveFromDroneForm({
         >
           {saveLabel}
         </BusyButton>
-        {extraAction}
       </div>
       {result && (
         <p className={`text-[11px] ${result.ok ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-300"}`}>{result.text}</p>
       )}
+    </div>
+  );
+}
+
+/** Sends the user to the drone's history page, where saving and installing happen. */
+function HistoryLink({ match, onNavigate, hint }: { match: DroneMatchResult; onNavigate?: () => void; hint: string }) {
+  const drone = match.drone;
+  const setId = drone?.client_set_id ?? drone?.history_set_id;
+  if (!drone || !drone.family_slug || !setId) return null;
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <Link
+        href={`/${drone.family_slug}/${drone.variant_id}/${setId}`}
+        onClick={onNavigate}
+        className="flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 cursor-pointer whitespace-nowrap"
+      >
+        Open {drone.serial}&apos;s history <ArrowRight className="h-3.5 w-3.5" />
+      </Link>
+      <span className="text-[10px] text-muted-foreground">{hint}</span>
     </div>
   );
 }
@@ -276,7 +295,7 @@ function LinkPicker({ match, onRegister }: Props) {
  * connect modal this is the update popup: for `update_available` it carries
  * the change list and the Apply button.
  */
-export function DroneStatusPanel({ match, onRegister }: Props) {
+export function DroneStatusPanel({ match, onRegister, onNavigate }: Props) {
   const { autopilot } = useDroneParams();
   const { role } = useAuth();
   const isStaff = role === "admin" || role === "contributor";
@@ -374,18 +393,7 @@ export function DroneStatusPanel({ match, onRegister }: Props) {
             {diff.length} param{diff.length === 1 ? "" : "s"}{state === "modified" ? ` differ from v${desired.label}` : ""}
           </p>
           <DiffList diff={diff} versionLabel={desired.label} />
-          <p className="text-[10px] text-muted-foreground leading-snug">
-            Install writes the stored v{desired.label} values to the drone.
-            {drone?.client_set_id && " Save as new version keeps the drone's values and stores them as the next version."}
-          </p>
-          {drone?.client_set_id ? (
-            <SaveFromDroneForm
-              saveLabel="Save as new version"
-              extraAction={<ApplyUpdateButton version={desired} label={`Install v${desired.label}`} />}
-            />
-          ) : (
-            <div><ApplyUpdateButton version={desired} label={`Install v${desired.label}`} /></div>
-          )}
+          <HistoryLink match={match} onNavigate={onNavigate} hint="to save it as a new version or install a stored one" />
         </div>
       )}
 
@@ -398,7 +406,7 @@ export function DroneStatusPanel({ match, onRegister }: Props) {
       {match.status === "linked" && state === "no_version" && (
         <div className="flex flex-col gap-2">
           <p className="text-xs text-muted-foreground">This drone&apos;s history has no approved version yet.</p>
-          {drone?.client_set_id && <SaveFromDroneForm saveLabel="Save as new version" />}
+          <HistoryLink match={match} onNavigate={onNavigate} hint="to save the drone's params as its first version" />
         </div>
       )}
     </div>
