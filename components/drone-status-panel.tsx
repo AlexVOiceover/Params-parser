@@ -95,6 +95,8 @@ function LinkPicker({ match, onRegister }: Props) {
     setSelected(match.suggestedId ?? match.candidates[0]?.id ?? "");
   }, [match.suggestedId, match.candidates]);
 
+  const selectedSerial = match.candidates.find((c) => c.id === selected)?.serial ?? null;
+
   async function link() {
     if (!selected) return;
     setLinking(true);
@@ -121,23 +123,53 @@ function LinkPicker({ match, onRegister }: Props) {
       </p>
       {match.candidates.length > 0 ? (
         <>
-          <label htmlFor="link-drone" className="sr-only">Drone record</label>
-          <select
-            id="link-drone"
-            value={selected}
-            onChange={(e) => setSelected(e.target.value)}
-            className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs cursor-pointer"
-          >
-            {match.candidates.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.serial}
-                {c.client_name ? ` · ${c.client_name}` : ""}
-                {c.family_name ? ` · ${c.family_name}${c.variant_name ? ` ${c.variant_name}` : ""}` : ""}
-                {c.id === match.suggestedId ? " · matches SCR_USER1" : ""}
-                {c.diff_count === null ? " · no version" : ` · ${c.diff_count} differ`}
-              </option>
-            ))}
-          </select>
+          <fieldset className="flex flex-col gap-1.5 max-h-64 overflow-y-auto pr-1">
+            <legend className="sr-only">Drone record</legend>
+            {match.candidates.map((c) => {
+              const inputId = `link-drone-${c.id}`;
+              const isSelected = c.id === selected;
+              return (
+                <label
+                  key={c.id}
+                  htmlFor={inputId}
+                  className={`flex items-start gap-2 rounded-md border px-2.5 py-2 cursor-pointer transition-colors ${
+                    isSelected ? "border-primary bg-primary/10" : "border-border hover:bg-secondary"
+                  }`}
+                >
+                  <input
+                    id={inputId}
+                    type="radio"
+                    name="link-drone"
+                    value={c.id}
+                    checked={isSelected}
+                    onChange={() => setSelected(c.id)}
+                    className="mt-0.5 cursor-pointer accent-primary"
+                  />
+                  <span className="flex flex-col gap-0.5 min-w-0">
+                    <span className="font-mono text-xs font-medium text-foreground break-all">{c.serial}</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {c.client_name ?? <span className="italic">no client</span>}
+                      {c.family_name && ` · ${c.family_name}${c.variant_name ? ` / ${c.variant_name}` : ""}`}
+                    </span>
+                    <span className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                      {c.id === match.suggestedId && (
+                        <span className="rounded bg-emerald-500/15 px-1 py-px text-emerald-700 dark:text-emerald-300">
+                          matches SCR_USER1
+                        </span>
+                      )}
+                      <span className="text-muted-foreground">
+                        {c.diff_count === null
+                          ? "no version yet"
+                          : c.diff_count === 0
+                            ? "params identical to its latest version"
+                            : `${c.diff_count} param${c.diff_count === 1 ? "" : "s"} differ from its latest version`}
+                      </span>
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </fieldset>
           <p className="text-[10px] text-muted-foreground leading-snug">
             Check the serial on the airframe label before linking. The order is only a hint.
           </p>
@@ -151,7 +183,7 @@ function LinkPicker({ match, onRegister }: Props) {
               disabled={!selected}
               className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
             >
-              Link to this drone
+              {selectedSerial ? `Link to ${selectedSerial}` : "Link to this drone"}
             </BusyButton>
             {onRegister && (
               <button
