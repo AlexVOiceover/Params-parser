@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { X, Upload, CheckCircle, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { useDroneParams } from "@/lib/drone-params-context";
 
 interface ClientRow { id: string; name: string }
 interface DroneRow { id: string; client_id: string; variant_id: string; serial: string }
@@ -33,6 +34,7 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
   const [versions, setVersions] = useState<VersionRow[]>([]);
   const [loaded, setLoaded] = useState(false);
 
+  const { autopilot } = useDroneParams();
   const [clientId, setClientId] = useState("");
   const [droneId, setDroneId] = useState("");
   const [versionLabel, setVersionLabel] = useState("");
@@ -143,6 +145,7 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
     }
     fd.set("versionLabel", versionLabel);
     fd.set("file", file);
+    if (autopilot?.firmware) fd.set("firmware", autopilot.firmware);
 
     const res = await fetch("/api/upload", { method: "POST", body: fd });
     const reader = res.body?.getReader();

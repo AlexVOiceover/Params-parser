@@ -54,6 +54,13 @@ export async function POST(request: NextRequest) {
         const serial = formData.get("serial") as string | null;
         const versionLabel = formData.get("versionLabel") as string;
         const changelog = (formData.get("changelog") as string | null) || null;
+        const firmwareRaw = ((formData.get("firmware") as string | null) ?? "").trim();
+        if (firmwareRaw && !/^\d+\.\d+\.\d+$/.test(firmwareRaw)) {
+          controller.enqueue(msg("Firmware must look like 4.5.7", true));
+          controller.close();
+          return;
+        }
+        const firmware = firmwareRaw || null;
         const file = formData.get("file") as File | null;
 
         if (!file || !versionLabel) {
@@ -239,35 +246,10 @@ export async function POST(request: NextRequest) {
           clientSetId = newCs.id;
         }
 
-        // 4. Parse params and inject version markers.
-        //    SCR_USER2 = version label (always — so flashed drones self-report).
-        //    SCR_USER1 = 0 for Default param sets — the Default is a catalog
-        //    reference, not tied to a physical drone serial.
-        const { data: csRow } = await admin
-          .from("client_sets")
-          .select("is_default")
-          .eq("id", clientSetId!)
-          .maybeSingle();
-        const isDefaultSet = csRow?.is_default === true;
-
+        // 4. Parse params. The file is stored as uploaded: nothing on the drone
+        //    records a version any more, so no markers are injected.
         const fileText = Buffer.from(fileBuffer).toString("utf-8");
         const parsedParams = parseParamFile(fileText);
-
-        const scrUser2Idx = parsedParams.findIndex((p) => p.name === "SCR_USER2");
-        if (scrUser2Idx >= 0) {
-          parsedParams[scrUser2Idx] = { ...parsedParams[scrUser2Idx], value: versionLabel };
-        } else {
-          parsedParams.push({ name: "SCR_USER2", value: versionLabel });
-        }
-
-        if (isDefaultSet) {
-          const scrUser1Idx = parsedParams.findIndex((p) => p.name === "SCR_USER1");
-          if (scrUser1Idx >= 0) {
-            parsedParams[scrUser1Idx] = { ...parsedParams[scrUser1Idx], value: "0" };
-          } else {
-            parsedParams.push({ name: "SCR_USER1", value: "0" });
-          }
-        }
         const updatedFileText = writeParamFile(parsedParams);
         const updatedBuffer = Buffer.from(updatedFileText, "utf-8");
 
@@ -298,6 +280,7 @@ export async function POST(request: NextRequest) {
           changelog,
           created_by: user.id,
           is_latest: true,
+          firmware,
         }).select("id").single();
 
         if (pvError || !pv) {
@@ -309,8 +292,6 @@ export async function POST(request: NextRequest) {
         // 8. Store param values — deduplicate by name first (last occurrence wins)
         //    so .param files with duplicate entries don't create duplicate DB rows.
         const paramMap = new Map(parsedParams.map(({ name, value }) => [name, value]));
-        // Always enforce SCR_ENABLE=1 — required for SCR_USER1/2 to persist
-        paramMap.set("SCR_ENABLE", "1");
         const paramValues = Array.from(paramMap.entries()).map(([name, value]) => ({
           param_version_id: pv.id,
           name,

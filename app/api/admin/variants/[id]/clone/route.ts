@@ -65,7 +65,7 @@ export async function POST(
 
     const { data: versions } = await admin
       .from("param_versions")
-      .select("id, version_label, storage_path, changelog, is_latest")
+      .select("id, version_label, storage_path, changelog, is_latest, firmware")
       .eq("client_set_id", cs.id)
       .order("created_at", { ascending: true });
 
@@ -85,6 +85,7 @@ export async function POST(
           changelog: v.changelog,
           created_by: user.id,
           is_latest: v.is_latest,
+        firmware: v.firmware,
         })
         .select("id")
         .single();
@@ -104,8 +105,7 @@ export async function POST(
       }
       if (pvRows.length) {
         const pvMap = new Map(pvRows.map((pv) => [pv.name, pv.value]));
-        pvMap.set("SCR_ENABLE", "1");
-        const rows = Array.from(pvMap.entries()).map(([name, value]) => ({ param_version_id: newVersion.id, name, value }));
+                const rows = Array.from(pvMap.entries()).map(([name, value]) => ({ param_version_id: newVersion.id, name, value }));
         for (let i = 0; i < rows.length; i += 500) {
           await admin.from("param_values").insert(rows.slice(i, i + 500));
         }

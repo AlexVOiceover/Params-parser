@@ -4,13 +4,13 @@ import { useMemo, useState, useCallback, useTransition, useEffect } from "react"
 import { FileUp, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useDroneParams, DRONE_VERSION_ID } from "@/lib/drone-params-context";
-import { clearDroneMatchCache } from "@/lib/use-connected-drone-match";
+import { refreshDroneMatch } from "@/lib/use-connected-drone-match";
 import { CompareTable } from "@/components/compare/compare-table";
 import { WriteDroneDialog, type WriteChange } from "@/components/write-drone-dialog";
 import { RUNTIME_PARAMS, LOCKED_PARAMS } from "@/lib/param-engine";
 import { FILE_VERSION_ID, readCompareFile, clearCompareFile, type CompareFilePayload } from "@/lib/file-compare-shared";
 import type { CompareVersion, CompareRow } from "@/lib/types";
-import type { ParamWriteResult } from "@/lib/mavlink-serial";
+import type { WriteOutcome } from "@/lib/drone-flash-engine";
 
 interface Props {
   versions: CompareVersion[];
@@ -150,21 +150,16 @@ export function CompareTableWrapper({ versions, rows, hasDroneVersion, hasFileVe
   }, [pendingEdits.size]);
 
   const handleWriteSuccess = useCallback(
-    (written: ParamWriteResult[]) => {
-      if (!droneParams) return;
-      const writtenMap = new Map(written.map((r) => [r.name, r.actual ?? r.requested]));
-      const updated = droneParams.map((p) => {
-        const v = writtenMap.get(p.name);
-        return v !== undefined ? { ...p, value: String(v) } : p;
-      });
-      setDroneParams(updated);
+    (outcome: WriteOutcome) => {
+      setDroneParams(outcome.params);
       setPendingEdits((prev) => {
         const next = new Map(prev);
-        for (const r of written) if (r.success) next.delete(r.name);
+        for (const r of outcome.results) if (r.success) next.delete(r.name);
         return next;
       });
+      refreshDroneMatch();
     },
-    [droneParams, setDroneParams]
+    [setDroneParams]
   );
 
   // Catalog save path
@@ -185,7 +180,7 @@ export function CompareTableWrapper({ versions, rows, hasDroneVersion, hasFileVe
       setPendingEdits(new Map());
       setWriteMode(false);
       setWritableVersionId(undefined);
-      clearDroneMatchCache();
+      refreshDroneMatch();
       startTransition(() => router.refresh());
     } else {
       const body = await res.json().catch(() => ({}));

@@ -2,131 +2,116 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Eye, ClipboardList } from "lucide-react";
+import { Eye, ChevronDown, ChevronUp } from "lucide-react";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
+import { useAuth } from "@/components/auth-provider";
 import { ApplyUpdateButton } from "@/components/apply-update-button";
 import { RegisterDroneModal } from "@/components/register-drone-modal";
+import { DroneStatusPanel } from "@/components/drone-status-panel";
 
 /**
  * Compact status strip shown above the catalog when a drone is connected.
- * Purely informational — no action buttons. If there's an update, a single
- * link to the variant page is shown.
+ * "Details" expands the full status panel (change list, link picker, actions).
  */
 export function DroneStatusBanner() {
   const { droneParams } = useDroneParams();
   const match = useConnectedDroneMatch();
+  const { role } = useAuth();
+  const isStaff = role === "admin" || role === "contributor";
+  const [expanded, setExpanded] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
 
   if (!droneParams || droneParams.length === 0) return null;
 
-  const identified = match.status === "matched" && match.drone !== null;
-  const { drone, versionStatus, droneVersion, catalogVersion } = match;
-  // Show register prompt when drone is not in the catalog (unmatched),
-  // matched but unversioned (SCR_USER2=0), or SCR_ENABLE=0 (fresh drone)
-  const scrEnable = droneParams?.find((p) => p.name === "SCR_ENABLE");
-  const isFreshDrone = scrEnable ? parseInt(scrEnable.value, 10) === 0 : false;
-  // Don't show Register while the match is loading or already matched —
-  // registration may have just completed and the re-fetch is in flight.
-  const needsRegistration = match.status !== "loading" && match.status !== "matched" && (
-    isFreshDrone ||
-    match.status === "unmatched" ||
-    (match.droneVersion === null && match.drone !== null)
-  );
+  const { drone, desired, pending, diff, state } = match;
+  const linked = match.status === "linked" && drone !== null;
+  const n = diff.length;
+
+  let summary: React.ReactNode;
+  if (match.status === "loading") summary = <span className="text-sm text-muted-foreground">Identifying drone…</span>;
+  else if (match.status === "no_chip") summary = <span className="text-sm text-muted-foreground">Drone connected · no chip ID reported</span>;
+  else if (match.status === "error") summary = <span className="text-sm text-muted-foreground">Drone connected · couldn&apos;t check against the catalog</span>;
+  else if (match.status === "unlinked") summary = <span className="text-sm text-muted-foreground">Drone connected · not linked to a drone record</span>;
+  else if (linked) {
+    summary = (
+      <>
+        <span className="text-sm font-medium text-foreground">{drone.serial}</span>
+        {drone.client_name
+          ? <span className="text-sm text-muted-foreground">· {drone.client_name}</span>
+          : <span className="text-xs text-muted-foreground italic">no client</span>}
+        {drone.family_name && drone.variant_name && drone.family_slug && (
+          <Link href={`/${drone.family_slug}/${drone.variant_id}`} className="text-sm text-primary hover:underline">
+            {drone.family_name} / {drone.variant_name}
+          </Link>
+        )}
+        {state === "in_sync" && desired && (
+          <span className="text-xs text-emerald-600 dark:text-emerald-400">in sync with v{desired.label}</span>
+        )}
+        {state === "update_available" && desired && (
+          <>
+            <span className="text-xs text-amber-600 dark:text-amber-400">update v{desired.label} · {n} param{n === 1 ? "" : "s"}</span>
+            <ApplyUpdateButton
+              version={desired}
+              label="Apply update"
+              className="btn-apply-update rounded-md px-2.5 py-1 text-xs font-medium text-white"
+            />
+          </>
+        )}
+        {(state === "modified" || state === "differs") && desired && (
+          <>
+            <span className="text-xs text-amber-600 dark:text-amber-400">
+              {n} param{n === 1 ? "" : "s"} differ from v{desired.label}
+            </span>
+            <Link
+              href={`/compare?v=__drone__&v=${desired.id}`}
+              className="text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline whitespace-nowrap"
+            >
+              Review
+            </Link>
+          </>
+        )}
+        {state === "pending_review" && pending && (
+          <span className="text-xs text-amber-600 dark:text-amber-400">saved as v{pending.label} · waiting for review</span>
+        )}
+        {state === "no_version" && <span className="text-xs text-muted-foreground">no approved version yet</span>}
+      </>
+    );
+  }
 
   return (
     <>
-    <div className={`rounded-lg border px-4 py-3 mb-6 flex items-center gap-3 flex-wrap ${
-      identified
-        ? "border-emerald-500/40 bg-emerald-500/8"
-        : "border-border bg-secondary/40"
-    }`}>
-      {/* Always show View link when drone is connected */}
-      <Link
-        href="/compare?v=__drone__"
-        title="View drone params"
-        className={`rounded-md border p-1 transition-colors cursor-pointer shrink-0 ${
-          identified
-            ? "border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/15"
-            : "border-border text-muted-foreground hover:bg-secondary"
-        }`}
-      >
-        <Eye className="h-3.5 w-3.5" />
-      </Link>
-
-      {identified && drone ? (
-        <>
-          <span className="text-sm font-medium text-foreground">{drone.serial}</span>
-          {match.isOrphan ? (
-            <span className="text-xs text-muted-foreground italic">no client</span>
-          ) : drone.client_name ? (
-            <span className="text-sm text-muted-foreground">· {drone.client_name}</span>
-          ) : null}
-          {drone.family_name && drone.variant_name && drone.family_slug && (
-            <Link
-              href={`/${drone.family_slug}/${drone.variant_id}`}
-              className="text-sm text-primary hover:underline"
-            >
-              {drone.family_name} / {drone.variant_name}
-            </Link>
-          )}
-          {versionStatus === "up_to_date" && droneVersion !== null && (
-            <span className="text-xs text-emerald-600 dark:text-emerald-400">v{droneVersion} — up to date</span>
-          )}
-          {versionStatus === "up_to_date_modified" && droneVersion !== null && match.driftCount !== null && drone.latest_version_id && (
-            <>
-              <span className="text-xs text-amber-600 dark:text-amber-400">
-                v{droneVersion} — {match.driftCount} param{match.driftCount === 1 ? "" : "s"} modified
-              </span>
-              <Link
-                href={`/compare?v=__drone__&v=${drone.latest_version_id}`}
-                className="flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline whitespace-nowrap"
-              >
-                Review
-              </Link>
-            </>
-          )}
-          {versionStatus === "update_available" && droneVersion !== null && catalogVersion !== null && drone.latest_version_id && (
-            <>
-              <span className="text-xs text-amber-600 dark:text-amber-400">v{droneVersion} → v{catalogVersion}</span>
-              <ApplyUpdateButton
-                versionId={drone.latest_version_id}
-                label="Apply update"
-                className="btn-apply-update flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-white cursor-pointer whitespace-nowrap"
-              />
-            </>
-          )}
-          {versionStatus === "drone_ahead" && droneVersion !== null && catalogVersion !== null && (
-            <span className="text-xs text-sky-600 dark:text-sky-400">
-              Drone v{droneVersion} is ahead of catalog v{catalogVersion}
-            </span>
-          )}
-        </>
-      ) : (
-        <>
-          <span className="text-sm text-muted-foreground">
-            {match.status === "loading" ? "Identifying drone…" : "Drone connected"}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            · {droneParams.length} params
-            {match.status !== "loading" && " · not registered in catalog"}
-          </span>
-        </>
-      )}
-      {needsRegistration && (
-        <button
-          type="button"
-          onClick={() => setShowRegister(true)}
-          className="flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 hover:bg-primary/20 px-2.5 py-1 text-xs font-medium text-primary transition-colors cursor-pointer whitespace-nowrap shrink-0 ml-auto"
-        >
-          <ClipboardList className="h-3.5 w-3.5" />
-          {match.status === "matched" && match.droneVersion === null
-            ? "Complete setup"
-            : "Register drone"}
-        </button>
-      )}
-    </div>
-    {showRegister && <RegisterDroneModal mode="capture" onClose={() => setShowRegister(false)} />}
+      <div className={`rounded-lg border mb-6 ${linked ? "border-emerald-500/40 bg-emerald-500/8" : "border-border bg-secondary/40"}`}>
+        <div className="px-4 py-3 flex items-center gap-3 flex-wrap">
+          <Link
+            href="/compare?v=__drone__"
+            title="View drone params"
+            aria-label="View drone params"
+            className={`rounded-md border p-1 transition-colors cursor-pointer shrink-0 ${
+              linked
+                ? "border-emerald-500/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/15"
+                : "border-border text-muted-foreground hover:bg-secondary"
+            }`}
+          >
+            <Eye className="h-3.5 w-3.5" />
+          </Link>
+          {summary}
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer whitespace-nowrap"
+          >
+            {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            Details
+          </button>
+        </div>
+        {expanded && (
+          <div className="px-4 pb-3">
+            <DroneStatusPanel match={match} onRegister={isStaff ? () => setShowRegister(true) : undefined} />
+          </div>
+        )}
+      </div>
+      {showRegister && <RegisterDroneModal mode="capture" onClose={() => setShowRegister(false)} />}
     </>
   );
 }

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Filter, Download, Trash2, Copy, X, AlertTriangle, Upload, Eye, Usb, GitCompareArrows, CheckSquare, Square, FileUp } from "lucide-react";
 import { ApplyUpdateButton } from "@/components/apply-update-button";
 import { useDroneParams } from "@/lib/drone-params-context";
-import { useConnectedDroneMatch, clearDroneMatchCache } from "@/lib/use-connected-drone-match";
+import { useConnectedDroneMatch, refreshDroneMatch } from "@/lib/use-connected-drone-match";
 import { writeParamFile, parseParamFile } from "@/lib/param-engine";
 import { FILE_VERSION_ID, writeCompareFile } from "@/lib/file-compare-shared";
 
@@ -18,6 +18,7 @@ interface ParamVersionRow {
   created_at: string;
   is_latest: boolean;
   needs_review: boolean;
+  firmware: string | null;
 }
 
 interface FamilyOption {
@@ -102,13 +103,20 @@ export function ParamVersionList({
 }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  const { droneParams } = useDroneParams();
+  const { droneParams, autopilot } = useDroneParams();
   const match = useConnectedDroneMatch();
   // This page belongs to a specific client_set. The drone matches this set
   // when the connected drone's id equals the FK stored on the client_set.
-  const droneMatchesThisSet = match.status === "matched" && droneId !== null && match.drone?.id === droneId;
-  const hasUpdate = droneMatchesThisSet && match.versionStatus === "update_available";
-  const droneVersion = droneMatchesThisSet ? match.droneVersion : null;
+  const droneMatchesThisSet = match.status === "linked" && droneId !== null && match.drone?.id === droneId;
+  // The version the drone currently equals, as judged by comparing its params.
+  const onDroneVersionId = !droneMatchesThisSet ? null
+    : match.state === "in_sync" ? match.desired?.id ?? null
+    : match.state === "update_available" ? match.lastVerified?.id ?? null
+    : match.state === "pending_review" ? match.pending?.id ?? null
+    : null;
+  const applyTarget = droneMatchesThisSet && match.desired &&
+    (match.state === "update_available" || match.state === "modified" || match.state === "differs")
+    ? match.desired : null;
 
   // ── Compare mode ──────────────────────────────────────────
   // One entry point for all comparing: pick versions (auto-selected when there
@@ -182,6 +190,7 @@ export function ParamVersionList({
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadSource, setUploadSource] = useState<"file" | "drone">("file");
   const [uploadChangelog, setUploadChangelog] = useState("");
+  const [uploadFirmware, setUploadFirmware] = useState("");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadLog, setUploadLog] = useState<{ text: string; error?: boolean }[]>([]);
@@ -254,6 +263,7 @@ export function ParamVersionList({
 
   function openUpload() {
     setUploadChangelog("");
+    setUploadFirmware("");
     setUploadFile(null);
     setUploadSource("file");
     setUploadLog([]);
@@ -275,6 +285,9 @@ export function ParamVersionList({
     fd.set("clientSetId", clientSetId);
     fd.set("versionLabel", uploadVersionLabel);
     if (uploadChangelog) fd.set("changelog", uploadChangelog);
+    // From the drone the firmware is known; from a file it's whatever staff typed.
+    const fw = uploadSource === "drone" ? autopilot?.firmware ?? "" : uploadFirmware.trim();
+    if (fw) fd.set("firmware", fw);
     fd.set("file", file);
 
     const res = await fetch("/api/upload", { method: "POST", body: fd });
@@ -302,7 +315,7 @@ export function ParamVersionList({
             setUploading(false);
             setTimeout(() => {
               setUploadOpen(false);
-              clearDroneMatchCache();
+              refreshDroneMatch();
               startTransition(() => router.refresh());
             }, 800);
             return;
@@ -336,7 +349,7 @@ export function ParamVersionList({
     if (res.ok) {
       setDeleteId(null);
       setDeleting(false);
-      clearDroneMatchCache();
+      refreshDroneMatch();
       startTransition(() => router.refresh());
     } else {
       const msg = await res.json().then((b) => b?.error).catch(() => null);
@@ -365,7 +378,7 @@ export function ParamVersionList({
     if (res.ok) {
       setCloneId(null);
       setCloning(false);
-      clearDroneMatchCache();
+      refreshDroneMatch();
       startTransition(() => router.refresh());
     } else {
       const msg = await res.json().then((b) => b?.error).catch(() => null);
@@ -512,14 +525,20 @@ export function ParamVersionList({
                   {v.needs_review && (
                     <span className="rounded-full bg-amber-900/50 border border-amber-700/60 px-2 py-0.5 text-[10px] font-semibold text-amber-300 shrink-0">pending review</span>
                   )}
-                  {droneMatchesThisSet && droneVersion !== null && parseInt(v.version_label, 10) === droneVersion && (
+                  <span className="font-mono text-[10px] text-muted-foreground shrink-0" title="ArduPilot firmware this version was made for">
+                    {v.firmware ? `fw ${v.firmware}` : "fw unknown"}
+                  </span>
+                  {onDroneVersionId === v.id && (
                     <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 leading-none whitespace-nowrap shrink-0">
                       <Usb className="h-2.5 w-2.5" />
                       on drone
                     </span>
                   )}
-                  {hasUpdate && v.is_latest && droneVersion !== null && parseInt(v.version_label, 10) > droneVersion && (
-                    <ApplyUpdateButton versionId={v.id} />
+                  {applyTarget?.id === v.id && (
+                    <ApplyUpdateButton
+                      version={applyTarget}
+                      label={match.state === "update_available" ? "Apply update" : `Restore v${applyTarget.label}`}
+                    />
                   )}
                 </div>
                 <span className="text-xs text-muted-foreground shrink-0">{formatDate(v.created_at)}</span>
@@ -649,6 +668,18 @@ export function ParamVersionList({
                       />
                       {uploadFile && (
                         <span className="text-xs text-muted-foreground">{uploadFile.name} ({(uploadFile.size / 1024).toFixed(1)} KB)</span>
+                      )}
+                      <label htmlFor="pvl-firmware" className="sr-only">Firmware</label>
+                      <input
+                        id="pvl-firmware"
+                        value={uploadFirmware}
+                        onChange={(e) => setUploadFirmware(e.target.value)}
+                        disabled={uploading}
+                        placeholder="Firmware it was made for, e.g. 4.5.7 (optional)"
+                        className="rounded-md border border-border bg-secondary px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
+                      />
+                      {uploadFirmware.trim() && !/^\d+\.\d+\.\d+$/.test(uploadFirmware.trim()) && (
+                        <span className="text-xs text-destructive">Use the form 4.5.7</span>
                       )}
                     </div>
                   )}

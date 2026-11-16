@@ -5,12 +5,11 @@ import { useRouter } from "next/navigation";
 import { X, AlertTriangle, ChevronRight, CheckCircle, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useDroneParams } from "@/lib/drone-params-context";
-import { clearDroneMatchCache } from "@/lib/use-connected-drone-match";
+import { refreshDroneMatch } from "@/lib/use-connected-drone-match";
 import { WriteDroneDialog, type WriteChange } from "@/components/write-drone-dialog";
 import { WriteNFCButton } from "@/components/write-nfc-button";
-import { parseSerialId, RUNTIME_PARAMS } from "@/lib/param-engine";
-import { flashParamsToDrone, type FlashTarget } from "@/lib/drone-flash-engine";
-import type { ParamWriteResult } from "@/lib/mavlink-serial";
+import { parseSerialId } from "@/lib/param-engine";
+import { changesFor, fetchVersionValues, type WriteOutcome } from "@/lib/drone-flash-engine";
 
 
 type Stage = "form" | "confirm" | "flashing" | "done" | "error";
@@ -37,9 +36,9 @@ interface Props {
   /** Called when registration completes successfully (after user clicks Done). */
   onSuccess?: () => void;
   /**
-   * "flash"   — overwrite drone with catalog Default (factory-fresh path)
-   * "capture" — keep drone's current params, capture them as v1, only write
-   *             SCR identifiers (curated/tuned drone path)
+   * "flash"   — apply the variant's Default (minus unmanaged params), verify, save as v1
+   * "capture" — keep the drone's current params and save them as the next version;
+   *             nothing is written to the drone
    */
   mode: RegisterMode;
 }
@@ -62,7 +61,7 @@ function suggestCatalogSerial(familySlug: string | undefined, droneNum: number):
 export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  const { droneParams, setDroneParams } = useDroneParams();
+  const { droneParams, autopilot, setDroneParams } = useDroneParams();
 
   // Derive serial from SCR_USER1
   const scrUser1 = droneParams?.find((p) => p.name === "SCR_USER1");
@@ -94,9 +93,8 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
 
   // Flash
   const [writeChanges, setWriteChanges] = useState<WriteChange[] | null>(null);
-  const [flashTarget, setFlashTarget] = useState<FlashTarget>(new Map());
-  const [newDroneId, setNewDroneId] = useState<string | null>(null);
   const [flashedVersion, setFlashedVersion] = useState<string>("1");
+  const [needsReview, setNeedsReview] = useState(false);
 
   // Load dropdown data
   useEffect(() => {
@@ -124,27 +122,38 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
   const checkSerialInDB = useCallback(async (serialStr: string) => {
     const id = parseSerialId(serialStr);
     if (!id) return;
+    const supabase = createClient();
+    if (!supabase) return;
     setCheckingDB(true);
     try {
-      const res = await fetch(`/api/drone/match?id=${id}`);
-      const body = await res.json();
-      if (body.drone) {
-        const d = body.drone;
+      // SCR_USER1 is only a hint: find the record whose serial ends in this number.
+      const { data: rows } = await supabase.from("drones").select("id, serial, variant_id, client_id");
+      const matches = (rows ?? []).filter((d) => d.serial === serialStr || parseSerialId(d.serial) === id);
+      const d = matches.length === 1 ? matches[0] : null;
+      if (d) {
+        const [{ data: variantRow }, { data: clientRow }] = await Promise.all([
+          supabase.from("variants").select("name, family_id").eq("id", d.variant_id).maybeSingle(),
+          d.client_id
+            ? supabase.from("clients").select("name").eq("id", d.client_id).maybeSingle()
+            : Promise.resolve({ data: null }),
+        ]);
+        const { data: familyRow } = variantRow?.family_id
+          ? await supabase.from("families").select("slug, name").eq("id", variantRow.family_id).maybeSingle()
+          : { data: null };
         setExistingDrone({
           id: d.id,
           serial: d.serial,
           variant_id: d.variant_id,
           client_id: d.client_id,
-          familySlug: d.family_slug,
-          familyName: d.family_name,
-          variantName: d.variant_name,
-          clientName: d.client_name,
+          familySlug: familyRow?.slug ?? null,
+          familyName: familyRow?.name ?? null,
+          variantName: variantRow?.name ?? null,
+          clientName: clientRow?.name ?? null,
         });
         // Pre-fill and lock family/variant from DB; use the DB serial verbatim.
         setSerial(d.serial);
         setSerialTouched(true);
-        if (d.variant_id) setVariantId(d.variant_id);
-        const variantRow = (await createClient()!.from("variants").select("family_id").eq("id", d.variant_id).maybeSingle()).data;
+        setVariantId(d.variant_id);
         if (variantRow?.family_id) setFamilyId(variantRow.family_id);
         setFieldsLocked(true);
       } else {
@@ -206,13 +215,41 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
     return null;
   }
 
+  function fail(msg: string) {
+    setErrorMsg(msg);
+    setStage("error");
+  }
+
+  /** Save the drone's (verified) params as the next version of its history; logs `captured`. */
+  async function saveVersion(params: { name: string; value: string }[], changelog: string): Promise<boolean> {
+    const res = await fetch("/api/drone/versions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chipId: autopilot?.chipId, firmware: autopilot?.firmware ?? null, params, changelog }),
+    });
+    const body = await res.json().catch(() => ({})) as { label?: string; approved?: boolean; error?: string };
+    if (!res.ok || !body.label) { fail(body.error ?? "Failed to save the version"); return false; }
+    setFlashedVersion(body.label);
+    setNeedsReview(body.approved === false);
+    return true;
+  }
+
+  function finishRegistration() {
+    refreshDroneMatch();
+    setStage("done");
+    startTransition(() => router.refresh());
+  }
+
   async function handleFlash() {
     setStage("flashing");
     setErrorMsg("");
-
+    if (!autopilot?.chipId) {
+      fail("The flight controller didn't report its chip ID (it needs MAVLink 2), so it can't be registered.");
+      return;
+    }
     const supabase = createClient()!;
 
-    // 1. Create drone row (or reuse existing) — same for both modes
+    // 1. Create the drone record (or reuse the existing one)
     let droneId = existingDrone?.id ?? null;
     if (!droneId) {
       const res = await fetch("/api/admin/drones", {
@@ -225,195 +262,68 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
         }),
       });
       const body = await res.json();
-      if (!res.ok) { setErrorMsg(body?.error ?? "Failed to create drone"); setStage("error"); return; }
-      droneId = body.id;
+      if (!res.ok) { fail(body?.error ?? "Failed to create drone"); return; }
+      droneId = body.id as string;
     }
-    setNewDroneId(droneId);
 
-    if (mode === "capture") {
-      // ── CAPTURE PATH — preserve drone's curated params ─────────────────
-      // 1. Ensure a client_set for this drone (create or reuse)
-      const targetClientSetId = droneId ? await ensureClientSet(droneId, supabase) : null;
-      if (!targetClientSetId) {
-        setErrorMsg("Failed to create param set for drone"); setStage("error"); return;
-      }
-
-      // 2. Compute next version label (max numeric + 1, or "1" if empty).
-      //    Always capture — never skip — so the drone's actual state is
-      //    recorded as a new version that becomes the latest.
-      const { data: existingVersions } = await supabase
-        .from("param_versions")
-        .select("version_label")
-        .eq("client_set_id", targetClientSetId);
-      let nextNumeric = 1;
-      for (const row of existingVersions ?? []) {
-        const n = parseInt(row.version_label, 10);
-        if (Number.isFinite(n) && n >= nextNumeric) nextNumeric = n + 1;
-      }
-      const captureVersionLabel = String(nextNumeric);
-
-      const capRes = await fetch("/api/admin/capture", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientSetId: targetClientSetId,
-          versionLabel: captureVersionLabel,
-          params: droneParams ?? [],
-          isLatest: true,
-        }),
-      });
-      if (!capRes.ok) {
-        const b = await capRes.json().catch(() => ({})) as { error?: string };
-        setErrorMsg(b?.error ?? "Failed to capture params"); setStage("error"); return;
-      }
-
-      // 3. Build minimal write set: only the SCR identifiers
-      const serialInt = parseSerialId(serial.trim());
-      const droneMap = new Map((droneParams ?? []).map((p) => [p.name, parseFloat(p.value)]));
-      const target = new Map<string, number>();
-      target.set("SCR_ENABLE", 1);
-      if (serialInt !== null) target.set("SCR_USER1", serialInt);
-      target.set("SCR_USER2", nextNumeric);
-
-      setFlashedVersion(captureVersionLabel);
-      setFlashTarget(new Map(target));
-
-      const diff: WriteChange[] = [];
-      for (const [name, targetVal] of target.entries()) {
-        const droneVal = droneMap.get(name);
-        if (droneVal === undefined || Math.abs(droneVal - targetVal) >= 1e-5) {
-          diff.push({ name, value: targetVal });
-        }
-      }
-      if (diff.length === 0) { handleWriteSuccess([]); return; }
-      setWriteChanges(diff);
+    // 2. Link this flight controller to the record
+    const linkRes = await fetch(`/api/admin/drones/${droneId}/link`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chipId: autopilot.chipId, method: "assembly", firmware: autopilot.firmware }),
+    });
+    if (!linkRes.ok) {
+      const b = await linkRes.json().catch(() => ({})) as { error?: string };
+      fail(b.error ?? "Failed to link the flight controller");
       return;
     }
 
-    // ── FLASH PATH — overwrite with catalog Default ──────────────────────
-    // 2. Fetch Default param set for the variant
+    // 3. Make sure the drone has its own history
+    if (!(await ensureClientSet(droneId, supabase))) { fail("Failed to create the drone's param history"); return; }
+
+    if (mode === "capture") {
+      // Keep the drone as it is: its current params become the next version.
+      if (await saveVersion(droneParams ?? [], "Registered — current params kept")) finishRegistration();
+      return;
+    }
+
+    // 4. Apply the variant's Default, minus unmanaged params (calibration etc. stay)
     const { data: defaultCS } = await supabase
       .from("client_sets")
       .select("id")
       .eq("variant_id", variantId)
       .eq("is_default", true)
       .maybeSingle();
+    if (!defaultCS) { fail("No Default param set found for this variant. Upload one first."); return; }
 
-    if (!defaultCS) {
-      setErrorMsg("No Default param set found for this variant. Upload one first.");
-      setStage("error");
-      return;
-    }
-
-    const { data: latestPV } = await supabase
+    const { data: defaultVersions } = await supabase
       .from("param_versions")
-      .select("id, version_label")
-      .eq("client_set_id", defaultCS.id)
-      .eq("is_latest", true)
-      .maybeSingle();
+      .select("id, version_label, needs_review")
+      .eq("client_set_id", defaultCS.id);
+    const latest = (defaultVersions ?? [])
+      .filter((v) => !v.needs_review)
+      .sort((a, b) => parseInt(b.version_label, 10) - parseInt(a.version_label, 10))[0];
+    if (!latest) { fail("The Default has no approved version. Upload one first."); return; }
 
-    if (!latestPV) {
-      setErrorMsg("Default param set has no versions. Upload one first.");
-      setStage("error");
+    const desired = await fetchVersionValues(latest.id);
+    const changes = changesFor(desired, droneParams ?? []);
+    if (changes.length === 0) {
+      if (await saveVersion(droneParams ?? [], `Registered — Default v${latest.version_label} already applied`)) finishRegistration();
       return;
     }
-
-    // 3. Create client_set for this drone and clone Default v1 into it
-    if (droneId) {
-      const targetClientSetId = await ensureClientSet(droneId, supabase);
-      if (!targetClientSetId) {
-        setErrorMsg("Failed to create param set"); setStage("error"); return;
-      }
-
-      const { data: existingVersions } = await supabase
-        .from("param_versions")
-        .select("id")
-        .eq("client_set_id", targetClientSetId)
-        .limit(1);
-      if (!existingVersions || existingVersions.length === 0) {
-        await fetch(`/api/admin/param-versions/${latestPV.id}/clone`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            variantId,
-            clientSetId: targetClientSetId,
-            versionLabel: latestPV.version_label,
-          }),
-        });
-      }
-    }
-
-    // 4. Build full diff (Default params vs current drone params)
-    const target = new Map<string, number>();
-    for (let from = 0; ; from += 1000) {
-      const { data: page } = await supabase
-        .from("param_values")
-        .select("name, value")
-        .eq("param_version_id", latestPV.id)
-        .order("name")
-        .range(from, from + 999);
-      if (!page || page.length === 0) break;
-      for (const { name, value } of page) target.set(name, parseFloat(value));
-      if (page.length < 1000) break;
-    }
-
-    target.set("SCR_ENABLE", 1);
-    const serialInt = parseSerialId(serial.trim());
-    if (serialInt !== null) target.set("SCR_USER1", serialInt);
-    const versionInt = parseInt(latestPV.version_label, 10);
-    if (Number.isFinite(versionInt)) target.set("SCR_USER2", versionInt);
-
-    setFlashedVersion(latestPV.version_label);
-    setFlashTarget(new Map(target));
-
-    const droneMap = new Map((droneParams ?? []).map((p) => [p.name, parseFloat(p.value)]));
-    const diff: WriteChange[] = [];
-    const REGISTRATION_REQUIRED = new Set(["SCR_ENABLE", "SCR_USER1", "SCR_USER2"]);
-    for (const [name, targetVal] of target.entries()) {
-      if (RUNTIME_PARAMS.has(name) && !REGISTRATION_REQUIRED.has(name)) continue;
-      const droneVal = droneMap.get(name);
-      if (droneVal === undefined || Math.abs(droneVal - targetVal) / Math.max(Math.abs(targetVal), 1e-10) >= 1e-5) {
-        diff.push({ name, value: targetVal });
-      }
-    }
-
-    if (diff.length === 0) {
-      handleWriteSuccess([]);
-      return;
-    }
-
-    setWriteChanges(diff);
+    setWriteChanges(changes);
   }
 
-  function handleWriteSuccess(written: ParamWriteResult[]) {
-    if (droneParams && written.length > 0) {
-      const writtenMap = new Map(written.map((r) => [r.name, r.actual ?? r.requested]));
-      const existingNames = new Set(droneParams.map((p) => p.name));
-      const updated = droneParams.map((p) => {
-        const v = writtenMap.get(p.name);
-        return v !== undefined ? { ...p, value: String(v) } : p;
-      });
-      // Append any newly-written params that weren't in the original snapshot.
-      // (E.g. SCR_USER1 on a drone where scripting was previously disabled and
-      //  the param wasn't exposed.) Without this, the match hook still reads
-      //  the missing param as 0 and the drone shows as unregistered.
-      for (const [name, value] of writtenMap.entries()) {
-        if (!existingNames.has(name)) updated.push({ name, value: String(value) });
-      }
-      setDroneParams(updated);
-    }
+  async function handleWriteSuccess(outcome: WriteOutcome) {
+    setDroneParams(outcome.params);
     setWriteChanges(null);
-    clearDroneMatchCache();
-    setStage("done");
-    startTransition(() => router.refresh());
-    // Fire-and-forget: mark drone as initialised in the DB
-    if (newDroneId) {
-      fetch(`/api/admin/drones/${newDroneId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ initialisedAt: true }),
-      }).catch(() => {});
+    if (!outcome.ok) {
+      const failed = outcome.results.filter((r) => !r.success).map((r) => r.name);
+      fail(`Not every Default param took (${failed.join(", ")}). The drone is linked; apply again from its history.`);
+      return;
     }
+    // The verified result becomes v1 of the drone's history.
+    if (await saveVersion(outcome.params, "Registered — Default applied and verified")) finishRegistration();
   }
 
   const selectedClient = clients.find((c) => c.id === clientId);
@@ -584,8 +494,8 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
                     ["Family / Variant", `${selectedFamily?.name ?? existingDrone?.familyName ?? "?"} / ${selectedVariant?.name ?? existingDrone?.variantName ?? "?"}`],
                     ["Client", isOrphan ? "No client (orphan)" : (selectedClient?.name ?? "?")],
                     ["Action", mode === "capture"
-                      ? "Capture current params as v1; write 3 SCR identifiers"
-                      : (existingDrone ? "Re-flash Default to drone" : "Register drone + flash Default")],
+                      ? "Link this flight controller; save current params as a version"
+                      : (existingDrone ? "Link + apply the Default" : "Register, link + apply the Default")],
                   ].map(([label, value]) => (
                     <div key={label} className="flex items-start justify-between px-3 py-2 gap-3">
                       <dt className="text-muted-foreground shrink-0">{label}</dt>
@@ -597,14 +507,14 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
                   <div className="flex items-start gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
                     <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
                     <p className="text-xs text-foreground leading-relaxed">
-                      Drone&apos;s current params will be preserved. Only SCR_ENABLE, SCR_USER1, SCR_USER2 will be written. The captured params will be saved as v1 (marked for review).
+                      Nothing is written to the drone. Its current params are saved as a version of its history, and this flight controller is linked to the record.
                     </p>
                   </div>
                 ) : (
                   <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
                     <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
                     <p className="text-xs text-foreground leading-relaxed">
-                      The Default param set will be flashed to the drone, overwriting any tuning. Make sure the drone is safe (disarmed, no props).
+                      The Default will be applied, overwriting any tuning — except calibration and other per-drone params. Every change is read back, and the result is saved as the drone&apos;s first version. Make sure the drone is safe (disarmed, no props).
                     </p>
                   </div>
                 )}
@@ -636,8 +546,9 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
                 <p className="text-xs text-muted-foreground">
                   <span className="font-mono">{serial}</span> is now registered.{" "}
                   {mode === "capture"
-                    ? <>Current params captured as <span className="font-mono">v{flashedVersion}</span> (marked for review).</>
-                    : <>Flashed with the Default param set (<span className="font-mono">v{flashedVersion}</span>).</>}
+                    ? <>Current params saved as <span className="font-mono">v{flashedVersion}</span></>
+                    : <>Default applied, verified and saved as <span className="font-mono">v{flashedVersion}</span></>}
+                  {needsReview ? " — waiting for admin review." : "."}
                 </p>
                 <div className="flex flex-col items-center gap-1.5 mt-1">
                   <WriteNFCButton
@@ -677,16 +588,8 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
       {writeChanges && (
         <WriteDroneDialog
           changes={writeChanges}
-          onClose={() => { setWriteChanges(null); setStage("error"); setErrorMsg("Flash cancelled."); }}
+          onClose={() => { if (stage === "flashing") { setWriteChanges(null); fail("Cancelled — the drone is linked but the Default was not applied."); } }}
           onSuccess={handleWriteSuccess}
-          onStart={(addLog) => {
-            const current = new Map(
-              (droneParams ?? []).map((p) => [p.name, parseFloat(p.value)])
-            );
-            // Pass the pre-computed diff so the engine doesn't re-diff and
-            // strip SCR_USER1/SCR_USER2/SCR_ENABLE via RUNTIME_PARAMS filter.
-            return flashParamsToDrone(flashTarget, current, addLog, writeChanges ?? undefined);
-          }}
         />
       )}
     </>

@@ -29,8 +29,8 @@ export function VariantList({ familySlug, familyId, variants, isAdmin }: Props) 
   const router = useRouter();
   const [, startTransition] = useTransition();
   const match = useConnectedDroneMatch();
-  const connectedVariantId = match.status === "matched" ? match.drone?.variant_id ?? null : null;
-  const updateAvailableForVariant = connectedVariantId !== null && match.versionStatus === "update_available";
+  const connectedVariantId = match.status === "linked" ? match.drone?.variant_id ?? null : null;
+  const updateAvailableForVariant = connectedVariantId !== null && match.state === "update_available";
 
   // ── Delete state ──────────────────────────────────────────
   const [confirmId, setConfirmId] = useState<string | null>(null);

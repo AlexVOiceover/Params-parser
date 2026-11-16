@@ -37,7 +37,7 @@ export async function POST(
   // Fetch the original version
   const { data: original, error: origError } = await admin
     .from("param_versions")
-    .select("id, storage_path, client_set_id")
+    .select("id, storage_path, client_set_id, firmware")
     .eq("id", id)
     .single();
   if (origError || !original) return NextResponse.json({ error: "Version not found" }, { status: 404 });
@@ -99,6 +99,7 @@ export async function POST(
       changelog: changelog?.trim() || null,
       created_by: user.id,
       is_latest: true,
+      firmware: original.firmware,
     })
     .select("id")
     .single();
@@ -120,15 +121,11 @@ export async function POST(
   }
 
   if (allParamValues.length) {
-    // Deduplicate by name (last-write wins) then update SCR_USER2 to the
-    // new version label. Deduplication is essential — source versions may
+    // Deduplicate by name (last-write wins). Essential — source versions may
     // have duplicate name rows from old uploads, which would cause a unique
     // constraint violation and silently drop the entire insert.
-    const newVersionInt = parseInt(versionLabel.trim(), 10);
     const paramMap = new Map<string, string>();
     for (const pv of allParamValues) paramMap.set(pv.name, pv.value);
-    if (Number.isFinite(newVersionInt)) paramMap.set("SCR_USER2", String(newVersionInt));
-    paramMap.set("SCR_ENABLE", "1");
 
     const rows = Array.from(paramMap.entries()).map(([name, value]) => ({
       param_version_id: newVersion.id,

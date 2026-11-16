@@ -38,6 +38,7 @@ export function UploadParamFileModal({
   const [variantId, setVariantId] = useState("");
   const [versionLabel, setVersionLabel] = useState("1");
   const [changelog, setChangelog] = useState("");
+  const [firmware, setFirmware] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -89,6 +90,7 @@ export function UploadParamFileModal({
     fd.set("serial", serial.trim());
     fd.set("versionLabel", versionLabel.trim());
     if (changelog) fd.set("changelog", changelog);
+    if (firmware.trim()) fd.set("firmware", firmware.trim());
     fd.set("file", file!);
 
     const res = await fetch("/api/upload", { method: "POST", body: fd });
@@ -300,6 +302,21 @@ export function UploadParamFileModal({
                 placeholder="Where did this file come from? (optional)"
                 className={inputClass + " resize-none"}
               />
+            </label>
+
+            {/* Firmware */}
+            <label className={labelClass} htmlFor="upf-firmware">
+              <span className={labelTextClass}>Firmware</span>
+              <input
+                id="upf-firmware"
+                value={firmware}
+                onChange={(e) => setFirmware(e.target.value)}
+                placeholder="ArduPilot version the file was made for, e.g. 4.5.7 (optional)"
+                className={inputClass + " font-mono"}
+              />
+              {firmware.trim() && !/^\d+\.\d+\.\d+$/.test(firmware.trim()) && (
+                <p className="text-xs text-destructive mt-0.5">Use the form 4.5.7</p>
+              )}
             </label>
 
             {error && (

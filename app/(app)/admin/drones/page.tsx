@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { ChevronRight, ChevronUp, ChevronDown } from "lucide-react";
 import { createSessionClient, createAdminClient } from "@/lib/supabase/server";
 import { DeleteDroneButton } from "@/components/delete-drone-button";
+import { ChipLinkCell } from "@/components/chip-link-cell";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +64,7 @@ export default async function FleetPage({
 
   const { data: drones } = await admin
     .from("drones")
-    .select("id, serial, client_id, variant_id")
+    .select("id, serial, client_id, variant_id, chip_id")
     .order("serial");
 
   const droneIds = (drones ?? []).map((d) => d.id);
@@ -104,6 +105,7 @@ export default async function FleetPage({
     return {
       id: d.id,
       serial: d.serial,
+      chipId: (d.chip_id as string | null) ?? null,
       clientName,
       familyName: family?.name ?? "—",
       variantName: variant?.name ?? "—",
@@ -130,7 +132,8 @@ export default async function FleetPage({
 
       <h1 className="text-xl font-semibold text-foreground mb-1">Fleet</h1>
       <p className="text-sm text-muted-foreground mb-6">
-        {rows.length} drone{rows.length !== 1 ? "s" : ""} registered across all clients.
+        {rows.length} drone{rows.length !== 1 ? "s" : ""} registered across all clients
+        {rows.some((r) => !r.chipId) && ` · ${rows.filter((r) => !r.chipId).length} not linked to a flight controller yet`}.
       </p>
 
       {rows.length === 0 ? (
@@ -144,6 +147,7 @@ export default async function FleetPage({
                 <SortHeader label="Client" col="client" current={sortKey} dir={sortDir} baseUrl="/admin/drones" />
                 <SortHeader label="Family / Variant" col="family" current={sortKey} dir={sortDir} baseUrl="/admin/drones" />
                 <SortHeader label="Version" col="version" current={sortKey} dir={sortDir} baseUrl="/admin/drones" />
+                <th className="px-4 py-2.5 text-left font-medium whitespace-nowrap">Flight controller</th>
                 <th className="px-4 py-2.5 text-left font-medium">Param set</th>
                 <th className="px-4 py-2.5" />
               </tr>
@@ -162,6 +166,9 @@ export default async function FleetPage({
                     {row.versionLabel
                       ? <span className="font-mono text-primary">v{row.versionLabel}</span>
                       : <span className="text-muted-foreground">—</span>}
+                  </td>
+                  <td className="px-4 py-2.5 text-xs">
+                    <ChipLinkCell droneId={row.id} serial={row.serial} chipId={row.chipId} />
                   </td>
                   <td className="px-4 py-2.5 text-xs">
                     {row.paramSetUrl

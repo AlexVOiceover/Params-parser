@@ -1,0 +1,300 @@
+{
+  "description": "Params NOT governed by the catalog. Every other param is managed: a drone is out of sync when any managed param differs from its desired version. Add an entry only when the param is genuinely per-airframe or changes by itself — never just to silence a difference. One list for every drone.",
+  "rules": [
+    {
+      "type": "prefix",
+      "value": "COMPASS_OFS",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "COMPASS_DIA",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "COMPASS_MOT",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "COMPASS_ODI",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "COMPASS_SCALE",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "INS_ACCOFFS",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "INS_ACCSCAL",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "INS_GYROFFS",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "INS_ACC1_CALTEMP",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "INS_ACC2_CALTEMP",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "INS_ACC3_CALTEMP",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "INS_GYR1_CALTEMP",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "INS_GYR2_CALTEMP",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "INS_GYR3_CALTEMP",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "INS_ACC2OFFS",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "INS_ACC2SCAL",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "INS_ACC3OFFS",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "INS_ACC3SCAL",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "INS_GYR2OFFS",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "INS_GYR3OFFS",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "BARO1_GND",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "BARO2_GND",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "BARO3_GND",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "exact",
+      "value": "AHRS_TRIM_X",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "exact",
+      "value": "AHRS_TRIM_Y",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "exact",
+      "value": "AHRS_TRIM_Z",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "exact",
+      "value": "MOT_THST_HOVER",
+      "reason": "Calibration — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "COMPASS_DEV_ID",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "COMPASS_PRIO",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "exact",
+      "value": "INS_GYR_ID",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "exact",
+      "value": "INS_GYR2_ID",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "exact",
+      "value": "INS_GYR3_ID",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "exact",
+      "value": "INS_ACC_ID",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "exact",
+      "value": "INS_ACC2_ID",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "exact",
+      "value": "INS_ACC3_ID",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "INS4_",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "INS5_",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "exact",
+      "value": "BARO1_DEVID",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "exact",
+      "value": "BARO2_DEVID",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "exact",
+      "value": "BARO3_DEVID",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "STAT_",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "exact",
+      "value": "SYSID_THISMAV",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "exact",
+      "value": "BRD_SERIAL_NUM",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "exact",
+      "value": "BRD_TYPE",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "exact",
+      "value": "FORMAT_VERSION",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "SERIAL0_",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "SERIAL1_",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "SERIAL2_",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "SERIAL3_",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "SERIAL4_",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "SERIAL5_",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "prefix",
+      "value": "SERIAL6_",
+      "reason": "Hardware or device ID — specific to each physical drone"
+    },
+    {
+      "type": "exact",
+      "value": "SYS_NUM_RESETS",
+      "reason": "System reset counter"
+    },
+    {
+      "type": "exact",
+      "value": "BATT_AMP_TOTAL",
+      "reason": "Accumulated amp-hours, resets on power cycle"
+    },
+    {
+      "type": "exact",
+      "value": "BATT2_AMP_TOTAL",
+      "reason": "Same for second battery"
+    },
+    {
+      "type": "exact",
+      "value": "INS_GYR_CAL",
+      "reason": "Gyro calibration state flag"
+    },
+    {
+      "type": "exact",
+      "value": "SCR_USER1",
+      "reason": "Legacy identity/version marker — no longer used by the app"
+    },
+    {
+      "type": "exact",
+      "value": "SCR_USER2",
+      "reason": "Legacy identity/version marker — no longer used by the app"
+    },
+    {
+      "type": "exact",
+      "value": "MIS_TOTAL",
+      "reason": "Mission item count, managed by GCS not param writes"
+    }
+  ]
+}
