@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
-import { ChevronRight, ChevronDown, X, TriangleAlert, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
+import { useState, useMemo, useCallback, useEffect, useId } from "react";
+import { ChevronDown, X, Search, TriangleAlert, ChevronsDownUp, ChevronsUpDown, Shield, FileCheck2, FilePlus, type LucideIcon } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { buildGroups, validateParam } from "@/lib/param-engine";
 import { useApp } from "@/lib/app-context";
 import { ValueCell } from "@/components/value-cell";
+import { LoadingPanel } from "@/components/ui/busy";
+import { buttonClass, cardClass, fieldClass } from "@/components/ui/styles";
 import type { Param } from "@/lib/types";
 
 type SearchMode = "name" | "description" | "both";
@@ -30,7 +32,7 @@ function highlightText(text: string, query: string): React.ReactNode {
     nodes.push(
       <mark
         key={idx}
-        className="bg-amber-400/25 text-amber-200 rounded-xs px-px not-italic"
+        className="bg-amber-400/25 text-amber-900 dark:text-amber-200 rounded-xs px-px not-italic"
       >
         {text.slice(idx, idx + query.length)}
       </mark>
@@ -51,18 +53,28 @@ function getSnippet(text: string, query: string, radius = 45): string {
 }
 
 // ---------- layout constants ----------
-// Kept in one place so column header and rows stay aligned.
-const COL_CHECKBOX = "w-7 shrink-0";
-const COL_NAME     = "flex-1 min-w-0";
-const COL_VALUE    = "w-20 shrink-0";
+// Kept in one place so the column labels, group bands and rows stay aligned:
+// names start 72px in (chevron + checkbox), values sit in one fixed column.
+const COL_VALUE = "w-32 shrink-0";
+const NAME_INDENT = "pl-18";
+
+export type PanelTone = "protected" | "applied" | "defaults";
+
+const TONE: Record<PanelTone, { band: string; title: string; icon: LucideIcon }> = {
+  protected: { band: "border-red-500/25 bg-protected", title: "text-protected-text", icon: Shield },
+  applied: { band: "border-emerald-600/25 bg-applied", title: "text-applied-text", icon: FileCheck2 },
+  defaults: { band: "border-emerald-600/25 bg-emerald-500/15", title: "text-emerald-800 dark:text-emerald-200", icon: FilePlus },
+};
 
 // ---------- component ----------
 
 interface ParamPanelProps {
   title: string;
-  headerColor: string;
+  tone: PanelTone;
   variant?: "protected" | "applied";
   isActive?: boolean;
+  /** A source is being fetched: the empty list shows a spinner instead of its empty text. */
+  loading?: boolean;
   params: Param[];
   checkedNames: Set<string>;
   pdefGroups: string[];
@@ -77,9 +89,10 @@ interface ParamPanelProps {
 
 export function ParamPanel({
   title,
-  headerColor,
+  tone,
   variant,
   isActive,
+  loading = false,
   params,
   checkedNames,
   pdefGroups,
@@ -97,6 +110,8 @@ export function ParamPanel({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMode, setSearchMode] = useState<SearchMode>("name");
   const [showInvalidOnly, setShowInvalidOnly] = useState(false);
+  const searchId = useId();
+  const modeId = useId();
 
   const groups = useMemo(() => buildGroups(params, pdefGroups), [params, pdefGroups]);
 
@@ -188,11 +203,12 @@ export function ParamPanel({
 
   const q = searchQuery.trim();
   const isSearching = q.length > 0;
+  const { band, title: titleTone, icon: ToneIcon } = TONE[tone];
 
   return (
-    <div className="flex flex-1 flex-col rounded-lg border border-border bg-card overflow-hidden min-w-0">
+    <div className={cn(cardClass, "flex min-w-0 flex-1 flex-col overflow-hidden")}>
       {/* Panel header */}
-      <div className={cn("flex items-center gap-2 px-3 py-2.5", headerColor)}>
+      <div className={cn("flex min-h-12 shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b px-3 py-2", band)}>
         <input
           type="checkbox"
           checked={allChecked}
@@ -200,20 +216,25 @@ export function ParamPanel({
             if (el) el.indeterminate = someChecked && !allChecked;
           }}
           onChange={(e) => onToggleAll(e.target.checked)}
-          className="h-4 w-4 rounded accent-foreground cursor-pointer"
           aria-label="Select all parameters"
         />
-        <span className="flex-1 text-sm font-semibold text-foreground truncate">
-          {title} ({params.length})
+        <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-card/70", titleTone)} aria-hidden="true">
+          <ToneIcon className="h-4 w-4" />
         </span>
+        <h2 className={cn("min-w-32 flex-1 truncate text-sm font-semibold", titleTone)}>
+          {title} ({params.length})
+        </h2>
         {headerAction && <div className="shrink-0">{headerAction}</div>}
       </div>
 
       {/* Search bar */}
       {params.length > 0 && (
-        <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-border">
-          <div className="relative flex-1 min-w-0">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
+          <div className="relative min-w-40 flex-1">
+            <label htmlFor={searchId} className="sr-only">Search parameters</label>
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
+              id={searchId}
               type="text"
               placeholder={
                 searchMode === "name"
@@ -224,22 +245,26 @@ export function ParamPanel({
               }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded bg-muted px-2.5 py-1.5 pr-7 text-xs font-mono text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
+              className={cn(fieldClass, "h-8 w-full pl-8 pr-7 text-[13px]")}
             />
             {searchQuery && (
               <button
+                type="button"
+                onMouseDown={(e) => { e.preventDefault(); setSearchQuery(""); }}
                 onClick={() => setSearchQuery("")}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
                 aria-label="Clear search"
               >
-                <X className="h-3 w-3" />
+                <X className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
+          <label htmlFor={modeId} className="sr-only">Search in</label>
           <select
+            id={modeId}
             value={searchMode}
             onChange={(e) => setSearchMode(e.target.value as SearchMode)}
-            className="shrink-0 rounded bg-muted px-2 py-1.5 text-xs text-muted-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+            className={cn(fieldClass, "h-8 shrink-0 text-[13px] cursor-pointer")}
           >
             <option value="name">Name</option>
             <option value="description">Description</option>
@@ -247,65 +272,60 @@ export function ParamPanel({
           </select>
           {onOverrideValue && invalidNames.size > 0 && (
             <button
+              type="button"
+              aria-pressed={showInvalidOnly}
               onClick={() => setShowInvalidOnly((v) => !v)}
               title={showInvalidOnly ? "Show all params" : "Show only invalid params"}
               className={cn(
-                "shrink-0 flex items-center gap-1 rounded px-2 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap",
+                "flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium tabular-nums transition-colors cursor-pointer whitespace-nowrap",
                 showInvalidOnly
-                  ? "bg-red-900/60 text-red-200 border border-red-700/60"
-                  : "bg-muted text-red-400 hover:bg-red-900/30"
+                  ? "border-red-500/50 bg-red-500/10 text-red-700 dark:text-red-300"
+                  : "border-border bg-card text-red-700 shadow-xs hover:bg-red-500/10 dark:text-red-300"
               )}
             >
-              <TriangleAlert className="h-3 w-3" />
+              <TriangleAlert className="h-3.5 w-3.5" />
               {showInvalidOnly ? "All" : invalidNames.size}
             </button>
           )}
           {groups.length > 0 && !isSearching && (
-            <>
-              <div className="relative group shrink-0">
-                <button
-                  onClick={collapseAll}
-                  className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer"
-                >
-                  <ChevronsDownUp className="h-3.5 w-3.5" />
+            <div className="flex shrink-0 items-center">
+              <div className="group relative">
+                <button type="button" onClick={collapseAll} aria-label="Collapse all" className={buttonClass("ghost", "icon")}>
+                  <ChevronsDownUp className="h-4 w-4" />
                 </button>
-                <div className="absolute top-full right-0 mt-0.5 hidden group-hover:block bg-popover border border-border rounded px-2 py-1 text-xs text-foreground whitespace-nowrap shadow-md pointer-events-none z-50">
+                <div className="pointer-events-none absolute right-0 top-full z-50 mt-1 hidden rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground whitespace-nowrap shadow-md group-hover:block">
                   Collapse all (<u>c</u>)
                 </div>
               </div>
-              <div className="relative group shrink-0">
-                <button
-                  onClick={expandAll}
-                  className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer"
-                >
-                  <ChevronsUpDown className="h-3.5 w-3.5" />
+              <div className="group relative">
+                <button type="button" onClick={expandAll} aria-label="Expand all" className={buttonClass("ghost", "icon")}>
+                  <ChevronsUpDown className="h-4 w-4" />
                 </button>
-                <div className="absolute top-full right-0 mt-0.5 hidden group-hover:block bg-popover border border-border rounded px-2 py-1 text-xs text-foreground whitespace-nowrap shadow-md pointer-events-none z-50">
+                <div className="pointer-events-none absolute right-0 top-full z-50 mt-1 hidden rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground whitespace-nowrap shadow-md group-hover:block">
                   Expand all (<u>e</u>)
                 </div>
               </div>
-            </>
+            </div>
           )}
         </div>
       )}
 
       {/* Scrollable list */}
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {displayGroups.length === 0 ? (
-          <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
-            {params.length === 0 ? "No parameters loaded" : showInvalidOnly ? "No invalid parameters" : "No matching parameters"}
-          </div>
+          loading && params.length === 0 ? (
+            <LoadingPanel label="Loading parameters…" />
+          ) : (
+            <div className="flex items-center justify-center px-4 py-12 text-center text-sm text-muted-foreground">
+              {params.length === 0 ? "No parameters loaded" : showInvalidOnly ? "No invalid parameters" : "No matching parameters"}
+            </div>
+          )
         ) : (
           <>
-            {/* Sticky column header */}
-            <div className="sticky top-0 z-20 flex items-center border-b border-border bg-toolbar px-2 py-1">
-              <div className={COL_CHECKBOX} />
-              <div className={cn(COL_NAME, "text-[10px] font-semibold text-muted-foreground uppercase tracking-wider pl-1")}>
-                Parameter
-              </div>
-              <div className={cn(COL_VALUE, "text-[10px] font-semibold text-muted-foreground uppercase tracking-wider pr-1")}>
-                Value
-              </div>
+            {/* Sticky column labels */}
+            <div className={cn("sticky top-0 z-20 flex h-8 items-center border-b border-border bg-card pr-1 text-xs font-medium text-muted-foreground", NAME_INDENT)}>
+              <div className="min-w-0 flex-1">Parameter</div>
+              <div className={cn(COL_VALUE, "px-2 text-right")}>Value</div>
             </div>
 
             <AnimatePresence initial={false}>
@@ -323,40 +343,41 @@ export function ParamPanel({
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.15, ease: "easeOut" }}
                 >
-                  {/* Sticky group header — sits below the column header */}
-                  <div
-                    onClick={() => onToggleGroup(groupNames)}
-                    className="sticky top-7 z-10 flex w-full items-center gap-1.5 border-b border-border bg-secondary/50 px-2 py-1 text-left hover:bg-secondary/70 transition-colors cursor-pointer"
-                  >
-                    <span
-                      onClick={(e) => { e.stopPropagation(); toggleGroup(group.label); }}
-                      className="shrink-0 p-0.5 -m-0.5 rounded hover:bg-secondary transition-colors"
+                  {/* Sticky group band, pinned under the column labels. The outer layer keeps it opaque over scrolling rows. */}
+                  <div className="sticky top-8 z-10 bg-card">
+                    <div
+                      onClick={() => onToggleGroup(groupNames)}
+                      className="flex h-8 w-full cursor-pointer items-center gap-2 border-b border-border bg-secondary/60 px-2 text-left transition-colors hover:bg-secondary"
                     >
-                      {isOpen ? (
-                        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                      ) : (
-                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-                      )}
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={groupAllChecked}
-                      ref={(el) => {
-                        if (el) el.indeterminate = groupSomeChecked && !groupAllChecked;
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={() => onToggleGroup(groupNames)}
-                      className="h-3.5 w-3.5 rounded accent-foreground cursor-pointer"
-                      aria-label={`Select all in ${group.label}`}
-                    />
-                    <span className="flex-1 min-w-0 flex items-center gap-1.5">
-                      <span className="text-xs font-semibold text-group-text truncate">
-                        {group.label}
+                      <button
+                        type="button"
+                        aria-expanded={isOpen}
+                        aria-label={`${isOpen ? "Collapse" : "Expand"} ${group.label}`}
+                        title={`${isOpen ? "Collapse" : "Expand"} ${group.label}`}
+                        onClick={(e) => { e.stopPropagation(); toggleGroup(group.label); }}
+                        className={cn(buttonClass("ghost", "icon"), "hover:bg-border/70")}
+                      >
+                        <ChevronDown className={cn("h-4 w-4 transition-transform", !isOpen && "-rotate-90")} />
+                      </button>
+                      <input
+                        type="checkbox"
+                        checked={groupAllChecked}
+                        ref={(el) => {
+                          if (el) el.indeterminate = groupSomeChecked && !groupAllChecked;
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={() => onToggleGroup(groupNames)}
+                        aria-label={`Select all in ${group.label}`}
+                      />
+                      <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                        <span className="truncate text-[13px] font-semibold text-foreground">
+                          {group.label}
+                        </span>
+                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                          #{group.params.length}
+                        </span>
                       </span>
-                      <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-                        #{group.params.length}
-                      </span>
-                    </span>
+                    </div>
                   </div>
 
                   {/* Param rows */}
@@ -400,26 +421,28 @@ export function ParamPanel({
                           exit={{ opacity: 0, x: variant === "protected" ? 16 : -16 }}
                           transition={{ duration: 0.15, ease: "easeOut" }}
                           className={cn(
-                            "flex items-start border-b border-border/30 pl-8 pr-2 py-1 transition-colors cursor-pointer border-l-4",
+                            // The left border is both the guide line under the group's chevron and the row's state colour.
+                            "relative ml-6 flex cursor-pointer items-start border-b border-l-2 border-b-border/60 py-0.5 pl-5.5 pr-1 transition-colors",
+                            "before:absolute before:left-0 before:top-4 before:h-px before:w-3.5 before:bg-border",
                             isSelected
                               ? cn(
                                   "bg-primary/10",
-                                  rowIsInvalid && !rowIsAcknowledged ? "border-l-red-500/70"
-                                  : rowIsAcknowledged ? "border-l-blue-500/60"
-                                  : hasOverride ? "border-l-amber-500/50"
-                                  : "border-l-primary/60"
+                                  rowIsInvalid && !rowIsAcknowledged ? "border-l-red-500"
+                                  : rowIsAcknowledged ? "border-l-blue-500"
+                                  : hasOverride ? "border-l-amber-500"
+                                  : "border-l-primary"
                                 )
                               : variant === "protected"
-                              ? "bg-protected/5 hover:bg-protected/12 border-l-red-400/35"
+                              ? "bg-red-500/5 hover:bg-red-500/10 border-l-red-500/40"
                               : rowIsInvalid && !rowIsAcknowledged
-                              ? "bg-red-950/30 hover:bg-red-950/40 border-l-red-500/70"
+                              ? "bg-red-500/10 hover:bg-red-500/15 border-l-red-500"
                               : rowIsAcknowledged
-                              ? "bg-blue-950/25 hover:bg-blue-950/35 border-l-blue-500/60"
+                              ? "bg-blue-500/10 hover:bg-blue-500/15 border-l-blue-500"
                               : hasOverride
-                              ? "bg-amber-950/20 hover:bg-amber-950/30 border-l-amber-500/50"
+                              ? "bg-amber-500/10 hover:bg-amber-500/15 border-l-amber-500"
                               : variant === "applied"
-                              ? "bg-secondary/10 hover:bg-secondary/20 border-l-group-text/30"
-                              : "hover:bg-secondary/30 border-l-transparent"
+                              ? "hover:bg-secondary/60 border-l-border"
+                              : "hover:bg-secondary/60 border-l-transparent"
                           )}
                           onClick={() => {
                             if (variant !== "applied") onToggleCheck(param.name);
@@ -427,24 +450,23 @@ export function ParamPanel({
                           }}
                         >
                           {/* Checkbox col */}
-                          <div className={cn(COL_CHECKBOX, "flex justify-center pt-0.5")}>
+                          <div className="flex h-7 shrink-0 items-center">
                             <input
                               type="checkbox"
                               checked={checkedNames.has(param.name)}
                               onClick={(e) => e.stopPropagation()}
                               onChange={() => onToggleCheck(param.name)}
-                              className="h-3.5 w-3.5 rounded accent-foreground cursor-pointer"
                               aria-label={`Select ${param.name}`}
                             />
                           </div>
 
                           {/* Name col */}
-                          <div className={cn(COL_NAME, "flex flex-col gap-0.5 pl-1")}>
+                          <div className="flex min-w-0 flex-1 flex-col gap-0.5 py-1 pl-2">
                             <span className={cn(
-                              "font-mono text-xs truncate",
-                              !isSelected && rowIsInvalid && !rowIsAcknowledged ? "text-red-300"
-                              : !isSelected && rowIsAcknowledged ? "text-blue-300"
-                              : !isSelected && hasOverride ? "text-amber-300"
+                              "font-mono text-[13px] truncate",
+                              !isSelected && rowIsInvalid && !rowIsAcknowledged ? "text-red-700 dark:text-red-300"
+                              : !isSelected && rowIsAcknowledged ? "text-blue-700 dark:text-blue-300"
+                              : !isSelected && hasOverride ? "text-amber-700 dark:text-amber-300"
                               : "text-foreground"
                             )}>
                               {nameMatches ? highlightText(param.name, q) : param.name}
@@ -455,7 +477,7 @@ export function ParamPanel({
                               </span>
                             )}
                             {noteSnippet && (
-                              <span className="font-sans text-[10px] text-amber-400/70 leading-snug">
+                              <span className="font-sans text-[10px] text-amber-700 dark:text-amber-400/70 leading-snug">
                                 ✎ {highlightText(noteSnippet, q)}
                               </span>
                             )}
@@ -477,7 +499,7 @@ export function ParamPanel({
                               isAcknowledged={acknowledgedInvalid.has(param.name)}
                             />
                           ) : (
-                            <div className={cn(COL_VALUE, "font-mono text-xs text-muted-foreground tabular-nums pt-0.5 pr-1 text-right")}>
+                            <div className={cn(COL_VALUE, "flex h-7 items-center justify-end px-2 font-mono text-[13px] text-muted-foreground tabular-nums")}>
                               {param.value}
                             </div>
                           )}

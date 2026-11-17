@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { FolderOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
+import { buttonClass } from "@/components/ui/styles";
 
 export function FileUpload({ onFileLoaded, className }: { onFileLoaded?: () => void; className?: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -33,8 +34,9 @@ export function FileUpload({ onFileLoaded, className }: { onFileLoaded?: () => v
         onChange={handleFileChange}
       />
       <button
+        type="button"
         onClick={() => inputRef.current?.click()}
-        className={cn("flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-all hover:bg-primary/90 cursor-pointer whitespace-nowrap", className)}
+        className={cn(buttonClass("secondary", "md"), className)}
       >
         <FolderOpen className="h-4 w-4" />
         Open .param

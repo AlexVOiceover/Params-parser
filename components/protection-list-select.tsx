@@ -1,6 +1,8 @@
 "use client";
 
+import { useId } from "react";
 import { useApp } from "@/lib/app-context";
+import { fieldClass, labelClass } from "@/components/ui/styles";
 
 const EDIT_SENTINEL = "__edit_lists__";
 const NO_FILTER_SENTINEL = "__no_filter__";
@@ -11,6 +13,7 @@ interface Props {
 
 export function ProtectionListSelect({ onEditLists }: Props) {
   const { protectionLists, activeListName, setActiveList } = useApp();
+  const selectId = useId();
 
   const globalLists = protectionLists.filter((l) => l.isGlobal);
   const userLists = protectionLists.filter((l) => !l.isGlobal);
@@ -25,14 +28,15 @@ export function ProtectionListSelect({ onEditLists }: Props) {
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-sm text-muted-foreground whitespace-nowrap">
+    <div className="flex min-w-0 items-center gap-2">
+      <label htmlFor={selectId} className={`${labelClass} whitespace-nowrap`}>
         Protection list:
-      </span>
+      </label>
       <select
+        id={selectId}
         value={activeListName}
         onChange={handleChange}
-        className="h-9 rounded-md border border-border bg-secondary px-3 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+        className={`${fieldClass} min-w-0 flex-1 cursor-pointer truncate sm:flex-none`}
       >
         {globalLists.length > 0 ? (
           <>

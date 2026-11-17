@@ -3,8 +3,11 @@
 import { useId, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Pencil, Plus, Trash2, X } from "lucide-react";
+import { Boxes, Clock, Pencil, Plus, Trash2 } from "lucide-react";
 import { BusyButton } from "@/components/ui/busy";
+import { Dialog } from "@/components/ui/dialog";
+import { buttonClass, cardClass, fieldClass, labelClass, pageLeadClass, pageTitleClass } from "@/components/ui/styles";
+import { Badge } from "@/components/status-badge";
 import { modelHref } from "@/lib/versions";
 
 export interface ModelRow {
@@ -23,258 +26,373 @@ export interface FamilyGroup {
   models: ModelRow[];
 }
 
+const NEW_LINE = "__new__";
+
+type OpenDialog =
+  | { kind: "add"; lineId: string }
+  | { kind: "editLine" | "deleteLine"; line: FamilyGroup }
+  | { kind: "editVariant" | "deleteVariant"; line: FamilyGroup; variant: ModelRow };
+
+function count(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
 export function ModelList({ families, isAdmin }: { families: FamilyGroup[]; isAdmin: boolean }) {
   const router = useRouter();
-  const [, startTransition] = useTransition();
-  const [adding, setAdding] = useState<string | null>(null);
-  const refresh = () => startTransition(() => router.refresh());
+  const [refreshing, startTransition] = useTransition();
+  const [open, setOpen] = useState<OpenDialog | null>(null);
+  const close = () => setOpen(null);
+  const done = () => { setOpen(null); startTransition(() => router.refresh()); };
+
+  // One column template for every product line, so the columns line up from card to card.
+  const template = `minmax(0, 1.6fr) minmax(0, 1.2fr) 6rem${isAdmin ? " 4.5rem" : ""}`;
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-end justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Models</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Product lines and their variants. Each variant has a template: the reference params a new drone of that model starts from.
-          </p>
+      <div>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <h1 className={pageTitleClass}>Models</h1>
+          {isAdmin && (
+            <button type="button" onClick={() => setOpen({ kind: "add", lineId: NEW_LINE })} className={buttonClass("primary", "md")}>
+              <Plus className="h-4 w-4" /> Add product line
+            </button>
+          )}
         </div>
-        {isAdmin && (
-          <button
-            type="button"
-            onClick={() => setAdding("__new__")}
-            className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 cursor-pointer whitespace-nowrap"
-          >
-            <Plus className="h-3.5 w-3.5" /> Add product line
-          </button>
-        )}
+        <p className={pageLeadClass}>
+          Product lines and their variants. Each variant has a template: the reference params a new drone of that model starts from.
+        </p>
       </div>
 
-      {families.length === 0 && (
-        <div className="rounded-lg border border-border bg-card px-6 py-10 text-center text-sm text-muted-foreground">No models yet.</div>
+      {families.length === 0 ? (
+        <div className={`${cardClass} px-6 py-14 text-center`}>
+          <p className="text-sm font-medium text-foreground">No models yet.</p>
+          <p className="mt-1 text-[13px] text-muted-foreground">
+            {isAdmin ? "Add a product line to start. It comes with a first variant, ready for its template." : "An admin has not added a product line yet."}
+          </p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {families.some((f) => f.models.length > 0) && (
+            // px-px stands in for the cards' border, so the labels sit exactly over the columns.
+            <div className="hidden px-px md:block">
+              <div className="grid items-center gap-4 pl-15 pr-4 text-xs font-medium text-muted-foreground" style={{ gridTemplateColumns: template }}>
+                <span>Variant</span>
+                <span>Template</span>
+                <span>Drones</span>
+                {isAdmin && <span className="sr-only">Actions</span>}
+              </div>
+            </div>
+          )}
+          <div aria-busy={refreshing || undefined} className={`flex flex-col gap-3 ${refreshing ? "opacity-60" : ""}`}>
+            {families.map((f) => (
+              <ProductLineCard
+                key={f.id}
+                line={f}
+                isAdmin={isAdmin}
+                template={template}
+                onAddVariant={() => setOpen({ kind: "add", lineId: f.id })}
+                onEdit={() => setOpen({ kind: "editLine", line: f })}
+                onDelete={() => setOpen({ kind: "deleteLine", line: f })}
+                onEditVariant={(variant) => setOpen({ kind: "editVariant", line: f, variant })}
+                onDeleteVariant={(variant) => setOpen({ kind: "deleteVariant", line: f, variant })}
+              />
+            ))}
+          </div>
+        </div>
       )}
 
-      {families.map((f) => (
-        <FamilyCard key={f.id} family={f} isAdmin={isAdmin} onAddVariant={() => setAdding(f.id)} onChanged={refresh} />
-      ))}
-
-      {adding && (
-        <AddModelDialog
-          families={families}
-          initialFamilyId={adding}
-          onClose={() => setAdding(null)}
-          onAdded={() => { setAdding(null); refresh(); }}
+      {open?.kind === "add" && (
+        <AddModelDialog families={families} initialFamilyId={open.lineId} onClose={close} onAdded={done} />
+      )}
+      {open?.kind === "editLine" && (
+        <EditDialog
+          title="Edit product line"
+          nameLabel="Product line name"
+          url={`/api/admin/families/${open.line.id}`}
+          name={open.line.name}
+          description={open.line.description}
+          onClose={close}
+          onSaved={done}
         />
+      )}
+      {open?.kind === "editVariant" && (
+        <EditDialog
+          title="Edit variant"
+          nameLabel="Variant name"
+          lineName={open.line.name}
+          url={`/api/admin/variants/${open.variant.id}`}
+          name={open.variant.name}
+          description={open.variant.description}
+          onClose={close}
+          onSaved={done}
+        />
+      )}
+      {open?.kind === "deleteLine" && (
+        <DeleteDialog
+          title={`Delete ${open.line.name}?`}
+          url={`/api/admin/families/${open.line.id}`}
+          confirmLabel="Delete product line"
+          onClose={close}
+          onDeleted={done}
+        >
+          It has no variants left, so only the product line itself is removed. This cannot be undone.
+        </DeleteDialog>
+      )}
+      {open?.kind === "deleteVariant" && (
+        <DeleteDialog
+          title={`Delete ${open.line.name} · ${open.variant.name}?`}
+          url={`/api/admin/variants/${open.variant.id}`}
+          confirmLabel="Delete variant"
+          onClose={close}
+          onDeleted={done}
+        >
+          The variant is removed from {open.line.name}.
+          {(open.variant.template || open.variant.pending) && " This also deletes its template history."}
+          {" "}This cannot be undone.
+        </DeleteDialog>
       )}
     </div>
   );
 }
 
-function FamilyCard({ family, isAdmin, onAddVariant, onChanged }: {
-  family: FamilyGroup;
+function ProductLineCard({ line, isAdmin, template, onAddVariant, onEdit, onDelete, onEditVariant, onDeleteVariant }: {
+  line: FamilyGroup;
   isAdmin: boolean;
+  template: string;
   onAddVariant: () => void;
-  onChanged: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onEditVariant: (variant: ModelRow) => void;
+  onDeleteVariant: (variant: ModelRow) => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(family.name);
-  const [description, setDescription] = useState(family.description ?? "");
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [busy, setBusy] = useState<"save" | "delete" | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const ids = { name: useId(), description: useId() };
-  const drones = family.models.reduce((n, m) => n + m.drones, 0);
-
-  async function call(method: "PATCH" | "DELETE") {
-    setBusy(method === "PATCH" ? "save" : "delete");
-    setError(null);
-    const res = await fetch(`/api/admin/families/${family.id}`, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: method === "PATCH" ? JSON.stringify({ name: name.trim(), description }) : undefined,
-    });
-    setBusy(null);
-    if (!res.ok) {
-      const b = await res.json().catch(() => ({})) as { error?: string };
-      setError(b.error ?? "That did not work");
-      setConfirmDelete(false);
-      return;
-    }
-    setEditing(false);
-    onChanged();
-  }
+  const headingId = useId();
+  const drones = line.models.reduce((n, m) => n + m.drones, 0);
+  const hasVariants = line.models.length > 0;
 
   return (
-    <section className="rounded-lg border border-border bg-card overflow-hidden">
-      <header className="flex items-start gap-3 flex-wrap border-b border-border bg-secondary px-4 py-2.5">
-        {editing ? (
-          <form onSubmit={(e) => { e.preventDefault(); call("PATCH"); }} className="flex items-end gap-2 flex-wrap">
-            <div className="flex flex-col gap-1">
-              <label htmlFor={ids.name} className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Product line</label>
-              <input id={ids.name} value={name} onChange={(e) => setName(e.target.value)} className="rounded-md border border-border bg-card px-2 py-1 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring" />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label htmlFor={ids.description} className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Description</label>
-              <input id={ids.description} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional" className="w-72 rounded-md border border-border bg-card px-2 py-1 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring" />
-            </div>
-            <BusyButton type="submit" busy={busy === "save"} busyLabel="Saving…" disabled={!name.trim()} className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90">Save</BusyButton>
-            <button type="button" onClick={() => { setEditing(false); setName(family.name); setDescription(family.description ?? ""); }} className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-card cursor-pointer whitespace-nowrap">Cancel</button>
-          </form>
-        ) : (
-          <div className="flex flex-col">
-            <div className="flex items-center gap-3 flex-wrap">
-              <h2 className="text-sm font-semibold text-foreground">{family.name}</h2>
-              <span className="text-xs text-muted-foreground">
-                {family.models.length} variant{family.models.length === 1 ? "" : "s"} · {drones} drone{drones === 1 ? "" : "s"}
-              </span>
-            </div>
-            {family.description && <p className="text-xs text-muted-foreground mt-0.5">{family.description}</p>}
-          </div>
-        )}
-        {isAdmin && !editing && (
-          <div className="ml-auto flex items-center gap-1">
-            <button type="button" onClick={onAddVariant} className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-card cursor-pointer whitespace-nowrap">
+    <section aria-labelledby={headingId} className={`${cardClass} overflow-hidden`}>
+      <div className="flex flex-wrap items-start gap-x-3 gap-y-2.5 px-4 py-3">
+        <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
+          <Boxes className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 id={headingId} className="text-sm font-semibold text-foreground">{line.name}</h2>
+          {line.description && <p className="text-[13px] text-muted-foreground">{line.description}</p>}
+          <p className="text-xs text-muted-foreground">{count(line.models.length, "variant")} · {count(drones, "drone")}</p>
+        </div>
+        {isAdmin && (
+          <div className="flex basis-full items-center gap-1 pl-11 sm:basis-auto sm:pl-0">
+            <button type="button" onClick={onAddVariant} className={buttonClass("secondary", "sm", "mr-1")}>
               <Plus className="h-3.5 w-3.5" /> Add variant
             </button>
-            <button type="button" aria-label={`Edit ${family.name}`} title="Edit name and description" onClick={() => setEditing(true)} className="rounded p-1.5 text-muted-foreground hover:text-foreground hover:bg-card cursor-pointer">
-              <Pencil className="h-3.5 w-3.5" />
+            <button type="button" aria-label={`Edit ${line.name}`} title="Edit name and description" onClick={onEdit} className={buttonClass("ghost", "icon")}>
+              <Pencil className="h-4 w-4" />
             </button>
-            {confirmDelete ? (
-              <span className="flex items-center gap-1">
-                <BusyButton type="button" busy={busy === "delete"} busyLabel="Deleting…" onClick={() => call("DELETE")} className="rounded-md bg-destructive px-2 py-1 text-xs font-medium text-white hover:bg-destructive/90">Delete {family.name}</BusyButton>
-                <button type="button" onClick={() => setConfirmDelete(false)} className="rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-card cursor-pointer whitespace-nowrap">Keep</button>
-              </span>
-            ) : (
-              <button
-                type="button"
-                aria-label={`Delete ${family.name}`}
-                title={family.models.length > 0 ? "Delete its variants first" : `Delete ${family.name}`}
-                disabled={family.models.length > 0}
-                onClick={() => setConfirmDelete(true)}
-                className="rounded p-1.5 text-muted-foreground hover:text-destructive hover:bg-card cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            )}
+            <button
+              type="button"
+              aria-label={hasVariants ? `Delete ${line.name}: delete its variants first` : `Delete ${line.name}`}
+              title={hasVariants ? "Delete its variants first" : `Delete ${line.name}`}
+              disabled={hasVariants}
+              onClick={onDelete}
+              className={buttonClass("dangerGhost", "icon")}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
           </div>
         )}
-      </header>
-      {error && <p className="px-4 pt-2 text-xs text-destructive">{error}</p>}
+      </div>
 
-      {family.models.length === 0 ? (
-        <p className="px-4 py-3 text-xs text-muted-foreground">No variants yet.</p>
+      {hasVariants ? (
+        <ul className="relative border-t border-border before:absolute before:bottom-3 before:left-8 before:top-0 before:w-px before:bg-border">
+          {line.models.map((m) => (
+            <VariantRow key={m.id} variant={m} isAdmin={isAdmin} template={template} onEdit={() => onEditVariant(m)} onDelete={() => onDeleteVariant(m)} />
+          ))}
+        </ul>
       ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground">
-              <th className="px-4 py-1.5 text-left font-semibold">Variant</th>
-              <th className="px-4 py-1.5 text-left font-semibold">Template</th>
-              <th className="px-4 py-1.5 text-left font-semibold w-20">Drones</th>
-              {isAdmin && <th className="px-4 py-1.5 w-28"><span className="sr-only">Actions</span></th>}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {family.models.map((m) => <VariantRow key={m.id} m={m} isAdmin={isAdmin} onChanged={onChanged} />)}
-          </tbody>
-        </table>
+        <p className="border-t border-border py-3 pl-15 pr-4 text-[13px] text-muted-foreground">No variants yet.</p>
       )}
     </section>
   );
 }
 
-function VariantRow({ m, isAdmin, onChanged }: { m: ModelRow; isAdmin: boolean; onChanged: () => void }) {
-  const router = useRouter();
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(m.name);
-  const [description, setDescription] = useState(m.description ?? "");
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [busy, setBusy] = useState<"save" | "delete" | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const ids = { name: useId(), description: useId() };
+function VariantRow({ variant: m, isAdmin, template, onEdit, onDelete }: {
+  variant: ModelRow;
+  isAdmin: boolean;
+  template: string;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const inUse = m.drones > 0;
+  const inUseReason = `${m.drones} drone${m.drones === 1 ? " uses" : "s use"} it — move or delete them first`;
 
-  async function call(method: "PATCH" | "DELETE") {
-    setBusy(method === "PATCH" ? "save" : "delete");
+  return (
+    <li className="relative ml-15 border-b border-border last:border-b-0 before:absolute before:-left-7 before:top-1/2 before:h-px before:w-4 before:bg-border">
+      <Link
+        href={modelHref(m.id)}
+        className="group -ml-3 flex flex-col gap-1.5 py-3 pl-3 pr-4 outline-none transition-colors hover:bg-secondary/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50 cursor-pointer md:grid md:items-center md:gap-4"
+        style={{ gridTemplateColumns: template }}
+      >
+        <span className={`min-w-0 ${isAdmin ? "pr-18 md:pr-0" : ""}`}>
+          <span className="block text-sm font-medium text-foreground group-hover:text-primary">{m.name}</span>
+          {m.description && <span className="block text-[13px] leading-snug text-muted-foreground">{m.description}</span>}
+        </span>
+        {/* On phones the template and the drone count share one line; from md up they are two columns. */}
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 md:contents">
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
+            {m.template ? (
+              <>
+                <span className="text-muted-foreground md:sr-only">Template</span>
+                <span className="font-mono text-foreground">v{m.template}</span>
+              </>
+            ) : (
+              <span className="text-muted-foreground">No template yet</span>
+            )}
+            {m.pending && (
+              <Badge tone="info" title={`v${m.pending} was proposed and waits for an admin to approve it.`}>
+                <Clock className="h-3 w-3" aria-hidden="true" />
+                v{m.pending} to review
+              </Badge>
+            )}
+          </span>
+          <span aria-hidden="true" className="text-[13px] text-muted-foreground md:hidden">·</span>
+          <span className={`text-[13px] ${inUse ? "text-foreground" : "text-muted-foreground"}`}>{count(m.drones, "drone")}</span>
+        </span>
+        {isAdmin && <span aria-hidden="true" className="hidden md:block" />}
+      </Link>
+      {isAdmin && (
+        // Outside the link, over its empty last column, so these never open the model.
+        <div className="absolute right-2 top-1.5 flex items-center gap-1 md:right-4 md:top-1/2 md:-translate-y-1/2">
+          <button type="button" aria-label={`Edit ${m.name}`} title="Edit name and description" onClick={onEdit} className={buttonClass("ghost", "icon")}>
+            <Pencil className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            aria-label={inUse ? `Delete ${m.name}: ${inUseReason}` : `Delete ${m.name}`}
+            title={inUse ? inUseReason : "Delete this variant and its template history"}
+            disabled={inUse}
+            onClick={onDelete}
+            className={buttonClass("dangerGhost", "icon")}
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function EditDialog({ title, nameLabel, lineName, url, name: savedName, description: savedDescription, onClose, onSaved }: {
+  title: string;
+  nameLabel: string;
+  /** For a variant: its product line, to show the full model name. */
+  lineName?: string;
+  url: string;
+  name: string;
+  description: string | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(savedName);
+  const [description, setDescription] = useState(savedDescription ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ids = { name: useId(), description: useId(), hint: useId() };
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
     setError(null);
-    const res = await fetch(`/api/admin/variants/${m.id}`, {
-      method,
+    const res = await fetch(url, {
+      method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: method === "PATCH" ? JSON.stringify({ name: name.trim(), description }) : undefined,
+      body: JSON.stringify({ name: name.trim(), description }),
     });
-    setBusy(null);
     if (!res.ok) {
       const b = await res.json().catch(() => ({})) as { error?: string };
+      setBusy(false);
       setError(b.error ?? "That did not work");
-      setConfirmDelete(false);
       return;
     }
-    setEditing(false);
-    onChanged();
-  }
-
-  if (editing) {
-    return (
-      <tr>
-        <td colSpan={4} className="px-4 py-2.5">
-          <form onSubmit={(e) => { e.preventDefault(); call("PATCH"); }} className="flex items-end gap-2 flex-wrap">
-            <div className="flex flex-col gap-1">
-              <label htmlFor={ids.name} className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Variant</label>
-              <input id={ids.name} value={name} onChange={(e) => setName(e.target.value)} className="rounded-md border border-border bg-secondary px-2 py-1 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring" />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label htmlFor={ids.description} className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Description</label>
-              <input id={ids.description} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional" className="w-72 rounded-md border border-border bg-secondary px-2 py-1 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring" />
-            </div>
-            <BusyButton type="submit" busy={busy === "save"} busyLabel="Saving…" disabled={!name.trim()} className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90">Save</BusyButton>
-            <button type="button" onClick={() => { setEditing(false); setName(m.name); setDescription(m.description ?? ""); }} className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-secondary cursor-pointer whitespace-nowrap">Cancel</button>
-            {error && <span className="text-xs text-destructive">{error}</span>}
-          </form>
-        </td>
-      </tr>
-    );
+    onSaved();
   }
 
   return (
-    <tr onClick={() => router.push(modelHref(m.id))} className="cursor-pointer hover:bg-secondary/40 transition-colors">
-      <td className="px-4 py-2.5">
-        <Link href={modelHref(m.id)} onClick={(e) => e.stopPropagation()} className="font-medium text-foreground hover:text-primary cursor-pointer whitespace-nowrap">
-          {m.name}
-        </Link>
-        {m.description && <p className="font-sans text-[11px] text-muted-foreground leading-snug">{m.description}</p>}
-        {error && <p className="text-xs text-destructive">{error}</p>}
-      </td>
-      <td className="px-4 py-2.5 text-xs">
-        {m.template ? <span className="font-mono">v{m.template}</span> : <span className="text-muted-foreground">No template yet</span>}
-        {m.pending && <span className="ml-2 text-sky-700 dark:text-sky-300">v{m.pending} to review</span>}
-      </td>
-      <td className="px-4 py-2.5 text-xs text-muted-foreground">{m.drones}</td>
-      {isAdmin && (
-        <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center justify-end gap-1">
-            {confirmDelete ? (
-              <>
-                <BusyButton type="button" busy={busy === "delete"} busyLabel="Deleting…" onClick={() => call("DELETE")} className="rounded-md bg-destructive px-2 py-1 text-xs font-medium text-white hover:bg-destructive/90">Delete</BusyButton>
-                <button type="button" onClick={() => setConfirmDelete(false)} className="rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-secondary cursor-pointer whitespace-nowrap">Keep</button>
-              </>
-            ) : (
-              <>
-                <button type="button" aria-label={`Edit ${m.name}`} title="Edit name and description" onClick={() => setEditing(true)} className="rounded p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer">
-                  <Pencil className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  aria-label={`Delete ${m.name}`}
-                  title={m.drones > 0 ? `${m.drones} drone${m.drones === 1 ? " uses" : "s use"} it — move or delete them first` : "Delete this variant and its template history"}
-                  disabled={m.drones > 0}
-                  onClick={() => setConfirmDelete(true)}
-                  className="rounded p-1.5 text-muted-foreground hover:text-destructive hover:bg-secondary cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </>
-            )}
-          </div>
-        </td>
-      )}
-    </tr>
+    <Dialog
+      title={title}
+      onClose={onClose}
+      busy={busy}
+      onSubmit={submit}
+      footer={
+        <>
+          <button type="button" onClick={onClose} disabled={busy} className={buttonClass("secondary")}>Cancel</button>
+          <BusyButton type="submit" variant="primary" busy={busy} busyLabel="Saving…" disabled={!name.trim()}>Save</BusyButton>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={ids.name} className={labelClass}>{nameLabel}</label>
+        <input
+          id={ids.name}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          aria-describedby={lineName ? ids.hint : undefined}
+          className={`${fieldClass} w-full`}
+        />
+        {lineName && (
+          <p id={ids.hint} className="text-xs text-muted-foreground">
+            Its drones show the model as {lineName} · {name.trim() || "…"}
+          </p>
+        )}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={ids.description} className={labelClass}>Description</label>
+        <input id={ids.description} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional" className={`${fieldClass} w-full`} />
+      </div>
+      {error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}
+    </Dialog>
+  );
+}
+
+function DeleteDialog({ title, url, confirmLabel, onClose, onDeleted, children }: {
+  title: string;
+  url: string;
+  confirmLabel: string;
+  onClose: () => void;
+  onDeleted: () => void;
+  children: React.ReactNode;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function remove() {
+    setBusy(true);
+    setError(null);
+    const res = await fetch(url, { method: "DELETE", headers: { "Content-Type": "application/json" } });
+    if (!res.ok) {
+      const b = await res.json().catch(() => ({})) as { error?: string };
+      setBusy(false);
+      setError(b.error ?? "That did not work");
+      return;
+    }
+    onDeleted();
+  }
+
+  return (
+    <Dialog
+      title={title}
+      size="sm"
+      onClose={onClose}
+      busy={busy}
+      footer={
+        <>
+          <button type="button" onClick={onClose} disabled={busy} className={buttonClass("secondary")}>Cancel</button>
+          <BusyButton type="button" variant="danger" busy={busy} busyLabel="Deleting…" onClick={remove}>{confirmLabel}</BusyButton>
+        </>
+      }
+    >
+      <p className="text-sm text-foreground">{children}</p>
+      {error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}
+    </Dialog>
   );
 }
 
@@ -286,13 +404,16 @@ function AddModelDialog({ families, initialFamilyId, onClose, onAdded }: {
 }) {
   const [familyId, setFamilyId] = useState(initialFamilyId);
   const [familyName, setFamilyName] = useState("");
-  const [variant, setVariant] = useState("Base");
+  // Null until the user types, so the suggested name can follow the chosen product line.
+  const [typed, setTyped] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const ids = { family: useId(), familyName: useId(), variant: useId() };
-  const isNew = familyId === "__new__";
+  const ids = { family: useId(), familyName: useId(), variant: useId(), hint: useId() };
+  const isNew = familyId === NEW_LINE;
+  const hasBase = !isNew && !!families.find((f) => f.id === familyId)?.models.some((m) => m.name.trim().toLowerCase() === "base");
+  const variant = typed ?? (hasBase ? "" : "Base");
 
-  async function post(url: string, body: object): Promise<{ id?: string } | null> {
+  async function post(url: string, body: { name: string; familyId?: string }): Promise<{ id?: string } | null> {
     const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const b = await res.json().catch(() => ({})) as { error?: string; id?: string };
     if (!res.ok) { setError(b.error ?? "Could not add the model"); return null; }
@@ -316,44 +437,52 @@ function AddModelDialog({ families, initialFamilyId, onClose, onAdded }: {
     if (ok) onAdded();
   }
 
-  const field = "rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring";
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !busy && onClose()} />
-      <form onSubmit={submit} className="relative z-10 w-full max-w-md rounded-xl border border-border bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
-          <h2 className="text-sm font-semibold text-foreground">{isNew ? "Add product line" : "Add variant"}</h2>
-          <button type="button" aria-label="Close" onClick={onClose} disabled={busy} className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground cursor-pointer">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="flex flex-col gap-3 px-5 py-4">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={ids.family} className="text-xs font-medium text-muted-foreground">Product line</label>
-            <select id={ids.family} value={familyId} onChange={(e) => setFamilyId(e.target.value)} className={`${field} cursor-pointer`}>
-              {families.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-              <option value="__new__">New product line…</option>
-            </select>
-          </div>
-          {isNew && (
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor={ids.familyName} className="text-xs font-medium text-muted-foreground">Product line name</label>
-              <input id={ids.familyName} required value={familyName} onChange={(e) => setFamilyName(e.target.value)} placeholder="AIR8" className={field} />
-            </div>
-          )}
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={ids.variant} className="text-xs font-medium text-muted-foreground">Variant</label>
-            <input id={ids.variant} required value={variant} onChange={(e) => setVariant(e.target.value)} placeholder="Base" className={field} />
-          </div>
-          {error && <p className="text-xs text-destructive">{error}</p>}
-        </div>
-        <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
-          <button type="button" onClick={onClose} disabled={busy} className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary cursor-pointer whitespace-nowrap disabled:opacity-50">Cancel</button>
-          <BusyButton type="submit" busy={busy} busyLabel="Adding…" disabled={!variant.trim() || (isNew && !familyName.trim())} className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+    <Dialog
+      title={isNew ? "Add product line" : "Add variant"}
+      onClose={onClose}
+      busy={busy}
+      onSubmit={submit}
+      footer={
+        <>
+          <button type="button" onClick={onClose} disabled={busy} className={buttonClass("secondary")}>Cancel</button>
+          <BusyButton type="submit" variant="primary" busy={busy} busyLabel="Adding…" disabled={!variant.trim() || (isNew && !familyName.trim())}>
             {isNew ? "Add product line" : "Add variant"}
           </BusyButton>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={ids.family} className={labelClass}>Product line</label>
+        <select id={ids.family} value={familyId} onChange={(e) => setFamilyId(e.target.value)} className={`${fieldClass} w-full cursor-pointer`}>
+          {families.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+          <option value={NEW_LINE}>New product line…</option>
+        </select>
+      </div>
+      {isNew && (
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={ids.familyName} className={labelClass}>Product line name</label>
+          <input id={ids.familyName} required value={familyName} onChange={(e) => setFamilyName(e.target.value)} placeholder="AIR8" className={`${fieldClass} w-full`} />
         </div>
-      </form>
-    </div>
+      )}
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={ids.variant} className={labelClass}>{isNew ? "First variant" : "Variant name"}</label>
+        <input
+          id={ids.variant}
+          required
+          value={variant}
+          onChange={(e) => setTyped(e.target.value)}
+          placeholder={isNew ? "Base" : "e.g. LiDAR"}
+          aria-describedby={isNew ? ids.hint : undefined}
+          className={`${fieldClass} w-full`}
+        />
+        {isNew && (
+          <p id={ids.hint} className="text-xs text-muted-foreground">
+            Every new product line starts with a variant called “Base”. Type a different name to add that variant as well.
+          </p>
+        )}
+      </div>
+      {error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}
+    </Dialog>
   );
 }

@@ -9,6 +9,10 @@ export const metadata: Metadata = {
   title: "Clients — AIR6",
 };
 
+interface DroneRef { id: string; client_id: string | null }
+interface UserRef { client_id: string | null }
+interface HistoryRef { client_id: string | null; drone_id: string | null }
+
 export default async function ClientsPage() {
   const supabase = await createSessionClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -17,20 +21,31 @@ export default async function ClientsPage() {
   if (profile?.role !== "admin") redirect("/");
 
   const admin = createAdminClient();
-  const [{ data: clients }, { data: drones }, { data: users }] = await Promise.all([
+  const [{ data: clients }, { data: droneData }, { data: userData }, { data: historyData }] = await Promise.all([
     admin.from("clients").select("id, name").order("name"),
-    admin.from("drones").select("client_id"),
+    admin.from("drones").select("id, client_id"),
     admin.from("profiles").select("client_id"),
+    admin.from("client_sets").select("client_id, drone_id").not("client_id", "is", null),
   ]);
-  const count = (rows: { client_id: string | null }[] | null, id: string) => (rows ?? []).filter((r) => r.client_id === id).length;
-  const rows: ClientRow[] = (clients ?? []).map((c) => ({ id: c.id, name: c.name, drones: count(drones, c.id), users: count(users, c.id) }));
+  const drones = (droneData ?? []) as DroneRef[];
+  const users = (userData ?? []) as UserRef[];
+  const histories = (historyData ?? []) as HistoryRef[];
+
+  const rows: ClientRow[] = (clients ?? []).map((c) => {
+    const own = new Set(drones.filter((d) => d.client_id === c.id).map((d) => d.id));
+    return {
+      id: c.id,
+      name: c.name,
+      drones: own.size,
+      users: users.filter((u) => u.client_id === c.id).length,
+      // The delete route refuses while any history names the client. Those of its own drones go
+      // away with the drones, so only the others need their own explanation.
+      histories: histories.filter((h) => h.client_id === c.id && !(h.drone_id && own.has(h.drone_id))).length,
+    };
+  });
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-      <h1 className="text-xl font-semibold text-foreground">Clients</h1>
-      <p className="text-sm text-muted-foreground mt-0.5 mb-6">
-        Companies that own drones. Their users only ever see their own drones. Assign a drone to a client from the drone&apos;s page.
-      </p>
+    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
       <ClientsTable clients={rows} />
     </div>
   );

@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useId } from "react";
 import { X, Upload, CheckCircle, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { droneHref } from "@/lib/versions";
+import { BusyButton, Spinner } from "@/components/ui/busy";
+import { buttonClass, fieldClass, labelClass } from "@/components/ui/styles";
 
 interface ClientRow { id: string; name: string }
 interface DroneRow { id: string; client_id: string; variant_id: string; serial: string }
@@ -19,12 +21,6 @@ interface Props {
   suggestedName: string;
   onClose: () => void;
 }
-
-const inputClass =
-  "rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring";
-const selectClass = inputClass + " cursor-pointer";
-const labelClass = "flex flex-col gap-1.5";
-const labelTextClass = "text-xs font-medium text-muted-foreground";
 
 export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
   const [clients, setClients] = useState<ClientRow[]>([]);
@@ -44,6 +40,10 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
   const [done, setDone] = useState(false);
   const [donePath, setDonePath] = useState<string | null>(null);
   const [savedAs, setSavedAs] = useState<string | null>(null);
+  const titleId = useId();
+  const clientFieldId = useId();
+  const droneFieldId = useId();
+  const changelogFieldId = useId();
 
   useEffect(() => {
     const supabase = createClient();
@@ -163,112 +163,134 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
     !changelog.trim();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-xs" onClick={onClose} />
 
-      <div className="relative z-10 w-full max-w-sm rounded-xl border border-border bg-card shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between border-b border-border bg-toolbar px-5 py-3.5 shrink-0">
-          <div className="flex items-center gap-2">
-            <Upload className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-bold text-foreground">Publish to Catalog</h2>
-          </div>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative z-10 flex max-h-[90vh] w-full max-w-sm flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+      >
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3.5">
+          <h2 id={titleId} className="text-base font-semibold text-foreground">Publish to Catalog</h2>
           <button
+            type="button"
             onClick={onClose}
-            className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer"
+            aria-label="Close"
+            title="Close"
+            className={buttonClass("ghost", "icon", "-mr-1.5")}
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
         {done ? (
-          <div className="px-5 py-8 text-center flex flex-col items-center gap-3">
-            <CheckCircle className="h-8 w-8 text-emerald-400" />
-            <p className="text-sm text-foreground font-medium">Published to catalog</p>
-            <p className="text-xs text-muted-foreground">Saved as {savedAs ?? "a new version"} in the drone&apos;s history.</p>
+          <div className="flex flex-col items-center gap-2 px-5 py-8 text-center">
+            <CheckCircle className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
+            <p className="mt-1 text-sm font-medium text-foreground">Published to catalog</p>
+            <p className="text-[13px] text-muted-foreground">Saved as {savedAs ?? "a new version"} in the drone&apos;s history.</p>
             <a
               href={donePath ?? "/"}
-              className="flex items-center gap-1.5 mt-2 text-xs text-primary hover:underline cursor-pointer"
+              className={buttonClass("secondary", "sm", "mt-3")}
             >
-              {donePath ? "Open the drone" : "Go to drones"} <ExternalLink className="h-3 w-3" />
+              {donePath ? "Open the drone" : "Go to drones"} <ExternalLink className="h-3.5 w-3.5" />
             </a>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-5 py-4 overflow-y-auto">
-            {/* Client */}
-            <label className={labelClass}>
-              <span className={labelTextClass}>Client <span className="text-destructive">*</span></span>
-              <select
-                required
-                value={clientId}
-                onChange={(e) => { setClientId(e.target.value); setDroneId(""); }}
-                className={selectClass}
-                disabled={!loaded}
-              >
-                <option value="">Select client…</option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </label>
-
-            {/* Drone */}
-            {clientId && (
-              <label className={labelClass}>
-                <span className={labelTextClass}>Drone <span className="text-destructive">*</span></span>
-                {dronesForClient.length === 0 ? (
-                  <p className="text-xs text-muted-foreground italic">
-                    No drones registered for this client. Add one on the <Link href="/" className="text-primary hover:underline" onClick={onClose}>Drones</Link> list.
-                  </p>
-                ) : (
-                  <select
-                    required
-                    value={droneId}
-                    onChange={(e) => setDroneId(e.target.value)}
-                    className={selectClass}
-                  >
-                    <option value="">Select drone…</option>
-                    {dronesForClient.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.serial} — {variantLabel(d.variant_id)}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </label>
-            )}
-
-            {/* Changelog */}
-            {droneId && (
-              <label className={labelClass}>
-                <span className={labelTextClass}>What does this version change? <span className="text-destructive">*</span></span>
-                <input
+          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
+              {/* Client */}
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor={clientFieldId} className={labelClass}>Client <span className="text-destructive">*</span></label>
+                <select
+                  id={clientFieldId}
                   required
-                  value={changelog}
-                  onChange={(e) => setChangelog(e.target.value)}
-                  className={inputClass}
-                />
-                <span className="text-[11px] text-muted-foreground">Saved as v{nextVersion} of {selectedDrone?.serial}.</span>
-              </label>
-            )}
+                  value={clientId}
+                  onChange={(e) => { setClientId(e.target.value); setDroneId(""); }}
+                  className={`${fieldClass} cursor-pointer`}
+                  disabled={!loaded}
+                >
+                  <option value="">Select client…</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                {!loaded && (
+                  <p role="status" className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Spinner /> Loading clients and drones…
+                  </p>
+                )}
+              </div>
 
-            {error && (
-              <p className="text-xs text-destructive bg-destructive/15 border border-destructive/40 rounded-md px-3 py-2">
-                {error}
-              </p>
-            )}
+              {/* Drone */}
+              {clientId && (
+                <div className="flex flex-col gap-1.5">
+                  {dronesForClient.length === 0 ? (
+                    <>
+                      <span className={labelClass}>Drone <span className="text-destructive">*</span></span>
+                      <p className="text-[13px] text-muted-foreground">
+                        No drones registered for this client. Add one on the <Link href="/" className="text-primary hover:underline cursor-pointer" onClick={onClose}>Drones</Link> list.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <label htmlFor={droneFieldId} className={labelClass}>Drone <span className="text-destructive">*</span></label>
+                      <select
+                        id={droneFieldId}
+                        required
+                        value={droneId}
+                        onChange={(e) => setDroneId(e.target.value)}
+                        className={`${fieldClass} cursor-pointer`}
+                      >
+                        <option value="">Select drone…</option>
+                        {dronesForClient.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.serial} — {variantLabel(d.variant_id)}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  )}
+                </div>
+              )}
 
-            <div className="flex items-center justify-end gap-2 pt-1">
-              <button type="button" onClick={onClose} className="rounded-md border border-border px-4 py-2 text-sm text-foreground hover:bg-secondary transition-colors cursor-pointer">
+              {/* Changelog */}
+              {droneId && (
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor={changelogFieldId} className={labelClass}>What does this version change? <span className="text-destructive">*</span></label>
+                  <input
+                    id={changelogFieldId}
+                    required
+                    value={changelog}
+                    onChange={(e) => setChangelog(e.target.value)}
+                    className={fieldClass}
+                  />
+                  <p className="text-xs text-muted-foreground">Saved as v{nextVersion} of {selectedDrone?.serial}.</p>
+                </div>
+              )}
+
+              {error && (
+                <p role="alert" className="text-[13px] text-destructive">
+                  {error}
+                </p>
+              )}
+            </div>
+
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border bg-secondary/40 px-5 py-3">
+              <button type="button" onClick={onClose} className={buttonClass("secondary")}>
                 Cancel
               </button>
-              <button
+              <BusyButton
                 type="submit"
+                variant="primary"
+                busy={submitting}
+                busyLabel="Publishing…"
                 disabled={submitDisabled}
-                className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                icon={<Upload className="h-3.5 w-3.5" />}
               >
-                <Upload className="h-3.5 w-3.5" />
-                {submitting ? "Publishing…" : "Publish"}
-              </button>
+                Publish
+              </BusyButton>
             </div>
           </form>
         )}
