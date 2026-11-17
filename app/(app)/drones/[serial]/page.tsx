@@ -6,7 +6,8 @@ import { createSessionClient } from "@/lib/supabase/server";
 import { fleetStatus, modelName } from "@/lib/fleet";
 import { getEvents, getVersions } from "@/lib/history";
 import { latestApproved, pendingProposal, modelHref } from "@/lib/versions";
-import { FleetStatusBadge } from "@/components/status-badge";
+import { describeStatus, FleetStatusBadge } from "@/components/status-badge";
+import { cardClass } from "@/components/ui/styles";
 import { HistoryTimeline } from "@/components/history-timeline";
 import { DroneSettings } from "@/components/drone-settings";
 import { StartHistoryButton } from "@/components/start-history-button";
@@ -69,33 +70,48 @@ export default async function DronePage({ params }: { params: Promise<{ serial: 
 
   const model = modelName(family?.name, variant?.name);
   const showBack = isStaff || (droneCount ?? 0) > 1;
+  const statusRow = { status, target: target?.version_label ?? null, pending: pending?.version_label ?? null, lastLabel: lastVerified?.label ?? null };
+  const verifiedOn = lastVerified
+    ? new Date(lastVerified.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+    : null;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 flex flex-col gap-8">
-      <header className="flex flex-col gap-2">
+    <div className="mx-auto flex max-w-4xl flex-col gap-8 px-4 py-8 sm:px-6">
+      <header className="flex flex-col gap-4">
         {showBack && (
-          <Link href="/" className="flex items-center gap-1 text-xs text-primary hover:underline cursor-pointer w-fit">
+          <Link href="/" className="flex w-fit items-center gap-1 text-[13px] font-medium text-primary hover:underline cursor-pointer">
             <ChevronLeft className="h-3.5 w-3.5" /> All drones
           </Link>
         )}
-        <div className="flex items-center gap-3 flex-wrap">
-          <h1 className="font-mono text-2xl font-semibold text-foreground">{drone.serial}</h1>
-          <FleetStatusBadge
-            row={{ status, target: target?.version_label ?? null, pending: pending?.version_label ?? null, lastLabel: lastVerified?.label ?? null }}
-            isStaff={isStaff}
-          />
+        <div>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="font-mono text-2xl font-semibold tracking-tight text-foreground">{drone.serial}</h1>
+            <FleetStatusBadge row={statusRow} isStaff={isStaff} />
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">{describeStatus(statusRow, isStaff).hint}</p>
+          {set?.description && <p className="mt-2 text-sm text-foreground">{set.description}</p>}
         </div>
-        <p className="text-sm text-muted-foreground flex items-center gap-x-2 gap-y-1 flex-wrap">
-          {isStaff
-            ? <Link href={modelHref(drone.variant_id)} className="text-foreground hover:text-primary cursor-pointer">{model}</Link>
-            : <span className="text-foreground">{model}</span>}
-          {isStaff && <span>· {client?.name ?? "No client"}</span>}
-          <span className="flex items-center gap-1">
-            · <Link2 className="h-3 w-3" />
-            {drone.chip_id ? <>flight controller <span className="font-mono">{drone.chip_id.slice(0, 8)}…</span></> : "flight controller not linked"}
-          </span>
-        </p>
-        {set?.description && <p className="text-sm text-foreground">{set.description}</p>}
+        <dl className={`${cardClass} grid grid-cols-2 gap-x-8 gap-y-4 px-5 py-4 sm:flex sm:flex-wrap sm:justify-between`}>
+          <Fact label="Model">
+            {isStaff
+              ? <Link href={modelHref(drone.variant_id)} className="text-primary hover:underline cursor-pointer">{model}</Link>
+              : model}
+          </Fact>
+          {isStaff && <Fact label="Client">{client?.name ?? <span className="text-muted-foreground">No client</span>}</Fact>}
+          <Fact label="Target version">
+            {target ? <span className="font-mono">v{target.version_label}</span> : <span className="text-muted-foreground">None yet</span>}
+          </Fact>
+          <Fact label="Last verified">
+            {lastVerified
+              ? <>{lastVerified.label ? <span className="font-mono">v{lastVerified.label}</span> : "A deleted version"} <span className="font-normal text-muted-foreground">· {verifiedOn}</span></>
+              : <span className="text-muted-foreground">Never</span>}
+          </Fact>
+          <Fact label="Flight controller">
+            {drone.chip_id
+              ? <span className="flex items-center gap-1.5" title={`Chip ID ${drone.chip_id}`}><Link2 className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" /> Linked <span className="font-mono font-normal text-muted-foreground">{drone.chip_id.slice(0, 8)}…</span></span>
+              : <span className="text-muted-foreground">Not linked</span>}
+          </Fact>
+        </dl>
       </header>
 
       {set ? (
@@ -114,7 +130,7 @@ export default async function DronePage({ params }: { params: Promise<{ serial: 
       ) : isStaff ? (
         <StartHistoryButton droneId={drone.id} serial={drone.serial} variantId={drone.variant_id} clientId={drone.client_id} clientName={client?.name ?? null} />
       ) : (
-        <p className="text-sm text-muted-foreground">This drone has no history yet. AIR6 will set it up.</p>
+        <p className={`${cardClass} px-5 py-6 text-sm text-muted-foreground`}>This drone has no history yet. AIR6 will set it up.</p>
       )}
 
       {settingsOptions && (
@@ -131,6 +147,15 @@ export default async function DronePage({ params }: { params: Promise<{ serial: 
           isAdmin={isAdmin}
         />
       )}
+    </div>
+  );
+}
+
+function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5 truncate text-sm font-medium text-foreground">{children}</dd>
     </div>
   );
 }

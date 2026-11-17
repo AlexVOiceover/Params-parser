@@ -1,8 +1,10 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
-import { FileUp, X } from "lucide-react";
+import { FileUp } from "lucide-react";
 import { BusyButton, Spinner } from "@/components/ui/busy";
+import { Dialog } from "@/components/ui/dialog";
+import { buttonClass, fieldClass, labelClass, textareaClass } from "@/components/ui/styles";
 import { ParamInfoHover } from "@/components/param-info-hover";
 import { parseParamFile } from "@/lib/param-engine";
 import { fetchVersionValues } from "@/lib/drone-flash-engine";
@@ -93,115 +95,103 @@ export function NewVersionDialog({ setId, variantId, kind, target, nextLabel, is
   const perDrone = rows?.filter((r) => r.perDrone) ?? [];
   const shown = showPerDrone ? rows ?? [] : managed;
   const fwInvalid = !!firmware.trim() && !/^\d+\.\d+\.\d+$/.test(firmware.trim());
-  const field = "rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !saving && onClose()} />
-      <div className="relative z-10 flex max-h-[90vh] w-full max-w-2xl flex-col rounded-xl border border-border bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
-          <h2 className="text-sm font-semibold text-foreground">
-            New version <span className="font-mono">v{nextLabel}</span> from a file
-          </h2>
-          <button type="button" aria-label="Close" onClick={onClose} disabled={saving} className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground cursor-pointer">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="flex flex-col gap-4 overflow-y-auto px-5 py-4">
-          <div className="flex items-center gap-2 flex-wrap">
-            <label htmlFor={ids.file} className="sr-only">.param file</label>
-            <input id={ids.file} ref={inputRef} type="file" accept=".param,.parm,.txt" className="hidden" onChange={(e) => { pick(e.target.files?.[0] ?? null); e.target.value = ""; }} />
-            <button
-              type="button"
-              onClick={() => inputRef.current?.click()}
-              disabled={saving}
-              className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary cursor-pointer whitespace-nowrap"
-            >
-              <FileUp className="h-3.5 w-3.5" /> {file ? "Choose another file" : "Choose a .param file"}
-            </button>
-            {file && <span className="font-mono text-xs text-muted-foreground truncate">{file.name} · {paramCount} params</span>}
-            {reading && <Spinner />}
-          </div>
-
-          {rows && (
-            <div className="flex flex-col gap-2">
-              <p className="text-sm text-foreground">
-                {target
-                  ? managed.length === 0
-                    ? `Same managed params as v${target.label}.`
-                    : `${managed.length} param${managed.length === 1 ? "" : "s"} differ from v${target.label}.`
-                  : `${paramCount} params. This will be the first version.`}
-                {perDrone.length > 0 && (
-                  <span className="text-muted-foreground"> {perDrone.length} per-drone param{perDrone.length === 1 ? "" : "s"} also differ; they are stored but never installed.</span>
-                )}
-              </p>
-              {target && (managed.length > 0 || perDrone.length > 0) && (
-                <>
-                  {perDrone.length > 0 && (
-                    <div className="flex items-center gap-2">
-                      <input id={ids.perDrone} type="checkbox" checked={showPerDrone} onChange={(e) => setShowPerDrone(e.target.checked)} className="cursor-pointer" />
-                      <label htmlFor={ids.perDrone} className="text-xs text-muted-foreground cursor-pointer">Show per-drone params too</label>
-                    </div>
-                  )}
-                  <div className="max-h-64 overflow-auto rounded-md border border-border">
-                    <table className="w-full text-xs whitespace-nowrap">
-                      <thead className="sticky top-0 bg-secondary text-[10px] uppercase tracking-wider text-muted-foreground">
-                        <tr>
-                          <th className="px-3 py-1.5 text-left font-semibold text-foreground">Param</th>
-                          <th className="px-3 py-1.5 text-left font-semibold">v{target.label} now</th>
-                          <th className="px-3 py-1.5 text-left font-semibold">In the file</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border font-mono">
-                        {shown.map((r) => (
-                          <tr key={r.name} className={r.perDrone ? "text-muted-foreground" : ""}>
-                            <td className="px-3 py-1"><ParamInfoHover name={r.name} />{r.perDrone && <span className="ml-1.5 font-sans text-[10px]">per-drone</span>}</td>
-                            <td className="px-3 py-1">{r.before ?? <span className="font-sans italic">not set</span>}</td>
-                            <td className="px-3 py-1 text-foreground">{r.after ?? <span className="font-sans italic text-muted-foreground">not in file</span>}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={ids.changelog} className="text-xs font-medium text-muted-foreground">What does this version change? *</label>
-            <textarea id={ids.changelog} rows={2} value={changelog} onChange={(e) => setChangelog(e.target.value)} disabled={saving} className={`${field} resize-none`} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={ids.firmware} className="text-xs font-medium text-muted-foreground">ArduPilot firmware it was made for (optional)</label>
-            <input id={ids.firmware} value={firmware} onChange={(e) => setFirmware(e.target.value)} disabled={saving} placeholder="4.5.7" className={`${field} font-mono`} />
-            {fwInvalid && <span className="text-xs text-destructive">Use the form 4.5.7</span>}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {isAdmin
-              ? kind === "drone"
-                ? `v${nextLabel} becomes the target: the drone is offered it the next time it is connected.`
-                : `v${nextLabel} becomes the template new drones of this model start from.`
-              : `v${nextLabel} waits for an admin to approve it.`}
-          </p>
-          {error && <p className="text-xs text-destructive">{error}</p>}
-        </div>
-
-        <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
-          <button type="button" onClick={onClose} disabled={saving} className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary cursor-pointer whitespace-nowrap disabled:opacity-50">Cancel</button>
+    <Dialog
+      title={`New version v${nextLabel} from a file`}
+      size="lg"
+      onClose={onClose}
+      busy={saving}
+      footer={
+        <>
+          <button type="button" onClick={onClose} disabled={saving} className={buttonClass("secondary")}>Cancel</button>
           <BusyButton
             type="button"
+            variant="primary"
             busy={saving}
             busyLabel="Saving…"
             disabled={!file || !rows || !changelog.trim() || fwInvalid}
             onClick={save}
-            className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
           >
             Save as v{nextLabel}
           </BusyButton>
-        </div>
+        </>
+      }
+    >
+      <div className="flex flex-wrap items-center gap-2.5 rounded-lg border border-dashed border-input bg-secondary/50 px-3 py-3">
+        <label htmlFor={ids.file} className="sr-only">.param file</label>
+        <input id={ids.file} ref={inputRef} type="file" accept=".param,.parm,.txt" className="hidden" onChange={(e) => { pick(e.target.files?.[0] ?? null); e.target.value = ""; }} />
+        <button type="button" onClick={() => inputRef.current?.click()} disabled={saving} className={buttonClass(file ? "secondary" : "primary")}>
+          <FileUp className="h-3.5 w-3.5" /> {file ? "Choose another file" : "Choose a .param file"}
+        </button>
+        {file
+          ? <span className="truncate font-mono text-[13px] text-foreground">{file.name} <span className="font-sans text-muted-foreground">· {paramCount} params</span></span>
+          : <span className="text-[13px] text-muted-foreground">You will see exactly what it changes before anything is saved.</span>}
+        {reading && <Spinner />}
       </div>
-    </div>
+
+      {rows && (
+        <div className="flex flex-col gap-2">
+          <p className="text-sm text-foreground">
+            {target
+              ? managed.length === 0
+                ? `Same managed params as v${target.label}.`
+                : `${managed.length} param${managed.length === 1 ? "" : "s"} differ from v${target.label}.`
+              : `${paramCount} params. This will be the first version.`}
+            {perDrone.length > 0 && (
+              <span className="text-muted-foreground"> {perDrone.length} per-drone param{perDrone.length === 1 ? "" : "s"} also differ; they are stored but never installed.</span>
+            )}
+          </p>
+          {target && (managed.length > 0 || perDrone.length > 0) && (
+            <>
+              {perDrone.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <input id={ids.perDrone} type="checkbox" checked={showPerDrone} onChange={(e) => setShowPerDrone(e.target.checked)} />
+                  <label htmlFor={ids.perDrone} className="text-[13px] text-foreground cursor-pointer">Show per-drone params too</label>
+                </div>
+              )}
+              <div className="max-h-64 overflow-auto rounded-lg border border-border">
+                <table className="w-full whitespace-nowrap text-xs">
+                  <thead className="sticky top-0 bg-secondary text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Param</th>
+                      <th className="px-3 py-2 text-left font-medium">v{target.label} now</th>
+                      <th className="px-3 py-2 text-left font-medium">In the file</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border font-mono">
+                    {shown.map((r) => (
+                      <tr key={r.name} className={r.perDrone ? "text-muted-foreground" : ""}>
+                        <td className="px-3 py-1.5"><ParamInfoHover name={r.name} />{r.perDrone && <span className="ml-1.5 font-sans text-[11px]">per-drone</span>}</td>
+                        <td className="px-3 py-1.5">{r.before ?? <span className="font-sans italic">not set</span>}</td>
+                        <td className="px-3 py-1.5 font-semibold text-foreground">{r.after ?? <span className="font-sans font-normal italic text-muted-foreground">not in file</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={ids.changelog} className={labelClass}>What does this version change? <span className="text-destructive">*</span></label>
+        <textarea id={ids.changelog} rows={2} value={changelog} onChange={(e) => setChangelog(e.target.value)} disabled={saving} className={`${textareaClass} w-full resize-none`} />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={ids.firmware} className={labelClass}>ArduPilot firmware it was made for <span className="font-normal text-muted-foreground">(optional)</span></label>
+        <input id={ids.firmware} value={firmware} onChange={(e) => setFirmware(e.target.value)} disabled={saving} placeholder="4.5.7" className={`${fieldClass} w-40 font-mono`} />
+        {fwInvalid && <span role="alert" className="text-xs text-destructive">Use the form 4.5.7</span>}
+      </div>
+      <p className="text-[13px] text-muted-foreground">
+        {isAdmin
+          ? kind === "drone"
+            ? `v${nextLabel} becomes the target: the drone is offered it the next time it is connected.`
+            : `v${nextLabel} becomes the template new drones of this model start from.`
+          : `v${nextLabel} waits for an admin to approve it.`}
+      </p>
+      {error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}
+    </Dialog>
   );
 }

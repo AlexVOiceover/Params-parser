@@ -3,7 +3,8 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --bg: #ffffff;
+  /* The page is a soft grey canvas; cards and the header sit on it in white. */
+  --bg: #f4f6f9;
   --fg: #0f172a;
   --card: #ffffff;
   --card-fg: #0f172a;
@@ -11,17 +12,18 @@
   --popover-fg: #0f172a;
   --primary: #2563eb;
   --primary-fg: #ffffff;
-  --secondary: #f1f5f9;
+  --secondary: #eef1f6;
   --secondary-fg: #475569;
-  --muted: #f1f5f9;
-  --muted-fg: #64748b;
-  --accent: #f1f5f9;
+  --muted: #eef1f6;
+  --muted-fg: #5a6577;
+  --accent: #eef1f6;
   --accent-fg: #0f172a;
   --destructive: #dc2626;
   --destructive-fg: #ffffff;
-  --border: #e2e8f0;
-  --input: #e2e8f0;
+  --border: #dde2ea;
+  --input: #c3cbd8;
   --ring: #2563eb;
+  --field: #ffffff;
 
   --protected: #fee2e2;
   --protected-header: #fca5a5;
@@ -32,33 +34,34 @@
   --console-bg: #0f172a;
   --console-text: #15803d;
   --group-text: #64748b;
-  --toolbar: #f8fafc;
+  --toolbar: #ffffff;
 
-  --scrollbar-thumb: #cbd5e1;
+  --scrollbar-thumb: #c3cbd8;
   --scrollbar-thumb-hover: #94a3b8;
-  --scrollbar-track: #f1f5f9;
+  --scrollbar-track: transparent;
 }
 
 :root.dark {
-  --bg: #0d0f14;
-  --fg: #e0e4ee;
-  --card: #141620;
-  --card-fg: #e0e4ee;
-  --popover: #141620;
-  --popover-fg: #e0e4ee;
+  --bg: #0c0e13;
+  --fg: #e3e7f0;
+  --card: #151923;
+  --card-fg: #e3e7f0;
+  --popover: #1a1f2b;
+  --popover-fg: #e3e7f0;
   --primary: #3b82f6;
   --primary-fg: #ffffff;
-  --secondary: #1e2230;
-  --secondary-fg: #a0a8c0;
-  --muted: #1a1d2a;
-  --muted-fg: #6b7394;
-  --accent: #1e2230;
-  --accent-fg: #e0e4ee;
+  --secondary: #1f2532;
+  --secondary-fg: #a6aec4;
+  --muted: #1b202b;
+  --muted-fg: #8e98b0;
+  --accent: #1f2532;
+  --accent-fg: #e3e7f0;
   --destructive: #ef4444;
   --destructive-fg: #ffffff;
-  --border: #252940;
-  --input: #252940;
+  --border: #272e3d;
+  --input: #3a445a;
   --ring: #3b82f6;
+  --field: #0f1219;
 
   --protected: #6b2a2a;
   --protected-header: #7f3333;
@@ -69,11 +72,11 @@
   --console-bg: #0a0c10;
   --console-text: #6ee77a;
   --group-text: #8898c0;
-  --toolbar: #12141c;
+  --toolbar: #11141b;
 
-  --scrollbar-thumb: #252940;
-  --scrollbar-thumb-hover: #3a3f55;
-  --scrollbar-track: #1a1d2a;
+  --scrollbar-thumb: #2c3445;
+  --scrollbar-thumb-hover: #3d4760;
+  --scrollbar-track: transparent;
 }
 
 /* Smooth theme transition — prevents flash when toggling dark/light.
@@ -116,6 +119,7 @@ body, main, header, nav, aside, section, article, div, td, th, tr, table, p, spa
   --color-console-text: var(--console-text);
   --color-group-text: var(--group-text);
   --color-toolbar: var(--toolbar);
+  --color-field: var(--field);
 }
 
 * {
@@ -145,17 +149,48 @@ body {
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
+/* One dropdown arrow for every select, instead of the browser's own. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2364748b' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3e%3cpath d='M4 6l4 4 4-4'/%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  background-size: 1rem;
+  padding-right: 2rem;
+}
+
+/* Size and shape sit in the base layer so a utility class (h-5 w-5, rounded-full) can still override them.
+   Without a size, appearance:none collapses the box to nothing. */
+@layer base {
+  input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
+    border-radius: 0.25rem;
+  }
+}
+
 input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;
-  background-color: transparent;
-  border: 1.5px solid var(--color-border);
+  background-color: var(--color-field);
+  border: 1.5px solid var(--color-input);
   cursor: pointer;
   flex-shrink: 0;
   background-size: 85% 85%;
   background-position: center;
   background-repeat: no-repeat;
   transition: border-color 0.12s, background-color 0.12s;
+}
+
+input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 input[type="checkbox"]:hover {

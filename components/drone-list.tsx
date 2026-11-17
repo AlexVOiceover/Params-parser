@@ -3,9 +3,11 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronUp, Plus, Search, Usb, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Box, Building2, ChevronDown, ChevronRight, Plus, Search, Usb, X } from "lucide-react";
 import { BusyButton } from "@/components/ui/busy";
-import { FleetStatusBadge } from "@/components/status-badge";
+import { Dialog } from "@/components/ui/dialog";
+import { buttonClass, cardClass, fieldClass, labelClass, pageLeadClass, pageTitleClass } from "@/components/ui/styles";
+import { FleetStatusBadge, STATUS_META, statusName } from "@/components/status-badge";
 import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
 import { STATUS_ORDER, type FleetRow, type FleetStatus } from "@/lib/fleet";
 import { droneHref } from "@/lib/versions";
@@ -21,6 +23,11 @@ interface Props {
   clients: ClientOption[];
   initialClientId: string | null;
 }
+
+type GroupBy = "none" | "model" | "client";
+type SortKey = "serial" | "model" | "client" | "status" | "target" | "last";
+interface Sort { key: SortKey; dir: "asc" | "desc" }
+interface Column { key: SortKey; label: string; width: string }
 
 function ago(iso: string | null): string {
   if (!iso) return "—";
@@ -40,24 +47,33 @@ export function DroneList({ rows, isStaff, isAdmin, models, clients, initialClie
   const [clientId, setClientId] = useState<string>(initialClientId ?? "all");
   const [adding, setAdding] = useState(false);
   const [groupBy, setGroupByState] = useState<GroupBy>("none");
-  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "status", dir: "asc" });
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [sort, setSort] = useState<Sort>({ key: "status", dir: "asc" });
   const searchId = useId();
   const clientFilterId = useId();
-  const groupId = useId();
+  const sortId = useId();
 
   // Remember the grouping per browser; it is a viewing preference.
   useEffect(() => {
     try {
       const saved = localStorage.getItem("air6_drones_group");
-      if (saved === "model" || saved === "client") setGroupByState(saved);
+      if (saved === "model" || (saved === "client" && isStaff)) setGroupByState(saved);
     } catch {}
-  }, []);
+  }, [isStaff]);
   function setGroupBy(g: GroupBy) {
     setGroupByState(g);
+    setCollapsed(new Set());
     try { localStorage.setItem("air6_drones_group", g); } catch {}
   }
   function toggleSort(key: SortKey) {
     setSort((prev) => ({ key, dir: prev.key === key && prev.dir === "asc" ? "desc" : "asc" }));
+  }
+  function toggleGroup(key: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
   }
 
   const counts = useMemo(() => {
@@ -79,7 +95,7 @@ export function DroneList({ rows, isStaff, isAdmin, models, clients, initialClie
   }, [rows, query, status, clientId, sort]);
 
   const groups = useMemo(() => {
-    if (groupBy === "none") return [{ key: "all", label: null as string | null, rows: visible }];
+    if (groupBy === "none") return null;
     const map = new Map<string, FleetRow[]>();
     for (const r of visible) {
       const key = groupBy === "model" ? r.modelName : r.clientName ?? "No client";
@@ -87,159 +103,202 @@ export function DroneList({ rows, isStaff, isAdmin, models, clients, initialClie
     }
     return [...map.entries()]
       .sort(([a], [b]) => (a === "No client" ? 1 : b === "No client" ? -1 : a.localeCompare(b)))
-      .map(([key, list]) => ({ key, label: key as string | null, rows: list }));
+      .map(([label, list]) => ({ label, rows: list }));
   }, [visible, groupBy]);
-  const columnCount = isStaff ? 6 : 5;
+
+  // The grouped column is the group's title, so it is not repeated on every row.
+  const columns: Column[] = [
+    { key: "serial", label: "Serial", width: "minmax(11rem, 1.4fr)" },
+    ...(groupBy !== "model" ? [{ key: "model" as const, label: "Model", width: "minmax(8rem, 1.1fr)" }] : []),
+    ...(isStaff && groupBy !== "client" ? [{ key: "client" as const, label: "Client", width: "minmax(8rem, 1fr)" }] : []),
+    { key: "status", label: "Status", width: "10.5rem" },
+    { key: "target", label: "Target", width: "4rem" },
+    { key: "last", label: "Last verified", width: "minmax(8rem, 0.9fr)" },
+  ];
+  const template = `${columns.map((c) => c.width).join(" ")} 1rem`;
+  const nested = groups !== null;
 
   const attention = rows.filter((r) => r.status !== "up_to_date").length;
+  const filtered = query.trim() !== "" || status !== "all" || clientId !== "all";
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-end justify-between gap-4 flex-wrap">
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">{isStaff ? "Drones" : "Your drones"}</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <h1 className={pageTitleClass}>{isStaff ? "Drones" : "Your drones"}</h1>
+          <p className={pageLeadClass}>
             {rows.length} drone{rows.length === 1 ? "" : "s"}
-            {attention > 0 && ` · ${attention} need${attention === 1 ? "s" : ""} attention`}
+            {attention > 0 && <> · <span className="font-medium text-foreground">{attention} need{attention === 1 ? "s" : ""} attention</span></>}
           </p>
         </div>
         {isStaff && (
-          <button
-            type="button"
-            onClick={() => setAdding(true)}
-            className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer whitespace-nowrap"
-          >
-            <Plus className="h-3.5 w-3.5" /> Add drone
+          <button type="button" onClick={() => setAdding(true)} className={buttonClass("primary", "md")}>
+            <Plus className="h-4 w-4" /> Add drone
           </button>
         )}
       </div>
 
       {rows.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="relative flex-1 min-w-48">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by status">
+            <StatusChip active={status === "all"} onClick={() => setStatus("all")} label="All" count={rows.length} />
+            {STATUS_ORDER.filter((s) => counts.has(s)).map((s) => (
+              <StatusChip
+                key={s}
+                active={status === s}
+                onClick={() => setStatus(status === s ? "all" : s)}
+                dot={STATUS_META[s].dot}
+                label={statusName(s, isStaff)}
+                count={counts.get(s) ?? 0}
+              />
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-56 flex-1">
               <label htmlFor={searchId} className="sr-only">Search drones</label>
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
                 id={searchId}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={isStaff ? "Search serial, model or client…" : "Search serial or model…"}
-                className="w-full rounded-md border border-border bg-secondary pl-8 pr-7 py-1.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
+                className={`${fieldClass} w-full pl-9 pr-7`}
               />
               {query && (
                 <button
                   type="button"
                   aria-label="Clear search"
                   onMouseDown={(e) => { e.preventDefault(); setQuery(""); }}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground cursor-pointer"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground cursor-pointer"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
               )}
             </div>
-            <label htmlFor={groupId} className="sr-only">Group by</label>
-            <select
-              id={groupId}
-              value={groupBy}
-              onChange={(e) => setGroupBy(e.target.value as GroupBy)}
-              className="shrink-0 rounded-md border border-border bg-secondary px-2 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer"
-            >
-              <option value="none">No grouping</option>
-              <option value="model">Group by model</option>
-              {isStaff && <option value="client">Group by client</option>}
-            </select>
+
+            <div className="flex shrink-0 items-center gap-2">
+              <span id={`${searchId}-group`} className="text-[13px] text-muted-foreground">Group by</span>
+              <div role="radiogroup" aria-labelledby={`${searchId}-group`} className="flex h-9 items-center rounded-lg border border-border bg-secondary p-0.5">
+                {([["none", "None"], ["model", "Model"], ...(isStaff ? [["client", "Client"]] : [])] as [GroupBy, string][]).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={groupBy === value}
+                    onClick={() => setGroupBy(value)}
+                    className={`h-full rounded-md px-3 text-[13px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                      groupBy === value ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {isStaff && clients.length > 0 && (
               <>
                 <label htmlFor={clientFilterId} className="sr-only">Client</label>
-                <select
-                  id={clientFilterId}
-                  value={clientId}
-                  onChange={(e) => setClientId(e.target.value)}
-                  className="shrink-0 rounded-md border border-border bg-secondary px-2 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer"
-                >
+                <select id={clientFilterId} value={clientId} onChange={(e) => setClientId(e.target.value)} className={`${fieldClass} shrink-0 cursor-pointer`}>
                   <option value="all">All clients</option>
                   {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   <option value="none">No client</option>
                 </select>
               </>
             )}
-          </div>
-          <div className="flex items-center gap-1.5 flex-wrap" role="group" aria-label="Filter by status">
-            <FilterChip active={status === "all"} onClick={() => setStatus("all")}>All {rows.length}</FilterChip>
-            {STATUS_ORDER.filter((s) => counts.has(s)).map((s) => (
-              <FilterChip key={s} active={status === s} onClick={() => setStatus(status === s ? "all" : s)}>
-                {chipLabel(s, isStaff)} {counts.get(s)}
-              </FilterChip>
-            ))}
+
+            {/* On phones the column headers are hidden, so sorting moves here. */}
+            <div className="md:hidden">
+              <label htmlFor={sortId} className="sr-only">Sort by</label>
+              <select
+                id={sortId}
+                value={`${sort.key}:${sort.dir}`}
+                onChange={(e) => { const [key, dir] = e.target.value.split(":") as [SortKey, Sort["dir"]]; setSort({ key, dir }); }}
+                className={`${fieldClass} cursor-pointer`}
+              >
+                {columns.flatMap((c) => [
+                  <option key={`${c.key}:asc`} value={`${c.key}:asc`}>Sort: {c.label} ↑</option>,
+                  <option key={`${c.key}:desc`} value={`${c.key}:desc`}>Sort: {c.label} ↓</option>,
+                ])}
+              </select>
+            </div>
           </div>
         </div>
       )}
 
       {rows.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card px-6 py-12 text-center">
-          <p className="text-sm text-foreground">No drones yet.</p>
-          <p className="mt-1 text-xs text-muted-foreground">
+        <div className={`${cardClass} px-6 py-14 text-center`}>
+          <p className="text-sm font-medium text-foreground">No drones yet</p>
+          <p className="mt-1 text-[13px] text-muted-foreground">
             {isStaff ? "Add one, or connect a new drone and register it." : "No drone is registered to your account yet. Contact AIR6 to set one up."}
           </p>
         </div>
       ) : (
-        <div className="rounded-lg border border-border overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-secondary text-[11px] uppercase tracking-wider text-muted-foreground">
-                <SortTh label="Serial" k="serial" sort={sort} onSort={toggleSort} />
-                <SortTh label="Model" k="model" sort={sort} onSort={toggleSort} className="hidden sm:table-cell" />
-                {isStaff && <SortTh label="Client" k="client" sort={sort} onSort={toggleSort} className="hidden md:table-cell" />}
-                <SortTh label="Status" k="status" sort={sort} onSort={toggleSort} />
-                <SortTh label="Target" k="target" sort={sort} onSort={toggleSort} className="hidden md:table-cell" />
-                <SortTh label="Last verified" k="last" sort={sort} onSort={toggleSort} className="hidden lg:table-cell" />
-              </tr>
-            </thead>
-            {groups.map((g) => (
-            <tbody key={g.key} className="divide-y divide-border border-b border-border last:border-b-0">
-              {g.label !== null && (
-                <tr className="bg-secondary/60">
-                  <th colSpan={columnCount} scope="colgroup" className="px-4 py-1.5 text-left text-xs font-semibold text-foreground">
-                    {g.label} <span className="font-normal text-muted-foreground">· {g.rows.length}</span>
-                  </th>
-                </tr>
+        <div className="flex flex-col gap-2">
+          <div
+            className={`hidden items-center gap-4 pr-4 text-xs font-medium text-muted-foreground md:grid ${nested ? "pl-14" : "pl-4"}`}
+            style={{ gridTemplateColumns: template }}
+          >
+            {columns.map((c) => <SortHeader key={c.key} column={c} sort={sort} onSort={toggleSort} />)}
+            <span />
+          </div>
+
+          {visible.length === 0 ? (
+            <div className={`${cardClass} flex flex-col items-center gap-3 px-6 py-10 text-center`}>
+              <p className="text-sm text-muted-foreground">No drones match.</p>
+              {filtered && (
+                <button type="button" onClick={() => { setQuery(""); setStatus("all"); setClientId("all"); }} className={buttonClass("secondary")}>
+                  Clear filters
+                </button>
               )}
-              {g.rows.map((r) => (
-                <tr
-                  key={r.id}
-                  onClick={() => router.push(droneHref(r.serial))}
-                  className="cursor-pointer hover:bg-secondary/40 transition-colors"
-                >
-                  <td className="px-4 py-2.5 whitespace-nowrap">
-                    <Link href={droneHref(r.serial)} onClick={(e) => e.stopPropagation()} className="font-mono text-sm font-medium text-foreground hover:text-primary cursor-pointer">
-                      {r.serial}
-                    </Link>
-                    {connectedId === r.id && (
-                      <span className="ml-2 inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-px text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                        <Usb className="h-2.5 w-2.5" /> connected
-                      </span>
+            </div>
+          ) : groups ? (
+            <div className="flex flex-col gap-3">
+              {groups.map((g) => {
+                const open = !collapsed.has(g.label);
+                return (
+                  <section key={g.label} className={`${cardClass} overflow-hidden`}>
+                    <h2>
+                      <button
+                        type="button"
+                        aria-expanded={open}
+                        onClick={() => toggleGroup(g.label)}
+                        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-secondary/60 cursor-pointer"
+                      >
+                        <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`} />
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
+                          {groupBy === "client" ? <Building2 className="h-4 w-4" /> : <Box className="h-4 w-4" />}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold text-foreground">{g.label}</span>
+                          <span className="block text-xs font-normal text-muted-foreground">{g.rows.length} drone{g.rows.length === 1 ? "" : "s"}</span>
+                        </span>
+                        <GroupSummary rows={g.rows} isStaff={isStaff} />
+                      </button>
+                    </h2>
+                    {open && (
+                      <ul className="relative border-t border-border before:absolute before:bottom-3 before:left-6 before:top-0 before:w-px before:bg-border">
+                        {g.rows.map((r) => (
+                          <li key={r.id} className="relative ml-14 border-b border-border last:border-b-0 before:absolute before:-left-8 before:top-1/2 before:h-px before:w-5 before:bg-border">
+                            <DroneRow row={r} columns={columns} template={template} isStaff={isStaff} connected={connectedId === r.id} nested />
+                          </li>
+                        ))}
+                      </ul>
                     )}
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-muted-foreground hidden sm:table-cell whitespace-nowrap">{r.modelName}</td>
-                  {isStaff && (
-                    <td className="px-4 py-2.5 text-xs hidden md:table-cell whitespace-nowrap">
-                      {r.clientName ?? <span className="text-muted-foreground italic">No client</span>}
-                    </td>
-                  )}
-                  <td className="px-4 py-2.5"><FleetStatusBadge row={r} isStaff={isStaff} /></td>
-                  <td className="px-4 py-2.5 font-mono text-xs hidden md:table-cell">{r.target ? `v${r.target}` : "—"}</td>
-                  <td className="px-4 py-2.5 text-xs text-muted-foreground hidden lg:table-cell whitespace-nowrap">
-                    {r.lastLabel ? <>v{r.lastLabel} · {ago(r.lastAt)}</> : "—"}
-                  </td>
-                </tr>
+                  </section>
+                );
+              })}
+            </div>
+          ) : (
+            <ul className={`${cardClass} divide-y divide-border overflow-hidden`}>
+              {visible.map((r) => (
+                <li key={r.id}>
+                  <DroneRow row={r} columns={columns} template={template} isStaff={isStaff} connected={connectedId === r.id} />
+                </li>
               ))}
-            </tbody>
-            ))}
-            {visible.length === 0 && (
-              <tbody><tr><td colSpan={columnCount} className="px-4 py-8 text-center text-xs text-muted-foreground">No drones match.</td></tr></tbody>
-            )}
-          </table>
+            </ul>
+          )}
         </div>
       )}
 
@@ -256,9 +315,6 @@ export function DroneList({ rows, isStaff, isAdmin, models, clients, initialClie
   );
 }
 
-type GroupBy = "none" | "model" | "client";
-type SortKey = "serial" | "model" | "client" | "status" | "target" | "last";
-
 function compareBy(key: SortKey, a: FleetRow, b: FleetRow): number {
   switch (key) {
     case "serial": return a.serial.localeCompare(b.serial);
@@ -270,49 +326,101 @@ function compareBy(key: SortKey, a: FleetRow, b: FleetRow): number {
   }
 }
 
-function SortTh({ label, k, sort, onSort, className = "" }: {
-  label: string;
-  k: SortKey;
-  sort: { key: SortKey; dir: "asc" | "desc" };
-  onSort: (k: SortKey) => void;
-  className?: string;
-}) {
-  const active = sort.key === k;
-  const Icon = active ? (sort.dir === "asc" ? ChevronUp : ChevronDown) : null;
+function SortHeader({ column, sort, onSort }: { column: Column; sort: Sort; onSort: (k: SortKey) => void }) {
+  const active = sort.key === column.key;
+  const Icon = sort.dir === "asc" ? ArrowUp : ArrowDown;
   return (
-    <th className={`px-4 py-2 text-left font-semibold ${className}`} aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}>
-      <button type="button" onClick={() => onSort(k)} className={`flex items-center gap-1 uppercase tracking-wider cursor-pointer whitespace-nowrap hover:text-foreground ${active ? "text-foreground" : ""}`}>
-        {label}
-        {Icon && <Icon className="h-3 w-3" />}
+    <span aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}>
+      <button
+        type="button"
+        onClick={() => onSort(column.key)}
+        title={`Sort by ${column.label.toLowerCase()}`}
+        className={`-mx-1.5 flex h-7 items-center gap-1 rounded-md px-1.5 transition-colors cursor-pointer whitespace-nowrap hover:bg-secondary hover:text-foreground ${active ? "text-foreground" : ""}`}
+      >
+        {column.label}
+        {active && <Icon className="h-3 w-3" />}
       </button>
-    </th>
+    </span>
   );
 }
 
-const CHIP_LABEL: Record<FleetStatus, string> = {
-  review: "To review",
-  behind: "Update waiting",
-  unverified: "Not checked yet",
-  not_linked: "Not linked",
-  no_version: "No version yet",
-  up_to_date: "Up to date",
-};
+function DroneRow({ row: r, columns, template, isStaff, connected, nested = false }: {
+  row: FleetRow;
+  columns: Column[];
+  template: string;
+  isStaff: boolean;
+  connected: boolean;
+  nested?: boolean;
+}) {
+  const has = (key: SortKey) => columns.some((c) => c.key === key);
+  const last = r.lastLabel ? `v${r.lastLabel} · ${ago(r.lastAt)}` : null;
+  return (
+    <Link
+      href={droneHref(r.serial)}
+      className={`group flex flex-col gap-1 py-3 pr-4 transition-colors hover:bg-secondary/60 cursor-pointer md:grid md:items-center md:gap-4 md:py-2.5 ${nested ? "pl-0" : "pl-4"}`}
+      style={{ gridTemplateColumns: template }}
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="truncate font-mono text-sm font-semibold text-foreground group-hover:text-primary">{r.serial}</span>
+        {connected && (
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-600/25 bg-emerald-500/10 px-1.5 py-px text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+            <Usb className="h-2.5 w-2.5" /> connected
+          </span>
+        )}
+        <span className="ml-auto shrink-0 md:hidden"><FleetStatusBadge row={r} isStaff={isStaff} /></span>
+      </span>
+      {has("model") && <span className="hidden truncate text-[13px] text-muted-foreground md:block">{r.modelName}</span>}
+      {has("client") && (
+        <span className="hidden truncate text-[13px] text-foreground md:block">
+          {r.clientName ?? <span className="text-muted-foreground">No client</span>}
+        </span>
+      )}
+      <span className="hidden md:block"><FleetStatusBadge row={r} isStaff={isStaff} /></span>
+      <span className="hidden font-mono text-[13px] text-foreground md:block">{r.target ? `v${r.target}` : <span className="text-muted-foreground">—</span>}</span>
+      <span className="hidden truncate text-[13px] text-muted-foreground md:block">{last ?? "—"}</span>
+      <ChevronRight className="hidden h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 md:block" aria-hidden="true" />
 
-function chipLabel(s: FleetStatus, isStaff: boolean): string {
-  return s === "review" && !isStaff ? "With AIR6" : CHIP_LABEL[s];
+      {/* Phones: everything else on a second line, so nothing is hidden. */}
+      <span className="text-xs leading-snug text-muted-foreground md:hidden">
+        {[
+          has("model") ? r.modelName : null,
+          has("client") ? r.clientName ?? "No client" : null,
+          r.target ? `target v${r.target}` : null,
+          last ? `verified ${last}` : null,
+        ].filter(Boolean).join(" · ")}
+      </span>
+    </Link>
+  );
 }
 
-function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+/** What is inside a group, so a collapsed group still says whether it needs attention. */
+function GroupSummary({ rows, isStaff }: { rows: FleetRow[]; isStaff: boolean }) {
+  const present = STATUS_ORDER.map((s) => ({ s, n: rows.filter((r) => r.status === s).length })).filter((x) => x.n > 0);
+  return (
+    <span className="ml-auto flex shrink-0 items-center gap-x-3 gap-y-1 text-xs font-normal text-muted-foreground">
+      {present.map(({ s, n }) => (
+        <span key={s} className="flex items-center gap-1.5 whitespace-nowrap" title={`${n} ${statusName(s, isStaff).toLowerCase()}`}>
+          <span className={`h-2 w-2 rounded-full ${STATUS_META[s].dot}`} aria-hidden="true" />
+          {n}<span className="hidden lg:inline"> {statusName(s, isStaff).toLowerCase()}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function StatusChip({ active, onClick, dot, label, count }: { active: boolean; onClick: () => void; dot?: string; label: string; count: number }) {
   return (
     <button
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`rounded-full border px-2.5 py-0.5 text-xs transition-colors cursor-pointer whitespace-nowrap ${
-        active ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground hover:bg-secondary"
+      className={`flex h-8 items-center gap-2 rounded-lg border px-3 text-[13px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
+        active ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-foreground shadow-xs hover:bg-secondary"
       }`}
     >
-      {children}
+      {dot && <span className={`h-2 w-2 rounded-full ${dot}`} aria-hidden="true" />}
+      {label}
+      <span className={`tabular-nums ${active ? "text-primary" : "text-muted-foreground"}`}>{count}</span>
     </button>
   );
 }
@@ -351,66 +459,60 @@ function AddDroneDialog({ models, clients, isAdmin, onClose, onAdded }: {
     onAdded(serial.trim());
   }
 
-  const field = "rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring";
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !busy && onClose()} />
-      <form onSubmit={submit} className="relative z-10 w-full max-w-md rounded-xl border border-border bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
-          <h2 className="text-sm font-semibold text-foreground">Add drone</h2>
-          <button type="button" aria-label="Close" onClick={onClose} disabled={busy} className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground cursor-pointer">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="flex flex-col gap-3 px-5 py-4">
-          <p className="text-xs text-muted-foreground">
-            To add the drone that is plugged in, connect it instead: the app reads it and links its flight controller in one go.
-          </p>
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={ids.serial} className="text-xs font-medium text-muted-foreground">Serial (from the airframe label)</label>
-            <input id={ids.serial} required value={serial} onChange={(e) => setSerial(e.target.value)} placeholder="AIR4-0626-0025" className={`${field} font-mono`} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={ids.model} className="text-xs font-medium text-muted-foreground">Model</label>
-            <select id={ids.model} required value={modelId} onChange={(e) => setModelId(e.target.value)} className={`${field} cursor-pointer`}>
-              {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={ids.client} className="text-xs font-medium text-muted-foreground">Client</label>
-            <select id={ids.client} value={clientId} onChange={(e) => setClientId(e.target.value)} className={`${field} cursor-pointer`}>
-              <option value="">No client yet (AIR6 stock)</option>
-              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-          <div className="flex items-start gap-2">
-            <input
-              id={ids.template}
-              type="checkbox"
-              checked={fromTemplate && !!model?.hasTemplate}
-              disabled={!model?.hasTemplate}
-              onChange={(e) => setFromTemplate(e.target.checked)}
-              className="mt-0.5 cursor-pointer"
-            />
-            <label htmlFor={ids.template} className="text-xs text-foreground cursor-pointer">
-              Start its history from the model template
-              <span className="block text-muted-foreground">
-                {model?.hasTemplate
-                  ? `v1 will be a copy of ${model.name}'s template${isAdmin ? "" : ", waiting for review"}.`
-                  : "This model has no template yet, so the history starts empty."}
-              </span>
-            </label>
-          </div>
-          {error && <p className="text-xs text-destructive">{error}</p>}
-        </div>
-        <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
-          <button type="button" onClick={onClose} disabled={busy} className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary cursor-pointer whitespace-nowrap disabled:opacity-50">Cancel</button>
-          <BusyButton type="submit" busy={busy} busyLabel="Adding…" disabled={!serial.trim() || !modelId} className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+    <Dialog
+      title="Add drone"
+      onClose={onClose}
+      busy={busy}
+      onSubmit={submit}
+      footer={
+        <>
+          <button type="button" onClick={onClose} disabled={busy} className={buttonClass("secondary")}>Cancel</button>
+          <BusyButton type="submit" variant="primary" busy={busy} busyLabel="Adding…" disabled={!serial.trim() || !modelId}>
             Add drone
           </BusyButton>
-        </div>
-      </form>
-    </div>
+        </>
+      }
+    >
+      <p className="rounded-lg bg-secondary px-3 py-2 text-[13px] text-muted-foreground">
+        To add the drone that is plugged in, connect it instead: the app reads it and links its flight controller in one go.
+      </p>
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={ids.serial} className={labelClass}>Serial <span className="font-normal text-muted-foreground">(from the airframe label)</span></label>
+        <input id={ids.serial} required value={serial} onChange={(e) => setSerial(e.target.value)} placeholder="AIR4-0626-0025" className={`${fieldClass} font-mono`} />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={ids.model} className={labelClass}>Model</label>
+        <select id={ids.model} required value={modelId} onChange={(e) => setModelId(e.target.value)} className={`${fieldClass} cursor-pointer`}>
+          {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={ids.client} className={labelClass}>Client</label>
+        <select id={ids.client} value={clientId} onChange={(e) => setClientId(e.target.value)} className={`${fieldClass} cursor-pointer`}>
+          <option value="">No client yet (AIR6 stock)</option>
+          {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
+      <div className="flex items-start gap-2.5">
+        <input
+          id={ids.template}
+          type="checkbox"
+          checked={fromTemplate && !!model?.hasTemplate}
+          disabled={!model?.hasTemplate}
+          onChange={(e) => setFromTemplate(e.target.checked)}
+          className="mt-0.5"
+        />
+        <label htmlFor={ids.template} className="text-[13px] text-foreground cursor-pointer">
+          Start its history from the model template
+          <span className="block text-muted-foreground">
+            {model?.hasTemplate
+              ? `v1 will be a copy of ${model.name}'s template${isAdmin ? "" : ", waiting for review"}.`
+              : "This model has no template yet, so the history starts empty."}
+          </span>
+        </label>
+      </div>
+      {error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}
+    </Dialog>
   );
 }

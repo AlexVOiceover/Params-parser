@@ -18,7 +18,7 @@ const STATE: Record<DroneState, { text: (target: string | undefined) => string; 
   no_version: { text: () => "No version yet", tone: "border-border text-foreground", dot: "bg-muted-foreground" },
 };
 
-const base = "flex items-center gap-1.5 rounded-md border px-2 sm:px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap";
+const base = "flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[13px] font-medium shadow-xs transition-colors cursor-pointer whitespace-nowrap sm:px-3";
 
 /**
  * The plugged-in drone, on every page: who it is and how it compares, one
@@ -32,7 +32,7 @@ export function DroneChip() {
 
   if (!droneParams || droneParams.length === 0) {
     return (
-      <button type="button" onClick={openImportDialog} className={`${base} border-border text-foreground hover:bg-secondary`}>
+      <button type="button" onClick={openImportDialog} className={`${base} border-border bg-card text-foreground hover:bg-secondary`}>
         <Usb className="h-3.5 w-3.5" />
         <span className="hidden sm:inline">Connect drone</span>
       </button>
@@ -45,7 +45,7 @@ export function DroneChip() {
       onClick={openImportDialog}
       aria-label="Read the drone again"
       title="Read the drone again"
-      className="rounded-md border border-border p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground cursor-pointer"
+      className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground shadow-xs hover:bg-secondary hover:text-foreground cursor-pointer"
     >
       <RefreshCw className="h-3.5 w-3.5" />
     </button>
@@ -70,7 +70,7 @@ export function DroneChip() {
     : "Drone not identified";
   return (
     <div className="flex items-center gap-1">
-      <button type="button" onClick={openImportDialog} className={`${base} border-border text-foreground hover:bg-secondary`}>
+      <button type="button" onClick={openImportDialog} className={`${base} border-border bg-card text-foreground hover:bg-secondary`}>
         {match.status === "loading" || match.status === "idle" ? <Spinner /> : <Usb className="h-3.5 w-3.5" />}
         <span className="hidden sm:inline">{label}</span>
       </button>

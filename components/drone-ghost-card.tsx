@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Usb, ChevronDown, ChevronUp, Bell, Link2, Info, CheckCircle2 } from "lucide-react";
 import { BusyButton, Spinner } from "@/components/ui/busy";
+import { buttonClass, cardClass } from "@/components/ui/styles";
 import { ApplyUpdateButton } from "@/components/apply-update-button";
 import { DiffList, SaveFromDroneForm } from "@/components/drone-status-panel";
 import { useAuth } from "@/components/auth-provider";
@@ -37,16 +38,17 @@ export function DroneGhostCard({ droneId, droneChipId, droneSerial, nextLabel, o
   if (!droneParams || droneParams.length === 0) {
     if (serialMode === "unsupported") return null;
     return (
-      <div className="flex items-center gap-3 flex-wrap rounded-lg border border-dashed border-border bg-card px-4 py-3">
-        <Usb className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="text-xs text-muted-foreground flex-1 min-w-48">
-          Plug {droneSerial ?? "the drone"} in to check it against its target, install updates, or save changes made in Mission Planner.
+      <div className={`${cardClass} flex flex-wrap items-center gap-3 px-4 py-3.5`}>
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Usb className="h-4 w-4" />
         </span>
-        <button
-          type="button"
-          onClick={openImportDialog}
-          className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 cursor-pointer whitespace-nowrap"
-        >
+        <div className="min-w-48 flex-1">
+          <p className="text-sm font-medium text-foreground">Is it on the right params?</p>
+          <p className="text-[13px] text-muted-foreground">
+            Plug {droneSerial ?? "the drone"} in to check it against its target, install updates, or save changes made in Mission Planner.
+          </p>
+        </div>
+        <button type="button" onClick={openImportDialog} className={buttonClass("primary")}>
           <Usb className="h-3.5 w-3.5" /> Connect drone
         </button>
       </div>
@@ -92,13 +94,18 @@ export function DroneGhostCard({ droneId, droneChipId, droneSerial, nextLabel, o
 
   if (state === "update_available" && desired) {
     return (
-      <div className="flex items-center gap-3 flex-wrap rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3">
-        <Bell className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-        <span className="text-xs text-foreground">
-          The connected drone is on v{match.lastVerified?.label}. v{desired.label} changes {diff.length} param{diff.length === 1 ? "" : "s"}.
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-500/50 bg-amber-500/10 px-4 py-3.5">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300">
+          <Bell className="h-4 w-4" />
         </span>
-        <DiffToggle open={showDiff} count={diff.length} onToggle={() => setShowDiff((v) => !v)} />
-        <div className="ml-auto"><ApplyUpdateButton version={desired} label={`Install v${desired.label}`} /></div>
+        <div className="min-w-48 flex-1">
+          <p className="text-sm font-medium text-foreground">An update is waiting</p>
+          <p className="flex flex-wrap items-center gap-x-2 text-[13px] text-foreground">
+            The connected drone is on v{match.lastVerified?.label}. v{desired.label} changes {diff.length} param{diff.length === 1 ? "" : "s"}.
+            <DiffToggle open={showDiff} count={diff.length} onToggle={() => setShowDiff((v) => !v)} />
+          </p>
+        </div>
+        <ApplyUpdateButton version={desired} label={`Install v${desired.label}`} />
         {showDiff && <div className="w-full"><DiffList diff={diff} versionLabel={desired.label} /></div>}
       </div>
     );
@@ -107,11 +114,15 @@ export function DroneGhostCard({ droneId, droneChipId, droneSerial, nextLabel, o
   if (state === "in_sync" || state === "pending_review") {
     const label = state === "in_sync" ? desired?.label : match.pending?.label;
     return (
-      <div className="flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-xs text-foreground">
-        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-        {state === "in_sync"
-          ? <>Connected and matching v{label}, its target.</>
-          : <>Connected and matching v{label}, which is waiting for review.</>}
+      <div className="flex items-center gap-3 rounded-xl border border-emerald-600/35 bg-emerald-500/10 px-4 py-3 text-sm text-foreground">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+          <CheckCircle2 className="h-4 w-4" />
+        </span>
+        <span className="font-medium">
+          {state === "in_sync"
+            ? <>Connected and matching v{label}, its target.</>
+            : <>Connected and matching v{label}, which is waiting for review.</>}
+        </span>
       </div>
     );
   }
@@ -120,32 +131,32 @@ export function DroneGhostCard({ droneId, droneChipId, droneSerial, nextLabel, o
   if (!differs && state !== "no_version") return null;
 
   return (
-    <div className="rounded-lg border-2 border-dashed border-primary/40 bg-primary/5 px-4 py-3 flex flex-col gap-3">
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-sm font-semibold text-foreground font-mono">v{nextLabel}</span>
-        <span className="flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary whitespace-nowrap">
-          <Usb className="h-2.5 w-2.5" /> from the connected drone · not saved
+    <div className="flex flex-col gap-3 rounded-xl border-2 border-dashed border-primary/45 bg-primary/5 px-4 py-4">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <span className="font-mono text-lg font-semibold leading-6 text-foreground">v{nextLabel}</span>
+        <span className="flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary whitespace-nowrap">
+          <Usb className="h-3 w-3" /> from the connected drone · not saved
         </span>
-        {match.droneFirmware && <span className="font-mono text-[10px] text-muted-foreground">fw {match.droneFirmware}</span>}
+        {match.droneFirmware && <span className="text-xs text-muted-foreground">ArduPilot {match.droneFirmware}</span>}
       </div>
 
       {differs ? (
         <>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-foreground">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-foreground">
               {diff.length} param{diff.length === 1 ? "" : "s"} on the drone differ from v{desired.label}.
             </span>
             <DiffToggle open={showDiff} count={diff.length} onToggle={() => setShowDiff((v) => !v)} />
           </div>
           {showDiff && <DiffList diff={diff} versionLabel={desired.label} />}
-          <p className="text-[11px] text-muted-foreground leading-snug">
+          <p className="text-[13px] leading-snug text-muted-foreground">
             To keep these changes, save them as v{nextLabel}. To undo them, install v{desired.label} from its card below.
           </p>
           <SaveFromDroneForm saveLabel={`Save as v${nextLabel}`} onSaved={onChanged} />
         </>
       ) : (
         <>
-          <p className="text-xs text-foreground">This history has no approved version yet. Save the drone&apos;s current params to start it.</p>
+          <p className="text-sm text-foreground">This history has no approved version yet. Save the drone&apos;s current params to start it.</p>
           <SaveFromDroneForm saveLabel={`Save as v${nextLabel}`} onSaved={onChanged} />
         </>
       )}
@@ -155,7 +166,7 @@ export function DroneGhostCard({ droneId, droneChipId, droneSerial, nextLabel, o
 
 function Note({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-xs text-muted-foreground">
+    <div className={`${cardClass} flex items-center gap-2.5 px-4 py-3 text-[13px] text-muted-foreground`}>
       {children}
     </div>
   );
@@ -166,7 +177,7 @@ function DiffToggle({ open, count, onToggle }: { open: boolean; count: number; o
     <button
       type="button"
       onClick={onToggle}
-      className="flex items-center gap-1 text-xs text-primary hover:underline cursor-pointer whitespace-nowrap"
+      className="flex items-center gap-1 text-[13px] font-medium text-primary hover:underline cursor-pointer whitespace-nowrap"
     >
       {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
       {open ? "Hide" : `Show the ${count}`}
@@ -207,9 +218,9 @@ function LinkHere({ droneId, droneChipId, droneSerial, isAdmin, isStaff }: {
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border bg-card px-4 py-3">
-      <p className="flex items-start gap-2 text-xs text-muted-foreground">
-        <Link2 className="h-3.5 w-3.5 shrink-0 mt-px text-primary" />
+    <div className={`${cardClass} flex flex-col gap-3 px-4 py-3.5`}>
+      <p className="flex items-start gap-2.5 text-[13px] text-muted-foreground">
+        <Link2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
         <span>
           The connected flight controller (chip <span className="font-mono text-foreground">{autopilot?.chipId?.slice(0, 8)}…</span>) isn&apos;t linked to any drone.
           {droneChipId
@@ -222,17 +233,17 @@ function LinkHere({ droneId, droneChipId, droneSerial, isAdmin, isStaff }: {
         <div>
           <BusyButton
             type="button"
+            variant="primary"
             busy={linking}
             busyLabel="Linking…"
             icon={<Link2 className="h-3.5 w-3.5" />}
             onClick={link}
-            className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-secondary"
           >
             {droneChipId ? `Re-link to ${serial}` : `Link to ${serial}`}
           </BusyButton>
         </div>
       )}
-      {error && <p className="text-[11px] text-rose-700 dark:text-rose-300">{error}</p>}
+      {error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}
     </div>
   );
 }

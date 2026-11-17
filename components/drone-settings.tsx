@@ -4,6 +4,7 @@ import { useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { BusyButton } from "@/components/ui/busy";
+import { buttonClass, cardClass, fieldClass, labelClass, sectionTitleClass } from "@/components/ui/styles";
 import { ChipLinkCell } from "@/components/chip-link-cell";
 import { WriteNFCButton } from "@/components/write-nfc-button";
 import { droneHref } from "@/lib/versions";
@@ -88,79 +89,87 @@ export function DroneSettings({ droneId, setId, description, serial, chipId, cli
     router.push("/");
   }
 
-  const field = "rounded-md border border-border bg-secondary px-3 py-1.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-60";
-
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Drone settings</h2>
-      <div className="rounded-lg border border-border bg-card px-4 py-4 flex flex-col gap-4">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={ids.serial} className="text-xs font-medium text-muted-foreground">Serial</label>
-            <input id={ids.serial} value={serialInput} onChange={(e) => setSerialInput(e.target.value)} className={`${field} font-mono`} />
+    <section className="flex flex-col gap-4">
+      <div>
+        <h2 className={sectionTitleClass}>Drone settings</h2>
+        <p className="mt-0.5 text-[13px] text-muted-foreground">Only AIR6 staff see this section.</p>
+      </div>
+      <div className={`${cardClass} divide-y divide-border`}>
+        <div className="flex flex-col gap-4 px-5 py-5">
+          <h3 className="text-sm font-semibold text-foreground">Details</h3>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor={ids.serial} className={labelClass}>Serial</label>
+              <input id={ids.serial} value={serialInput} onChange={(e) => setSerialInput(e.target.value)} className={`${fieldClass} w-full font-mono`} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor={ids.client} className={labelClass}>Client</label>
+              <select id={ids.client} value={client} onChange={(e) => setClient(e.target.value)} disabled={!isAdmin} className={`${fieldClass} w-full cursor-pointer`}>
+                <option value="">No client (AIR6 stock)</option>
+                {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor={ids.model} className={labelClass}>Model</label>
+              <select id={ids.model} value={model} onChange={(e) => setModel(e.target.value)} disabled={!isAdmin} className={`${fieldClass} w-full cursor-pointer`}>
+                {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={ids.client} className="text-xs font-medium text-muted-foreground">Client</label>
-            <select id={ids.client} value={client} onChange={(e) => setClient(e.target.value)} disabled={!isAdmin} className={`${field} cursor-pointer`}>
-              <option value="">No client (AIR6 stock)</option>
-              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={ids.model} className="text-xs font-medium text-muted-foreground">Model</label>
-            <select id={ids.model} value={model} onChange={(e) => setModel(e.target.value)} disabled={!isAdmin} className={`${field} cursor-pointer`}>
-              {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-          </div>
+          {!isAdmin && <p className="text-xs text-muted-foreground">Only an admin can change the client or the model.</p>}
+          {setId && (
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor={ids.description} className={labelClass}>Description</label>
+              <input id={ids.description} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Optional, e.g. payload or special setup" className={`${fieldClass} w-full`} />
+            </div>
+          )}
+          {model !== variantId && (
+            <p className="text-[13px] text-amber-700 dark:text-amber-300">The drone keeps its history; only its model label changes.</p>
+          )}
+          {changed && (
+            <div>
+              <BusyButton type="button" variant="primary" busy={busy === "save"} busyLabel="Saving…" onClick={save}>
+                Save changes
+              </BusyButton>
+            </div>
+          )}
         </div>
-        {setId && (
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={ids.description} className="text-xs font-medium text-muted-foreground">Description</label>
-            <input id={ids.description} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Optional, e.g. payload or special setup" className={field} />
-          </div>
-        )}
-        {model !== variantId && (
-          <p className="text-xs text-amber-700 dark:text-amber-300">The drone keeps its history; only its model label changes.</p>
-        )}
-        {changed && (
-          <div>
-            <BusyButton type="button" busy={busy === "save"} busyLabel="Saving…" onClick={save} className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">
-              Save changes
-            </BusyButton>
-          </div>
-        )}
 
-        <div className="flex flex-col gap-1.5 border-t border-border pt-4">
-          <span className="text-xs font-medium text-muted-foreground">Flight controller</span>
-          <div className="text-xs"><ChipLinkCell droneId={droneId} serial={serial} chipId={chipId} /></div>
+        <div className="flex flex-col gap-2 px-5 py-5">
+          <h3 className="text-sm font-semibold text-foreground">Flight controller</h3>
+          <p className="text-[13px] text-muted-foreground">Its chip ID is how the app recognises this drone when it is plugged in.</p>
+          <div className="text-[13px]"><ChipLinkCell droneId={droneId} serial={serial} chipId={chipId} /></div>
         </div>
 
-        <div className="flex flex-col gap-1.5 border-t border-border pt-4">
-          <span className="text-xs font-medium text-muted-foreground">NFC sticker</span>
-          <div className="flex items-center gap-2 flex-wrap">
-            <WriteNFCButton serial={serial} label="Write NFC tag" />
-            <span className="text-[11px] text-muted-foreground">Tapping the sticker with a phone opens this page.</span>
-          </div>
+        <div className="flex flex-col gap-2 px-5 py-5">
+          <h3 className="text-sm font-semibold text-foreground">NFC sticker</h3>
+          <p className="text-[13px] text-muted-foreground">Tapping the sticker with a phone opens this page.</p>
+          <div><WriteNFCButton serial={serial} label="Write NFC tag" /></div>
         </div>
 
         {isAdmin && (
-          <div className="flex items-center gap-2 border-t border-border pt-4 flex-wrap">
-            {confirmDelete ? (
-              <>
-                <span className="text-xs text-foreground">Delete {serial} and its whole history? This cannot be undone.</span>
-                <BusyButton type="button" busy={busy === "delete"} busyLabel="Deleting…" onClick={remove} className="rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-white hover:bg-destructive/90">
-                  Delete drone
-                </BusyButton>
-                <button type="button" onClick={() => setConfirmDelete(false)} className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary cursor-pointer whitespace-nowrap">Keep it</button>
-              </>
-            ) : (
-              <button type="button" onClick={() => setConfirmDelete(true)} className="flex items-center gap-1.5 rounded-md border border-destructive/40 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10 cursor-pointer whitespace-nowrap">
-                <Trash2 className="h-3.5 w-3.5" /> Delete drone
-              </button>
-            )}
+          <div className="flex flex-col gap-2 px-5 py-5">
+            <h3 className="text-sm font-semibold text-foreground">Delete this drone</h3>
+            <p className="text-[13px] text-muted-foreground">Removes {serial}, every version in its history and its log. This cannot be undone.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              {confirmDelete ? (
+                <>
+                  <span className="text-[13px] font-medium text-foreground">Delete {serial} and its whole history? This cannot be undone.</span>
+                  <BusyButton type="button" variant="danger" busy={busy === "delete"} busyLabel="Deleting…" onClick={remove}>
+                    Delete drone
+                  </BusyButton>
+                  <button type="button" onClick={() => setConfirmDelete(false)} className={buttonClass("secondary")}>Keep it</button>
+                </>
+              ) : (
+                <button type="button" onClick={() => setConfirmDelete(true)} className={buttonClass("dangerOutline")}>
+                  <Trash2 className="h-3.5 w-3.5" /> Delete drone
+                </button>
+              )}
+            </div>
           </div>
         )}
-        {error && <p className="text-xs text-destructive">{error}</p>}
+        {error && <p role="alert" className="px-5 py-3 text-[13px] text-destructive">{error}</p>}
       </div>
     </section>
   );

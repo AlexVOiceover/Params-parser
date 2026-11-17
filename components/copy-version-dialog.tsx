@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
-import { X } from "lucide-react";
 import { BusyButton } from "@/components/ui/busy";
+import { Dialog } from "@/components/ui/dialog";
+import { buttonClass, fieldClass, labelClass } from "@/components/ui/styles";
 import { createClient } from "@/lib/supabase/client";
 
 interface Option { value: string; label: string }
@@ -60,46 +61,41 @@ export function CopyVersionDialog({ versionId, label, isAdmin, onClose, onCopied
     onCopied(`Copied as v${body.label} of ${name}${body.approved ? "" : ", waiting for review"}.`);
   }
 
-  const field = "rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring";
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !busy && onClose()} />
-      <form onSubmit={submit} className="relative z-10 w-full max-w-md rounded-xl border border-border bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
-          <h2 className="text-sm font-semibold text-foreground">Copy v{label} to…</h2>
-          <button type="button" aria-label="Close" onClick={onClose} disabled={busy} className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground cursor-pointer">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="flex flex-col gap-3 px-5 py-4">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={ids.target} className="text-xs font-medium text-muted-foreground">Copy into</label>
-            <select id={ids.target} required value={target} onChange={(e) => setTarget(e.target.value)} disabled={!loaded} className={`${field} cursor-pointer`}>
-              <option value="">{loaded ? "Choose a drone or a model template…" : "Loading…"}</option>
-              <optgroup label="Drones">
-                {drones.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </optgroup>
-              <optgroup label="Model templates">
-                {models.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </optgroup>
-            </select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor={ids.changelog} className="text-xs font-medium text-muted-foreground">Why? *</label>
-            <input id={ids.changelog} required value={changelog} onChange={(e) => setChangelog(e.target.value)} className={field} />
-          </div>
-          <p className="text-xs text-muted-foreground">
-            It is saved as the next version there{isAdmin ? " and becomes its target" : " and waits for review"}. Nothing here changes.
-          </p>
-          {error && <p className="text-xs text-destructive">{error}</p>}
-        </div>
-        <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
-          <button type="button" onClick={onClose} disabled={busy} className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary cursor-pointer whitespace-nowrap disabled:opacity-50">Cancel</button>
-          <BusyButton type="submit" busy={busy} busyLabel="Copying…" disabled={!target || !changelog.trim()} className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+    <Dialog
+      title={`Copy v${label} to…`}
+      onClose={onClose}
+      busy={busy}
+      onSubmit={submit}
+      footer={
+        <>
+          <button type="button" onClick={onClose} disabled={busy} className={buttonClass("secondary")}>Cancel</button>
+          <BusyButton type="submit" variant="primary" busy={busy} busyLabel="Copying…" disabled={!target || !changelog.trim()}>
             Copy
           </BusyButton>
-        </div>
-      </form>
-    </div>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={ids.target} className={labelClass}>Copy into</label>
+        <select id={ids.target} required value={target} onChange={(e) => setTarget(e.target.value)} disabled={!loaded} className={`${fieldClass} w-full cursor-pointer`}>
+          <option value="">{loaded ? "Choose a drone or a model template…" : "Loading…"}</option>
+          <optgroup label="Drones">
+            {drones.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </optgroup>
+          <optgroup label="Model templates">
+            {models.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </optgroup>
+        </select>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={ids.changelog} className={labelClass}>Why? <span className="text-destructive">*</span></label>
+        <input id={ids.changelog} required value={changelog} onChange={(e) => setChangelog(e.target.value)} className={`${fieldClass} w-full`} />
+      </div>
+      <p className="text-[13px] text-muted-foreground">
+        It is saved as the next version there{isAdmin ? " and becomes its target" : " and waits for review"}. Nothing here changes.
+      </p>
+      {error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}
+    </Dialog>
   );
 }
