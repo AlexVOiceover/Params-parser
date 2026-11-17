@@ -44,7 +44,7 @@ interface Props {
   mode: RegisterMode;
 }
 
-const inputClass = "rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring";
+const inputClass = "rounded-lg border border-input bg-field px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-ring focus:ring-2 focus:ring-ring/25";
 const selectClass = inputClass + " cursor-pointer";
 const labelClass = "flex flex-col gap-1.5";
 const labelTextClass = "text-xs font-medium text-muted-foreground";
@@ -339,8 +339,8 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center">
-        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => stage !== "flashing" && onClose()} />
-        <div className="relative z-10 w-full max-w-sm rounded-xl border border-border bg-card shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-xs" onClick={() => stage !== "flashing" && onClose()} />
+        <div className="relative z-10 w-full max-w-sm rounded-2xl border border-border bg-card shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-border bg-toolbar px-5 py-3.5 shrink-0">
             <div className="flex items-center gap-2">
@@ -403,14 +403,14 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
                     const parsed = parseSerialId(serial);
                     if (parsed !== null && parsed !== scrUser1Val) {
                       return (
-                        <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                        <span className="text-[11px] text-amber-600 dark:text-amber-400">
                           Trailing number ({parsed}) doesn&apos;t match what the drone reports ({scrUser1Val})
                         </span>
                       );
                     }
                     return null;
                   })()}
-                  {checkingDB && <span className="text-[10px] text-muted-foreground">Checking database…</span>}
+                  {checkingDB && <span className="text-[11px] text-muted-foreground">Checking database…</span>}
                 </label>
 
                 {/* Family */}
@@ -468,7 +468,7 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
                       <option value="__orphan__">No client yet (AIR6 stock)</option>
                       {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-[11px] text-muted-foreground">
                       {isOrphan
                         ? "Assign a client later from the drone's page."
                         : "A param set for this client will be created on this drone."}
@@ -546,7 +546,7 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
             {/* ── DONE ── */}
             {stage === "done" && (
               <div className="flex flex-col items-center gap-3 py-6 text-center">
-                <CheckCircle className="h-10 w-10 text-emerald-400" />
+                <CheckCircle className="h-10 w-10 text-emerald-600 dark:text-emerald-400" />
                 <p className="text-sm font-medium text-foreground">Drone registered</p>
                 <p className="text-xs text-muted-foreground">
                   <span className="font-mono">{serial}</span> is now registered.{" "}
@@ -561,7 +561,7 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
                     label="Write NFC tag"
                     className="w-full justify-center"
                   />
-                  <p className="text-[10px] text-muted-foreground">Write the serial to the NFC sticker on the drone</p>
+                  <p className="text-[11px] text-muted-foreground">Write the serial to the NFC sticker on the drone</p>
                 </div>
                 <button
                   onClick={() => { onSuccess?.(); onClose(); router.push(droneHref(serial.trim())); }}

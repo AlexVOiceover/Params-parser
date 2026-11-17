@@ -147,3 +147,40 @@ Things to verify when you have time. Tick them off as you go.
 - [ ] Models list: edit name + description of a line or variant; delete a variant with no drones; delete an empty line
 - [ ] Model page: description shown; Duplicate variant (copies the template history); each drone shows how many params differ from the template
 - [ ] Drone page: description shown and editable in settings
+
+---
+
+## 0.25.0 — New look, nested groups, one Compare flow
+
+Checked by me in screenshots against sample data (light, dark, phone). Not checked: anything that needs a real drone on USB, real e-mail, or NFC.
+
+### Drones list
+- [ ] Group by **Client** and by **Model**: each group is its own card, its drones are indented under it, the group shows a status summary, and the grouped column is not repeated in the rows. Collapse and expand a group.
+- [ ] Status chips filter the list; search, the client filter and column sorting still work; the grouping is remembered after a reload.
+- [ ] On a phone every row shows serial, status, model, client, target and last verified (nothing hidden), and the header has a menu button.
+- [ ] **Add drone**: the "Start its history from the model template" tick box is visible.
+
+### Drone page
+- [ ] The header says in words what state the drone is in, with a card of facts (model, client, target, last verified, flight controller).
+- [ ] History is a timeline; the target version is marked green. Each version has Download, Open in Filter, Copy to…, Restore and (admin) delete, and nothing else.
+- [ ] **Compare versions** (the only compare entry): tick boxes appear on every version, the bar says how many are selected, nothing happens until you press **Compare N versions**, and Cancel leaves the mode.
+- [ ] In that mode, under your versions: **Add versions from somewhere else**. Tick a version of another drone, a model template, add a .param file; all of them show as chips in the bar and as columns in the comparison.
+- [ ] Connected drone (needs a drone): update banner with Install, "matching" banner, and the unsaved "vN from the connected drone" draft with the list of differing params and Save.
+- [ ] Drone settings: details, flight controller, NFC sticker and delete are separate parts; a contributor sees why Client and Model are disabled.
+
+### Compare page
+- [ ] The picker lists every drone as one row with its versions as tick chips, grouped by model, with a search box. The target (or current template) and proposals are marked.
+- [ ] In a comparison: "Differences only", the colour legend, the frozen Param column while scrolling sideways, "Add or change versions", and the back link to the drone when everything compared belongs to one drone.
+
+### Models, Review, Clients, Users
+- [ ] Models: variants are nested under their product line and the columns line up between product lines. Edit and delete open dialogs. Deleting is still refused while drones use a variant.
+- [ ] Review: a template proposal shows the whole model name; **Reject** now asks before deleting.
+- [ ] Clients: delete asks first.
+- [ ] Users: changing a role to **client** does not save until a company is chosen (before, it silently saved the first company in the list). Deleting a user asks in a dialog.
+
+### Filter tool
+- [ ] Everything is readable in the light theme (values, warnings, search highlight). Behaviour is unchanged: load a file or a version, switch lists, move params, edit a value by holding, export, Publish to Catalog.
+
+### Dialogs that write to a drone (needs a drone)
+- [ ] Write to drone: with a firmware mismatch the "I understand — write anyway" tick box is visible and the Write button stays disabled until it is ticked.
+- [ ] Connect, register and NFC dialogs look right and still behave the same.

@@ -4,6 +4,9 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { SlidersHorizontal, Info, X, Search, FileDown, Copy, Check, EyeOff } from "lucide-react";
 import { PrefixFilterModal, prefixOf, readHiddenPrefixes } from "@/components/compare/prefix-filter";
 import { validateParam, paramValuesEqual } from "@/lib/param-engine";
+import { buttonClass } from "@/components/ui/styles";
+import { DRONE_VERSION_ID } from "@/lib/drone-params-shared";
+import { FILE_VERSION_ID } from "@/lib/file-compare-shared";
 import type { CompareVersion, CompareRow, ParamDefinition } from "@/lib/types";
 
 interface Props {
@@ -192,12 +195,12 @@ export function CompareTable({
     <div className="flex flex-col h-full">
       {/* Toolbar */}
       <div className="flex flex-col border-b border-border bg-toolbar shrink-0">
-        <div className="flex items-center gap-2 px-4 py-2">
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2">
           {/* Stats — hidden on very small screens to save space */}
-          <span className="hidden sm:block text-xs text-muted-foreground shrink-0">
+          <span className="hidden sm:block text-[13px] text-muted-foreground shrink-0">
             {canDiff ? (
               <>
-                <span className="text-amber-600 dark:text-amber-400 font-medium">{visibleDiffCount}</span>
+                <span className="text-amber-700 dark:text-amber-400 font-semibold">{visibleDiffCount}</span>
                 {" param"}{visibleDiffCount !== 1 ? "s" : ""} differ · {prefixFiltered.length} total
                 {hiddenRowCount > 0 && (
                   <span className="text-muted-foreground"> · {hiddenRowCount} hidden</span>
@@ -218,7 +221,7 @@ export function CompareTable({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={searchMode === "value" ? "Search value…" : "Search…"}
-                className="w-full rounded-md border border-border bg-secondary pl-7 pr-7 py-1.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
+                className="h-8 w-full rounded-lg border border-input bg-field pl-7 pr-7 text-[13px] text-foreground placeholder:text-muted-foreground outline-none focus:border-ring focus:ring-2 focus:ring-ring/25"
               />
               {searchQuery && (
                 <button
@@ -233,7 +236,7 @@ export function CompareTable({
             <select
               value={searchMode}
               onChange={(e) => setSearchMode(e.target.value as "name" | "value" | "both")}
-              className="shrink-0 rounded-md border border-border bg-secondary px-2 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+              className="h-8 shrink-0 rounded-lg border border-input bg-field px-2.5 text-[13px] text-foreground outline-none focus:border-ring focus:ring-2 focus:ring-ring/25 cursor-pointer"
             >
               <option value="name">Name</option>
               <option value="value">Value</option>
@@ -246,11 +249,9 @@ export function CompareTable({
             <button
               onClick={() => setShowPrefixModal(true)}
               title="Hide parameter groups"
-              className={`flex items-center gap-1.5 rounded-md border px-2 sm:px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                hiddenPrefixes.size > 0
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border text-foreground hover:bg-secondary"
-              }`}
+              className={hiddenPrefixes.size > 0
+                ? "flex h-8 items-center gap-1.5 rounded-lg border border-primary bg-primary/10 px-3 text-[13px] font-medium text-primary transition-colors cursor-pointer whitespace-nowrap"
+                : buttonClass("secondary")}
             >
               <EyeOff className="h-3.5 w-3.5 shrink-0" />
               <span className="hidden sm:inline">
@@ -261,7 +262,7 @@ export function CompareTable({
             <button
               onClick={() => setShowCsvModal(true)}
               title="Export as CSV"
-              className="flex items-center gap-1.5 rounded-md border border-border px-2 sm:px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
+              className={buttonClass("secondary")}
             >
               <FileDown className="h-3.5 w-3.5 shrink-0" />
               <span className="hidden sm:inline">Export CSV</span>
@@ -270,11 +271,10 @@ export function CompareTable({
               <button
                 onClick={() => setShowDiffsOnly((v) => !v)}
                 title={showDiffsOnly ? "Show all" : "Show differences only"}
-                className={`flex items-center gap-1.5 rounded-md border px-2 sm:px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                  showDiffsOnly
-                    ? "border-amber-500/50 bg-amber-400/10 text-amber-700 dark:border-amber-400/50 dark:text-amber-300"
-                    : "border-border text-foreground hover:bg-secondary"
-                }`}
+                aria-pressed={showDiffsOnly}
+                className={showDiffsOnly
+                  ? "flex h-8 items-center gap-1.5 rounded-lg border border-amber-500/60 bg-amber-400/15 px-3 text-[13px] font-medium text-amber-800 transition-colors cursor-pointer whitespace-nowrap dark:text-amber-300"
+                  : buttonClass("secondary")}
               >
                 <SlidersHorizontal className="h-3.5 w-3.5 shrink-0" />
                 <span className="hidden sm:inline">{showDiffsOnly ? "Differences only" : "Show differences"}</span>
@@ -285,7 +285,14 @@ export function CompareTable({
       </div>
 
       {/* Table */}
-      <div ref={scrollRef} className="flex-1 overflow-auto">
+      {canDiff && (
+        <p className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border bg-card px-4 py-1.5 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-sm border border-amber-500/50 bg-amber-400/25" aria-hidden="true" /> differs between the versions</span>
+          <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded-sm border border-destructive/50 bg-destructive/20" aria-hidden="true" /> outside the range ArduPilot allows</span>
+          <span className="flex items-center gap-1.5"><span className="font-mono text-foreground">—</span> not in that version</span>
+        </p>
+      )}
+      <div ref={scrollRef} className="flex-1 overflow-auto bg-card">
         <div className={versions.length === 1 ? "mx-auto max-w-3xl" : ""}>
           <table
             className="border-collapse"
@@ -298,7 +305,7 @@ export function CompareTable({
             </colgroup>
           <thead className="sticky top-0 z-30">
             <tr className="border-b border-border text-xs text-muted-foreground">
-              <th className="relative sticky left-0 z-20 bg-secondary px-4 py-2.5 text-left font-medium overflow-hidden" style={{ width: colWidths[0], boxShadow: "inset -1px 0 0 hsl(var(--border))" }}>
+              <th className="relative sticky left-0 z-20 bg-secondary px-4 py-2.5 text-left font-medium overflow-hidden" style={{ width: colWidths[0], boxShadow: "inset -1px 0 0 var(--border)" }}>
                 Param
                 <ResizeHandle colIndex={0} />
               </th>
@@ -309,10 +316,14 @@ export function CompareTable({
                   className="relative px-3 py-2 text-left font-medium bg-secondary overflow-hidden"
                 >
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="rounded bg-primary/20 border border-primary/40 px-1.5 py-px font-mono text-[10px] font-bold text-primary shrink-0">v{v.label}</span>
+                    <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-px font-mono text-[11px] font-semibold text-primary shrink-0">
+                      {v.id === DRONE_VERSION_ID ? "Live" : v.id === FILE_VERSION_ID ? "File" : `v${v.label}`}
+                    </span>
                   </div>
-                  <div className="text-foreground font-semibold truncate text-xs mt-0.5">{v.clientName}</div>
-                  <div className="text-[10px] text-muted-foreground truncate">{v.familyName} / {v.variantName}</div>
+                  <div className="mt-0.5 truncate text-[13px] font-semibold text-foreground">{v.clientName}</div>
+                  <div className="truncate text-[11px] text-muted-foreground">
+                    {v.id === DRONE_VERSION_ID ? "Read over USB just now" : v.id === FILE_VERSION_ID ? "A file from this computer, not saved" : `${v.familyName} · ${v.variantName}`}
+                  </div>
                   <ResizeHandle colIndex={i + 1} />
                 </th>
               ))}
@@ -326,14 +337,14 @@ export function CompareTable({
 
               return (
                 <React.Fragment key={row.name}>
-                  <tr className={!isExpanded && !isLast ? "border-b border-border" : ""}>
+                  <tr className={`group/row ${!isExpanded && !isLast ? "border-b border-border" : ""}`}>
                     {/* Frozen param name column */}
-                    <td className={`sticky left-0 z-10 overflow-hidden ${i % 2 === 0 ? "bg-card" : "bg-secondary/30"}`} style={{ maxWidth: 0, boxShadow: "inset -1px 0 0 hsl(var(--border))" }}>
+                    <td className="sticky left-0 z-10 overflow-hidden bg-card group-hover/row:bg-secondary" style={{ maxWidth: 0, boxShadow: "inset -1px 0 0 var(--border)" }}>
                       <div className="flex items-center gap-1 px-4 py-2 group/name">
                         {row.isDiff && (
                           <span className="mr-0.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-500 dark:bg-amber-400 align-middle shrink-0" />
                         )}
-                        <span className="font-mono text-xs text-foreground truncate min-w-0">
+                        <span className="font-mono text-xs text-foreground truncate min-w-0" title={row.name}>
                           {row.name}
                         </span>
                         <button
@@ -355,12 +366,12 @@ export function CompareTable({
                       const isInvalid = !isMissing && def ? validateParam(rawValue ?? "", def) !== null : false;
                       const isDiffCell = row.isDiff && !isMissing;
 
-                      const rowBg = i % 2 === 0 ? "" : "bg-secondary/30";
+                      const rowBg = "group-hover/row:bg-secondary";
                       let cellClass = "px-4 py-2 font-mono text-xs overflow-hidden whitespace-nowrap transition-colors max-w-0 ";
                       if (isInvalid) {
                         cellClass += "bg-destructive/20 text-destructive";
                       } else if (isDiffCell) {
-                        cellClass += "bg-amber-400/15 text-amber-900 dark:text-amber-200";
+                        cellClass += "bg-amber-400/20 font-semibold text-amber-900 dark:text-amber-200";
                       } else if (isMissing) {
                         cellClass += `${rowBg} text-muted-foreground italic`;
                       } else {
@@ -368,7 +379,7 @@ export function CompareTable({
                       }
 
                       return (
-                        <td key={vid} className={cellClass}>
+                        <td key={vid} className={cellClass} title={isMissing ? "Not in this version" : rawValue}>
                           {isMissing ? "—" : rawValue}
                         </td>
                       );
@@ -402,7 +413,7 @@ export function CompareTable({
                                 <span className="text-muted-foreground">Range: <span className="text-foreground font-mono">{def.Range.low} – {def.Range.high}</span></span>
                               )}
                               {def.RebootRequired === "True" && (
-                                <span className="text-amber-400">Reboot required</span>
+                                <span className="text-amber-700 dark:text-amber-400">Reboot required</span>
                               )}
                             </div>
                             {def.Values && Object.keys(def.Values).length > 0 && (
@@ -542,7 +553,7 @@ function CsvModal({
             onClick={copyCsv}
             className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
           >
-            {csvCopied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+            {csvCopied ? <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
             {csvCopied ? "Copied!" : "Copy to clipboard"}
           </button>
           <button

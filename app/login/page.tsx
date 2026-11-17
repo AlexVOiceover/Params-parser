@@ -3,6 +3,8 @@
 import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LogIn, Mail, CheckCircle } from "lucide-react";
+import { BusyButton } from "@/components/ui/busy";
+import { buttonClass, cardClass, fieldClass, labelClass } from "@/components/ui/styles";
 import { createClient } from "@/lib/supabase/client";
 import { devSignIn } from "./actions";
 
@@ -157,98 +159,108 @@ function LoginPageInner() {
   }
 
   return (
-    <div className="w-full max-w-sm rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-border bg-toolbar px-5 py-4">
-        <LogIn className="h-4 w-4 text-primary" />
-        <h1 className="text-sm font-bold text-foreground">AIR6 · Sign In</h1>
+    <div className="flex w-full max-w-sm flex-col gap-5">
+      <div className="text-center">
+        <p className="text-xl font-semibold tracking-tight text-foreground">AIR6 Params</p>
+        <p className="mt-1 text-sm text-muted-foreground">Every drone on the right params.</p>
       </div>
 
-      {sent ? (
-        <form onSubmit={handleVerifyCode} className="p-5 flex flex-col gap-3">
-          <div className="flex flex-col items-center text-center gap-2">
-            <CheckCircle className="h-9 w-9 text-emerald-400" />
-            <p className="text-sm font-medium text-foreground">Check your email</p>
-            <p className="text-xs text-muted-foreground">
-              We sent a sign-in code to <span className="font-medium text-foreground">{email}</span>.
-              Enter it below — or click the link in the same email.
-            </p>
-          </div>
+      <div className={`${cardClass} overflow-hidden`}>
+        <div className="flex items-center gap-2 border-b border-border px-5 py-3.5">
+          <LogIn className="h-4 w-4 text-primary" />
+          <h1 className="text-base font-semibold text-foreground">Sign in</h1>
+        </div>
 
-          <label className="flex flex-col gap-1.5 mt-1" htmlFor="otp-code">
-            <span className="text-xs font-medium text-muted-foreground">Code</span>
-            <input
-              id="otp-code"
-              value={code}
-              onChange={(e) => { setCode(e.target.value); setError(null); }}
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={8}
-              placeholder="12345678"
-              className="rounded-md border border-border bg-secondary px-3 py-2 text-center font-mono text-lg tracking-[0.3em] text-foreground placeholder:text-muted-foreground placeholder:tracking-normal outline-none focus:ring-1 focus:ring-ring"
-            />
-          </label>
+        {sent ? (
+          <form onSubmit={handleVerifyCode} className="flex flex-col gap-4 p-5">
+            <div className="flex flex-col items-center gap-2 text-center">
+              <CheckCircle className="h-9 w-9 text-emerald-600 dark:text-emerald-400" />
+              <p className="text-sm font-medium text-foreground">Check your email</p>
+              <p className="text-[13px] text-muted-foreground">
+                We sent a sign-in code to <span className="font-medium text-foreground">{email}</span>.
+                Enter it below — or click the link in the same email.
+              </p>
+            </div>
 
-          {error && (
-            <p className="text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded-md px-3 py-2">
-              {error}
-            </p>
-          )}
+            <div className="flex flex-col gap-1.5">
+              <label className={labelClass} htmlFor="otp-code">Code</label>
+              <input
+                id="otp-code"
+                value={code}
+                onChange={(e) => { setCode(e.target.value); setError(null); }}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={8}
+                placeholder="12345678"
+                className="h-11 rounded-lg border border-input bg-field px-3 text-center font-mono text-lg tracking-[0.3em] text-foreground placeholder:text-muted-foreground placeholder:tracking-normal outline-none focus:border-ring focus:ring-2 focus:ring-ring/25"
+              />
+            </div>
 
-          <button
-            type="submit"
-            disabled={verifying || code.replace(/\D/g, "").length < 6}
-            className="flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
-          >
-            {verifying ? "Verifying…" : "Sign in"}
-          </button>
+            {error && (
+              <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
+                {error}
+              </p>
+            )}
 
-          <button
-            type="button"
-            onClick={() => { setSent(false); setCode(""); setError(null); }}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer whitespace-nowrap"
-          >
-            Use a different email
-          </button>
-        </form>
-      ) : (
-        <form onSubmit={handleSubmit} className="p-5 flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="email" className="text-xs font-medium text-muted-foreground">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              placeholder="you@company.com"
-              className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
-            />
-          </div>
+            <BusyButton
+              type="submit"
+              variant="primary"
+              size="md"
+              busy={verifying}
+              busyLabel="Verifying…"
+              disabled={code.replace(/\D/g, "").length < 6}
+            >
+              Sign in
+            </BusyButton>
 
-          {error && (
-            <p className="text-xs text-destructive bg-destructive/15 border border-destructive/40 rounded-md px-3 py-2">
-              {error}
-            </p>
-          )}
+            <button
+              type="button"
+              onClick={() => { setSent(false); setCode(""); setError(null); }}
+              className={buttonClass("ghost")}
+            >
+              Use a different email
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4 p-5">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="email" className={labelClass}>Email</label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+                placeholder="you@company.com"
+                className={`${fieldClass} w-full`}
+              />
+            </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="mt-1 flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed whitespace-nowrap"
-          >
-            <Mail className="h-4 w-4" />
-            {loading ? "Sending…" : "Send magic link"}
-          </button>
-        </form>
-      )}
+            {error && (
+              <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
+                {error}
+              </p>
+            )}
 
-      <div className="border-t border-border bg-toolbar px-5 py-3">
-        <p className="text-xs text-muted-foreground">
-          Accounts are created by administrators. No self-registration.
-        </p>
+            <BusyButton
+              type="submit"
+              variant="primary"
+              size="md"
+              busy={loading}
+              busyLabel="Sending…"
+              icon={<Mail className="h-4 w-4" />}
+            >
+              Send magic link
+            </BusyButton>
+          </form>
+        )}
+
+        <div className="border-t border-border bg-secondary/40 px-5 py-3">
+          <p className="text-xs text-muted-foreground">
+            Accounts are created by administrators. No self-registration.
+          </p>
+        </div>
       </div>
     </div>
   );

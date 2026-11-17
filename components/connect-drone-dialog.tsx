@@ -137,10 +137,10 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
     )}
     <div className="fixed inset-0 z-40 flex items-center justify-center">
       <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        className="absolute inset-0 bg-slate-950/50 backdrop-blur-xs"
         onClick={!busy ? handleClose : undefined}
       />
-      <div className="relative z-10 w-full max-w-xl rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
+      <div className="relative z-10 w-full max-w-xl rounded-2xl border border-border bg-card shadow-2xl overflow-hidden">
 
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border bg-toolbar px-5 py-3.5">
@@ -195,7 +195,7 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
                   ) : (
                     <>
                       <p>Connect your flight controller via USB. Chrome will show a COM port picker the first time.</p>
-                      <p className="text-[10px] text-muted-foreground/70">
+                      <p className="text-[11px] text-muted-foreground/70">
                         Some boards expose two ports (a Cube shows SLCAN + MAVLink). If you get no data, retry and pick the
                         other port. The MAVLink port is usually the one with the higher COM number.
                       </p>
@@ -204,7 +204,7 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
                 </>
               )}
               {serialMode === "polyfill" && (
-                <p className="text-[10px] text-muted-foreground/70 italic">
+                <p className="text-[11px] text-muted-foreground/70 italic">
                   Using WebUSB polyfill (Android Chrome compatibility mode)
                 </p>
               )}
@@ -230,7 +230,7 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
                   style={{ width: `${pct}%` }}
                 />
               </div>
-              <p className="text-[10px] text-muted-foreground text-right">
+              <p className="text-[11px] text-muted-foreground text-right">
                 {received} / {total} params ({pct}%)
               </p>
             </div>
@@ -239,7 +239,7 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
           {/* Done summary */}
           {stage === "done" && (
             <>
-              <p className="text-xs text-emerald-400">✓ {received} parameters loaded.</p>
+              <p className="text-xs text-emerald-600 dark:text-emerald-400">✓ {received} parameters loaded.</p>
               <DroneStatusPanel
                 match={match}
                 onRegister={isStaff ? () => setRegisterChoice(true) : undefined}
@@ -256,7 +256,7 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
                       <ClipboardList className="h-3.5 w-3.5 shrink-0" />
                       Register &amp; keep current params
                     </div>
-                    <div className="text-[10px] opacity-80 pl-5">
+                    <div className="text-[11px] opacity-80 pl-5">
                       Links this flight controller and saves its params as v1. Writes nothing.
                     </div>
                   </button>
@@ -269,7 +269,7 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
                       <AlertTriangle className="h-3 w-3 shrink-0 text-amber-500" />
                       Register &amp; install the model template
                     </div>
-                    <div className="text-[10px] text-muted-foreground pl-5">
+                    <div className="text-[11px] text-muted-foreground pl-5">
                       Installs its model&apos;s template (keeping this drone&apos;s calibration and tuning), verifies it and saves the result as v1.
                     </div>
                   </button>
@@ -282,7 +282,7 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
           {log.length > 0 && (
             <div className="rounded-md border border-border bg-black/30 px-3 py-2 max-h-44 overflow-y-auto flex flex-col gap-0.5">
               {log.map((line, i) => (
-                <p key={i} className={`font-mono text-[11px] leading-relaxed ${line.startsWith("✗") || line.startsWith("⚠") ? "text-amber-400" : "text-muted-foreground"}`}>
+                <p key={i} className={`font-mono text-[11px] leading-relaxed ${line.startsWith("✗") || line.startsWith("⚠") ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
                   <span className="text-muted-foreground/40 mr-1.5">›</span>{line}
                 </p>
               ))}
@@ -302,7 +302,7 @@ export function ConnectDroneDialog({ onParamsLoaded, onClose, onForget }: Props)
             <button
               onClick={handleForget}
               title={`Forget ${storedCount} stored param${storedCount === 1 ? "" : "s"}`}
-              className="flex items-center gap-1.5 rounded-md border border-rose-500/40 text-rose-500 hover:bg-rose-500/10 px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap"
+              className="flex items-center gap-1.5 rounded-md border border-rose-500/40 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap"
             >
               <Trash2 className="h-3.5 w-3.5" />
               Forget ({storedCount})

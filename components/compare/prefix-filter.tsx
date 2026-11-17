@@ -117,9 +117,9 @@ export function PrefixFilterModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-xs" onClick={onClose} />
 
-      <div className="relative z-10 w-full max-w-md rounded-xl border border-border bg-card shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
+      <div className="relative z-10 w-full max-w-md rounded-2xl border border-border bg-card shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
         <div className="flex items-center justify-between border-b border-border bg-toolbar px-5 py-3.5 shrink-0">
           <div className="flex items-center gap-2">
             <EyeOff className="h-4 w-4 text-primary" />
@@ -147,7 +147,7 @@ export function PrefixFilterModal({
               onChange={(e) => updateQuery(e.target.value)}
               placeholder="Search groups…"
               aria-label="Search parameter groups"
-              className="w-full rounded-md border border-border bg-secondary pl-8 pr-7 py-1.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
+              className="w-full rounded-lg border border-input bg-field pl-8 pr-7 py-1.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-ring focus:ring-2 focus:ring-ring/25"
             />
             {query && (
               <button
@@ -240,7 +240,7 @@ export function PrefixFilterModal({
                 <span className={`font-mono text-xs ${isHidden ? "text-muted-foreground line-through" : "text-foreground"}`}>
                   {prefix}
                 </span>
-                <span className="ml-auto flex items-center gap-2 shrink-0 text-[10px] tabular-nums">
+                <span className="ml-auto flex items-center gap-2 shrink-0 text-[11px] tabular-nums">
                   {diffs > 0 && (
                     <span className="rounded bg-amber-400/15 border border-amber-500/30 px-1.5 py-px font-semibold text-amber-700 dark:text-amber-400">
                       {diffs} differ
