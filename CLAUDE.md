@@ -72,7 +72,7 @@ When implementing search in a param list:
 
 ## Environment
 
-- Dev: `npm run dev --turbopack`
+- Dev: `npm run dev` (the script already passes `--turbopack`)
 - Env vars needed locally: `KV_REST_API_URL`, `KV_REST_API_TOKEN` (pull via `vercel env pull`)
 - `.next/` and `.env*.local` are gitignored
 

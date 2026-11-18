@@ -166,6 +166,7 @@ Checked by me in screenshots against sample data (light, dark, phone). Not check
 - [ ] **Compare versions** (the only compare entry): tick boxes appear on every version, the bar says how many are selected, nothing happens until you press **Compare N versions**, and Cancel leaves the mode.
 - [ ] In that mode, under your versions: **Add versions from somewhere else**. Tick a version of another drone, a model template, add a .param file; all of them show as chips in the bar and as columns in the comparison.
 - [ ] Connected drone (needs a drone): update banner with Install, "matching" banner, and the unsaved "vN from the connected drone" draft with the list of differing params and Save.
+- [ ] Install an older version (staff, needs a drone): with the drone connected, every version other than the one on the drone and the target has **Install on the drone**. The confirm dialog says the target does not change and the drone will be offered the target again on its next connect. A client does not see the button.
 - [ ] Drone settings: details, flight controller, NFC sticker and delete are separate parts; a contributor sees why Client and Model are disabled.
 
 ### Compare page

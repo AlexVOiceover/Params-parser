@@ -107,6 +107,21 @@ export function HistoryTimeline({ kind, setId, variantId, versions, events, dron
   ].sort((a, b) => b.at.localeCompare(a.at));
   const capturedIds = new Set(events.filter((e) => e.kind === "captured").map((e) => e.versionId));
 
+  /**
+   * Staff can put any other version on the connected drone. The target does
+   * not move, so the note says what happens on the next connect.
+   */
+  function installOther(v: TimelineVersion): { notice?: string } | null {
+    if (!connectedHere || !isStaff || onDroneId === v.id || target?.id === v.id) return null;
+    if (!target) return {};
+    const stays = `so this drone will be offered v${target.label} again on its next connect.`;
+    return {
+      notice: v.needsReview
+        ? `v${v.label} is waiting for review. v${target.label} stays the target, ${stays}`
+        : `v${target.label} is still the target, ${stays} To make v${v.label} the target, restore it instead.`,
+    };
+  }
+
   const flags = (v: TimelineVersion) => ({
     isTarget: target?.id === v.id,
     isProposal: proposal?.id === v.id || v.needsReview,
@@ -198,6 +213,7 @@ export function HistoryTimeline({ kind, setId, variantId, versions, events, dron
                   v={item.version}
                   {...flags(item.version)}
                   installable={connectedHere && target?.id === item.version.id && onDroneId !== item.version.id}
+                  installOther={installOther(item.version)}
                   canRestore={!item.version.needsReview && target?.id !== item.version.id && (isStaff || kind === "drone")}
                   isAdmin={isAdmin}
                   kind={kind}
@@ -322,11 +338,13 @@ function SelectableVersion({ v, kind, checked, onToggle, ...flags }: VersionFlag
 }
 
 function VersionCard({
-  v, kind, installable, canRestore, isAdmin, fileBase, filterSource, onRestore, onCopy, onChanged, ...flags
+  v, kind, installable, installOther, canRestore, isAdmin, fileBase, filterSource, onRestore, onCopy, onChanged, ...flags
 }: VersionFlags & {
   v: TimelineVersion;
   kind: Kind;
   installable: boolean;
+  /** Set when staff may install this non-target version on the connected drone. */
+  installOther: { notice?: string } | null;
   canRestore: boolean;
   isAdmin: boolean;
   fileBase: string;
@@ -411,6 +429,14 @@ function VersionCard({
             <button type="button" onClick={onRestore} title="Save a copy of this version as the newest one" className={quiet}>
               <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" /> Restore
             </button>
+          )}
+          {installOther && (
+            <ApplyUpdateButton
+              version={{ id: v.id, label: v.label, firmware: v.firmware }}
+              variant="quiet"
+              label="Install on the drone"
+              notice={installOther.notice}
+            />
           )}
           {isAdmin && (
             confirmDelete ? (
