@@ -191,7 +191,7 @@ export function SaveResumeModal({
               className={buttonClass("secondary")}
             >
               <Upload className="h-3.5 w-3.5" />
-              Publish to Catalog
+              Save to a drone…
             </button>
           )}
           <button

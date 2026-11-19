@@ -4,12 +4,11 @@ import { useEffect, useCallback, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { FileText, FilePlus, FolderOpen, Filter, ArrowLeft, ArrowRight, Download, BookmarkPlus, X, Library, Usb, ChevronRight } from "lucide-react";
+import { FileText, FilePlus, FolderOpen, ArrowLeft, ArrowRight, Download, BookmarkPlus, Usb, Box, Plane, ExternalLink, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
 import { useAuth } from "@/components/auth-provider";
 import { writeParamFile } from "@/lib/param-engine";
-import { FileUpload } from "@/components/file-upload";
 import { ProtectionListSelect } from "@/components/protection-list-select";
 import { ParamPanel } from "@/components/param-panel";
 import { DetailPanel } from "@/components/detail-panel";
@@ -17,10 +16,16 @@ import { ConsolePanel } from "@/components/console-panel";
 import { ListEditorDialog } from "@/components/list-editor-dialog";
 import { SaveResumeModal } from "@/components/save-resume-modal";
 import { CatalogUploadModal } from "@/components/catalog-upload-modal";
-import { useDroneParams } from "@/lib/drone-params-context";
+import { VersionPicker } from "@/components/compare/version-picker";
+import { Dialog } from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/busy";
 import { Badge } from "@/components/status-badge";
+import { useDroneParams } from "@/lib/drone-params-context";
+import { useConnectedDroneMatch } from "@/lib/use-connected-drone-match";
+import { useSerialMode } from "@/lib/use-serial-mode";
+import { droneHref, modelHref } from "@/lib/versions";
+import type { PickerHistory, PickerVersion } from "@/lib/version-picker";
 import { buttonClass, cardClass, fieldClass, labelClass, pageLeadClass, pageTitleClass } from "@/components/ui/styles";
-
 // ---------- flying rows portal ----------
 
 const MAX_FLYING = 8;
@@ -64,7 +69,26 @@ function FlyingRowsOverlay({ rows }: { rows: FlyingRow[] }) {
   );
 }
 
-export function ParamFilterApp({ loadUrl, catalogSource }: { loadUrl?: string; catalogSource?: { family: string; variant: string; client: string; version: string } }) {
+/** Where the params in the filter came from. */
+type Source =
+  | { kind: "file"; name: string }
+  | { kind: "version"; id: string; subject: string; label: string; note: string | null; detail: string; href: string; serial: string | null }
+  | { kind: "drone" }
+  | { kind: "blank" };
+
+function findVersion(histories: PickerHistory[], id: string): { h: PickerHistory; v: PickerVersion } | null {
+  for (const h of histories) {
+    const v = h.versions.find((x) => x.id === id);
+    if (v) return { h, v };
+  }
+  return null;
+}
+
+function setFilterUrl(versionId: string | null): void {
+  window.history.replaceState(null, "", versionId ? `/filter?versionId=${versionId}` : "/filter");
+}
+
+export function ParamFilterApp({ histories, initialVersionId }: { histories: PickerHistory[]; initialVersionId?: string }) {
   const {
     fileName,
     protectedParams,
@@ -103,37 +127,101 @@ export function ParamFilterApp({ loadUrl, catalogSource }: { loadUrl?: string; c
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, role]);
 
-  const [appMode, setAppMode] = useState<"idle" | "edit" | "create">("idle");
-  const [activeCatalogSource, setActiveCatalogSource] = useState<{ family: string; variant: string; client: string; version: string } | undefined>(undefined);
-  const [linkLoading, setLinkLoading] = useState(!!loadUrl);
+  const [source, setSource] = useState<Source | null>(null);
+  /** What is being fetched, for the busy line; null when nothing is. */
+  const [opening, setOpening] = useState<string | null>(initialVersionId ? "the version" : null);
+  const [fleetOpen, setFleetOpen] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const fileInputId = useId();
 
-  useEffect(() => {
-    if (!loadUrl) return;
-    const filename = catalogSource ? `v${catalogSource.version}.param` : "catalog.param";
-    fetch(loadUrl)
-      .then((r) => r.text())
-      .then((content) => {
-        loadFile(filename, content);
-        setAppMode("edit");
-        setActiveCatalogSource(catalogSource);
-        setDroneLoaded(false);
-      })
-      .catch(() => log("Failed to load param file from URL", "ERROR"))
-      .finally(() => setLinkLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadUrl]);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [droneLoaded, setDroneLoaded] = useState(false);
-  const { droneParams } = useDroneParams();
+  const { droneParams, readAt, openImportDialog } = useDroneParams();
   const droneParamsCount = droneParams?.length ?? 0;
+  const match = useConnectedDroneMatch();
+  const connectedSerial = match.status === "linked" ? match.drone?.serial ?? null : null;
+  const serialMode = useSerialMode();
+
+  const [editorOpen, setEditorOpen] = useState(false);
   const [activePanel, setActivePanel] = useState<"protected" | "applied">("applied");
-const [saveResumeOpen, setSaveResumeOpen] = useState(false);
+  const [saveResumeOpen, setSaveResumeOpen] = useState(false);
   const [catalogUpload, setCatalogUpload] = useState<{ content: string; suggestedName: string } | null>(null);
   const [remainingOverrides, setRemainingOverrides] = useState<Map<string, string>>(new Map());
   const [flyingRows, setFlyingRows] = useState<FlyingRow[]>([]);
 
   const protectedPanelRef = useRef<HTMLDivElement>(null);
   const appliedPanelRef = useRef<HTMLDivElement>(null);
+
+  const use = useCallback((next: Source, name: string, content: string) => {
+    loadFile(name, content);
+    setSource(next);
+    setRemainingOverrides(new Map());
+    setFilterUrl(next.kind === "version" ? next.id : null);
+  }, [loadFile]);
+
+  const openVersion = useCallback(async (id: string) => {
+    const hit = findVersion(histories, id);
+    if (!hit) {
+      setOpening(null);
+      log("That version is not available to you", "ERROR");
+      return;
+    }
+    const { h, v } = hit;
+    const subject = h.kind === "template" ? `${h.modelName} template` : h.serial ?? "Drone";
+    setOpening(`${subject} v${v.label}`);
+    try {
+      const res = await fetch(`/api/versions/${id}/file`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const content = await res.text();
+      use(
+        {
+          kind: "version",
+          id,
+          subject,
+          label: v.label,
+          note: v.isTarget ? (h.kind === "template" ? "current template" : "target") : v.needsReview ? "proposal" : null,
+          detail: h.kind === "template" ? "Model template" : [h.clientName ?? "No client", h.modelName].join(" · "),
+          href: h.kind === "template" ? modelHref(h.variantId) : droneHref(h.serial ?? ""),
+          serial: h.kind === "drone" ? h.serial : null,
+        },
+        `${subject.replace(/[^A-Za-z0-9_-]+/g, "-")}-v${v.label}.param`,
+        content,
+      );
+    } catch (err) {
+      log(`Could not open ${subject} v${v.label}: ${(err as Error).message}`, "ERROR");
+    } finally {
+      setOpening(null);
+    }
+  }, [histories, use, log]);
+
+  useEffect(() => {
+    if (initialVersionId) void openVersion(initialVersionId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialVersionId]);
+
+  function pickFile(file: File | undefined) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => use({ kind: "file", name: file.name }, file.name, reader.result as string);
+    reader.readAsText(file);
+  }
+
+  const useConnectedDrone = useCallback(() => {
+    if (!droneParams || droneParams.length === 0) return;
+    use({ kind: "drone" }, `${connectedSerial ?? "drone"}.param`, droneParams.map((p) => `${p.name},${p.value}`).join("\n"));
+  }, [droneParams, connectedSerial, use]);
+
+  // "Connect a drone" from here loads its params as soon as the read finishes.
+  const wantsDrone = useRef(false);
+  useEffect(() => {
+    if (wantsDrone.current && droneParamsCount > 0) {
+      wantsDrone.current = false;
+      useConnectedDrone();
+    }
+  }, [droneParamsCount, useConnectedDrone]);
+
+  const connectDrone = useCallback(() => {
+    wantsDrone.current = true;
+    openImportDialog();
+  }, [openImportDialog]);
 
   const handleRemainingOverride = useCallback((name: string, value: string) => {
     setRemainingOverrides((prev) => {
@@ -204,23 +292,10 @@ const [saveResumeOpen, setSaveResumeOpen] = useState(false);
       return;
     }
     createFromDefs();
-    setAppMode("create");
+    setSource({ kind: "blank" });
     setRemainingOverrides(new Map());
-    setActiveCatalogSource(undefined);
-    setDroneLoaded(false);
+    setFilterUrl(null);
   }, [paramDefs, createFromDefs, log]);
-
-  const handleOpenDrone = useCallback(() => {
-    if (!droneParams || droneParams.length === 0) return;
-    const content = droneParams.map((p) => `${p.name},${p.value}`).join("\n");
-    loadFile("drone.param", content);
-    setAppMode("edit");
-    setRemainingOverrides(new Map());
-    setActiveCatalogSource(undefined);
-    setDroneLoaded(true);
-    log(`Loaded ${droneParams.length} drone params from memory`);
-  }, [droneParams, loadFile, log]);
-
   // Info sidebar resize (horizontal)
   const [infoWidth, setInfoWidth] = useState(288);
   const infoDrag = useRef<{ startX: number; startWidth: number } | null>(null);
@@ -280,7 +355,6 @@ const [saveResumeOpen, setSaveResumeOpen] = useState(false);
   const [saveListDesc, setSaveListDesc] = useState("");
   const saveListInputRef = useRef<HTMLInputElement>(null);
   const startHereId = useId();
-  const saveListTitleId = useId();
   const saveListNameId = useId();
   const saveListDescId = useId();
 
@@ -347,7 +421,7 @@ const handleSave = useCallback(() => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     const baseName = fileName ? fileName.replace(/\.\w+$/, "") : "params";
-    const outName = appMode === "create"
+    const outName = source?.kind === "blank"
       ? "new_config.param"
       : `${baseName}_filtered.param`;
     a.href = url;
@@ -355,9 +429,9 @@ const handleSave = useCallback(() => {
     a.click();
     URL.revokeObjectURL(url);
     log(
-      `Saved '${outName}' \u2014 ${merged.length} written${appMode !== "create" ? `, ${protectedParams.length} removed` : ""}`
+      `Saved '${outName}' \u2014 ${merged.length} written${source?.kind !== "blank" ? `, ${protectedParams.length} removed` : ""}`
     );
-  }, [appMode, protectedParams, remainingParams, remainingOverrides, fileName, log]);
+  }, [source, protectedParams, remainingParams, remainingOverrides, fileName, log]);
 
   const handlePublishToCatalog = useCallback((header: string | null) => {
     const merged = remainingParams.map((p) => ({
@@ -366,138 +440,116 @@ const handleSave = useCallback(() => {
     }));
     const content = (header ?? "") + writeParamFile(merged);
     const baseName = fileName ? fileName.replace(/\.\w+$/, "") : "params";
-    const suggestedName = appMode === "create" ? "new_config" : `${baseName}_filtered`;
+    const suggestedName = source?.kind === "blank" ? "new_config" : `${baseName}_filtered`;
     setSaveResumeOpen(false);
     setCatalogUpload({ content, suggestedName });
-  }, [appMode, remainingParams, remainingOverrides, fileName]);
+  }, [source, remainingParams, remainingOverrides, fileName]);
 
-  const fileSource: "local" | "catalog" | "new" | "drone" | null =
-    appMode === "create" ? "new" :
-    appMode === "edit" && droneLoaded ? "drone" :
-    appMode === "edit" && activeCatalogSource ? "catalog" :
-    appMode === "edit" ? "local" :
-    null;
-
+  const isBlank = source?.kind === "blank";
   const nothingLoaded = protectedParams.length === 0 && remainingParams.length === 0;
-  const dimUnless = (source: typeof fileSource) => fileSource && fileSource !== source && "opacity-40 hover:opacity-90";
+  const showPanels = !nothingLoaded || opening !== null;
+  const hasDrone = droneParamsCount > 0;
+  const canConnect = serialMode !== "unsupported";
+  const saveSerial = source?.kind === "version" ? source.serial : source?.kind === "drone" ? connectedSerial : null;
+
+  const choices: { key: string; icon: LucideIcon; label: React.ReactNode; title: string; text: string; onClick: () => void; disabled?: boolean; live?: boolean }[] = [
+    {
+      key: "fleet",
+      icon: Plane,
+      label: "Choose a drone…",
+      title: "A saved version of any drone or model template",
+      text: "Pick a drone from the fleet, then the version to start from.",
+      onClick: () => setFleetOpen(true),
+    },
+    ...(hasDrone
+      ? [{
+          key: "drone",
+          icon: Usb,
+          label: connectedSerial ? <>Use <span className="font-mono">{connectedSerial}</span></> : "Use connected drone",
+          title: `Load the ${droneParamsCount} params read from the connected drone`,
+          text: `${droneParamsCount} params, as they are on ${connectedSerial ?? "the connected drone"} right now.`,
+          onClick: useConnectedDrone,
+          live: true,
+        }]
+      : canConnect
+        ? [{
+            key: "drone",
+            icon: Usb,
+            label: "Connect a drone",
+            title: "Plug a drone in over USB and read its params",
+            text: "Plug one in over USB; its params load here once they are read.",
+            onClick: connectDrone,
+          }]
+        : []),
+    {
+      key: "file",
+      icon: FolderOpen,
+      label: "Load .param file",
+      title: "Open a .param file from this computer",
+      text: "A file from this computer, for example one you received by email.",
+      onClick: () => fileInput.current?.click(),
+    },
+    {
+      key: "blank",
+      icon: FilePlus,
+      label: "Blank config",
+      title: "Every ArduPilot param, with value 0 (ArduPilot publishes no defaults)",
+      text: "Every ArduPilot param with value 0, to build a file from scratch.",
+      onClick: handleCreateNew,
+      disabled: defsLoading,
+    },
+  ];
 
   return (
     <div className="flex min-h-full flex-col px-4 pb-4 pt-4 sm:px-6 md:h-full md:min-h-176 md:overflow-hidden">
       <div className="mb-3 shrink-0">
-        <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
-          <Link href="/" className="transition-colors hover:text-foreground cursor-pointer whitespace-nowrap">Drones</Link>
-          <ChevronRight className="h-3.5 w-3.5" />
-          <span className="text-foreground">Filter tool</span>
-        </nav>
-        <h1 className={`${pageTitleClass} mt-2`}>Filter tool</h1>
+        <h1 className={pageTitleClass}>Filter</h1>
         <p className={pageLeadClass}>
-          Load a .param file, choose which parameters are protected (left out), and export the rest.
+          Start from a drone, a file or a blank config, leave out the protected params, and export the rest or save it to a drone.
         </p>
       </div>
 
-      {/* Toolbar */}
-      <header className={cn(
-        cardClass,
-        "mb-3 flex shrink-0 flex-wrap items-center gap-2 px-3 py-2 transition-colors duration-300",
-        appMode === "create" && "border-emerald-600/40 bg-emerald-50 dark:border-emerald-700/50 dark:bg-emerald-950/40"
-      )}>
-        {/* Source group: Open .param | Catalog | New Config */}
+      <label htmlFor={fileInputId} className="sr-only">.param file to load</label>
+      <input
+        id={fileInputId}
+        ref={fileInput}
+        type="file"
+        accept=".param,.parm,.txt"
+        className="hidden"
+        onChange={(e) => { pickFile(e.target.files?.[0]); e.target.value = ""; }}
+      />
 
-        {/* 1. Open .param */}
-        <FileUpload
-          onFileLoaded={() => { setAppMode("edit"); setRemainingOverrides(new Map()); setActiveCatalogSource(undefined); setDroneLoaded(false); }}
-          className={cn(dimUnless("local"))}
-        />
-        {fileSource === "local" && fileName && (
-          <div className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground" title={fileName}>
-            <FileText className="h-3.5 w-3.5 shrink-0" />
-            <span className="max-w-36 truncate font-mono font-medium text-foreground">{fileName}</span>
+      {/* What is loaded, the protection list and the export */}
+      <section aria-label="Source" className={cn(cardClass, "mb-3 shrink-0 overflow-hidden")}>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3">
+          <SourceSummary source={source} opening={opening} fileName={fileName} count={protectedParams.length + remainingParams.length} connectedSerial={connectedSerial} readAt={readAt} />
+          <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 sm:w-auto">
+            <ProtectionListSelect onEditLists={() => setEditorOpen(true)} />
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={remainingParams.length === 0}
+              title={remainingParams.length === 0 ? "Nothing to export" : `Export ${remainingParams.length} params`}
+              className={buttonClass("primary", "md")}
+            >
+              <Download className="h-4 w-4" />
+              Export {remainingParams.length > 0 && <span className="tabular-nums">({remainingParams.length})</span>}
+            </button>
+          </div>
+        </div>
+        {!nothingLoaded && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-border bg-secondary/40 px-4 py-2">
+            <span className="mr-1 text-xs font-medium text-muted-foreground">Start over from</span>
+            {choices.map((c) => (
+              <button key={c.key} type="button" onClick={c.onClick} disabled={c.disabled} title={c.title} className={buttonClass("secondary", "sm")}>
+                <c.icon className="h-3.5 w-3.5 text-muted-foreground" />
+                {c.label}
+                {c.live && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />}
+              </button>
+            ))}
           </div>
         )}
-
-        {fileSource === "catalog" && activeCatalogSource && (
-          <>
-            <div className="hidden h-5 w-px shrink-0 bg-border sm:block" />
-            <div className="flex h-9 min-w-0 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 text-[13px] font-medium text-primary whitespace-nowrap">
-              <Library className="h-3.5 w-3.5 shrink-0" />
-              <span className="max-w-72 truncate">
-                {activeCatalogSource.family}
-                <span className="opacity-60"> / </span>
-                {activeCatalogSource.variant}
-                <span className="opacity-60"> / </span>
-                {activeCatalogSource.client}
-                <span className="opacity-60"> / </span>
-                <span className="font-mono">{activeCatalogSource.version}</span>
-              </span>
-            </div>
-          </>
-        )}
-
-        <div className="hidden h-5 w-px shrink-0 bg-border sm:block" />
-
-        {/* 3. New Config */}
-        <button
-          type="button"
-          onClick={handleCreateNew}
-          disabled={defsLoading}
-          title="Browse all ArduPilot params — values will be 0 (pdef.json has no defaults)"
-          className={cn(
-            buttonClass("secondary", "md"),
-            appMode === "create" && "border-emerald-600/50 bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25 dark:text-emerald-300",
-            dimUnless("new")
-          )}
-        >
-          <FilePlus className="h-4 w-4" />
-          New Config
-        </button>
-        {fileSource === "new" && (
-          <Badge tone="ok" title="Values are 0 — ArduPilot pdef.json does not publish firmware defaults">
-            <FilePlus className="h-3 w-3" aria-hidden="true" />
-            values are 0
-          </Badge>
-        )}
-
-        <div className="hidden h-5 w-px shrink-0 bg-border sm:block" />
-        <button
-          type="button"
-          onClick={handleOpenDrone}
-          disabled={droneParamsCount === 0}
-          title={
-            droneParamsCount === 0
-              ? "Import from drone first using the header button"
-              : `Load ${droneParamsCount} drone params into the filter`
-          }
-          className={cn(
-            buttonClass("secondary", "md"),
-            fileSource === "drone"
-              ? "border-emerald-600/50 bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25 dark:text-emerald-300"
-              : droneParamsCount > 0 && "border-emerald-600/50 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300",
-            dimUnless("drone")
-          )}
-        >
-          <Usb className="h-4 w-4" />
-          {fileSource === "drone"
-            ? `Drone (${droneParamsCount} params)`
-            : "Load drone"}
-        </button>
-
-        <div className="ml-auto flex w-full min-w-0 items-center justify-end gap-2 sm:w-auto">
-          <ProtectionListSelect onEditLists={() => setEditorOpen(true)} />
-          <div className="hidden h-5 w-px shrink-0 bg-border sm:block" />
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={remainingParams.length === 0}
-            title={remainingParams.length === 0 ? "Nothing to export" : `Export ${remainingParams.length} params`}
-            className={buttonClass("primary", "md")}
-          >
-            <Download className="h-4 w-4" />
-            Export {remainingParams.length > 0 && (
-              <span className="tabular-nums">({remainingParams.length})</span>
-            )}
-          </button>
-        </div>
-      </header>
+      </section>
 
       {/* Main content */}
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
@@ -505,43 +557,46 @@ const handleSave = useCallback(() => {
         {/* ── Transfer zone: Protected ⟵⟶ Applied ── */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
 
-        {nothingLoaded && !linkLoading && (
-          <section aria-labelledby={startHereId} className={`${cardClass} shrink-0 px-4 py-3.5`}>
-            <h2 id={startHereId} className="text-sm font-semibold text-foreground">Start here</h2>
-            <p className="mt-0.5 text-[13px] text-muted-foreground">Nothing is loaded yet. There are two ways to bring parameters in:</p>
-            <ul className="mt-3 grid gap-3 sm:grid-cols-2">
-              <li className="flex items-start gap-3">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary" aria-hidden="true">
-                  <FolderOpen className="h-4 w-4" />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-[13px] font-medium text-foreground">Open a .param file</span>
-                  <span className="block text-[13px] leading-snug text-muted-foreground">Press “Open .param” above and pick a file from this computer.</span>
-                </span>
-              </li>
-              <li className="flex items-start gap-3">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary" aria-hidden="true">
-                  <Filter className="h-4 w-4" />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-[13px] font-medium text-foreground">Open a version from a drone</span>
-                  <span className="block text-[13px] leading-snug text-muted-foreground">On a drone’s page, press “Open in Filter” on any version in its history.</span>
-                </span>
-              </li>
-            </ul>
+        {!showPanels && (
+          <section aria-labelledby={startHereId} className={cn(cardClass, "shrink-0 px-5 py-5")}>
+            <h2 id={startHereId} className="text-base font-semibold text-foreground">Where do the params come from?</h2>
+            <p className="mt-0.5 text-[13px] text-muted-foreground">Pick a starting point. You can start over from another one at any time.</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {choices.map((c) => (
+                <button
+                  key={c.key}
+                  type="button"
+                  onClick={c.onClick}
+                  disabled={c.disabled}
+                  className="flex items-start gap-3 rounded-xl border border-border bg-card p-4 text-left shadow-xs transition-colors hover:border-primary hover:bg-primary/5 cursor-pointer disabled:cursor-wait disabled:opacity-60"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary" aria-hidden="true">
+                    <c.icon className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      {c.label}
+                      {c.live && <Badge tone="ok">connected</Badge>}
+                    </span>
+                    <span className="mt-0.5 block text-[13px] leading-snug text-muted-foreground">{c.text}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
           </section>
         )}
 
+        {showPanels && (
         <div className="flex min-h-0 flex-1 flex-col gap-3 md:flex-row">
 
         {/* Protected panel */}
         <div ref={protectedPanelRef} className="flex max-h-[75vh] min-w-0 flex-1 flex-col md:max-h-none" onMouseEnter={() => setActivePanel("protected")}>
           <ParamPanel
-            title="PROTECTED"
+            title="Protected"
             tone="protected"
             variant="protected"
             isActive={activePanel === "protected"}
-            loading={linkLoading}
+            loading={opening !== null}
             params={protectedParams}
             checkedNames={checkedProtected}
             pdefGroups={pdefGroups}
@@ -590,11 +645,11 @@ const handleSave = useCallback(() => {
         {/* Applied panel */}
         <div ref={appliedPanelRef} className="flex max-h-[75vh] min-w-0 flex-1 flex-col md:max-h-none" onMouseEnter={() => setActivePanel("applied")}>
           <ParamPanel
-            title={appMode === "create" ? "DEFAULT VALUES" : "WILL BE APPLIED"}
-            tone={appMode === "create" ? "defaults" : "applied"}
+            title={isBlank ? "Default values" : "Will be applied"}
+            tone={isBlank ? "defaults" : "applied"}
             variant="applied"
             isActive={activePanel === "applied"}
-            loading={linkLoading}
+            loading={opening !== null}
             params={remainingParams}
             checkedNames={checkedRemaining}
             pdefGroups={pdefGroups}
@@ -621,6 +676,7 @@ const handleSave = useCallback(() => {
         </div>
 
         </div>
+        )}
         </div>{/* end transfer zone */}
 
         {/* ── Info sidebar (read-only, resizable) ── */}
@@ -673,6 +729,22 @@ const handleSave = useCallback(() => {
         </div>
       </div>
 
+      {fleetOpen && (
+        <Dialog title="Choose a drone" size="xl" onClose={() => setFleetOpen(false)}>
+          <p className="-mt-1 text-[13px] text-muted-foreground">
+            Find the drone, then press the version to open. The green dot marks the version each drone should be on.
+          </p>
+          <VersionPicker
+            histories={histories}
+            pickOne
+            selection={{
+              has: (id) => source?.kind === "version" && source.id === id,
+              toggle: (id) => { setFleetOpen(false); void openVersion(id); },
+            }}
+          />
+        </Dialog>
+      )}
+
       {/* Flying rows overlay */}
       <FlyingRowsOverlay rows={flyingRows} />
 
@@ -696,117 +768,132 @@ const handleSave = useCallback(() => {
 
       {catalogUpload && (
         <CatalogUploadModal
+          preferSerial={saveSerial}
           content={catalogUpload.content}
           suggestedName={catalogUpload.suggestedName}
           onClose={() => setCatalogUpload(null)}
         />
       )}
 
-      {/* Save selection as list dialog */}
       {saveListOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-xs" />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={saveListTitleId}
-            className="relative z-10 flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
-          >
-            {/* Header */}
-            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3.5">
-              <h2 id={saveListTitleId} className="text-base font-semibold text-foreground">
-                Save Selection as Protection List
-              </h2>
-              <button
-                type="button"
-                aria-label="Close"
-                title="Close"
-                onClick={() => setSaveListOpen(false)}
-                className={buttonClass("ghost", "icon", "-mr-1.5")}
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
-              {/* Name */}
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor={saveListNameId} className={labelClass}>
-                  Name
-                </label>
-                <input
-                  id={saveListNameId}
-                  ref={saveListInputRef}
-                  type="text"
-                  value={saveListName}
-                  onChange={(e) => setSaveListName(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSaveList()}
-                  placeholder="e.g. Battery Parameters"
-                  className={fieldClass}
-                />
-              </div>
-
-              {/* Description */}
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor={saveListDescId} className={labelClass}>
-                  Description{" "}
-                  <span className="font-normal text-muted-foreground">
-                    (optional)
-                  </span>
-                </label>
-                <input
-                  id={saveListDescId}
-                  type="text"
-                  value={saveListDesc}
-                  onChange={(e) => setSaveListDesc(e.target.value)}
-                  placeholder="A short description"
-                  className={fieldClass}
-                />
-              </div>
-
-              {/* Preview of rules */}
-              <div className="flex flex-col gap-1.5">
-                <p className={labelClass}>
-                  {protectedParams.length} exact rule
-                  {protectedParams.length !== 1 ? "s" : ""} will be created
+        <Dialog
+          title="Save selection as a protection list"
+          onClose={() => setSaveListOpen(false)}
+          onSubmit={(e) => { e.preventDefault(); handleSaveList(); }}
+          footer={
+            <>
+              <button type="button" onClick={() => setSaveListOpen(false)} className={buttonClass("secondary")}>Cancel</button>
+              <button type="submit" disabled={!saveListName.trim()} className={buttonClass("primary")}>Create list</button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={saveListNameId} className={labelClass}>Name</label>
+            <input
+              id={saveListNameId}
+              ref={saveListInputRef}
+              type="text"
+              value={saveListName}
+              onChange={(e) => setSaveListName(e.target.value)}
+              placeholder="e.g. Battery Parameters"
+              className={fieldClass}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={saveListDescId} className={labelClass}>
+              Description <span className="font-normal text-muted-foreground">(optional)</span>
+            </label>
+            <input
+              id={saveListDescId}
+              type="text"
+              value={saveListDesc}
+              onChange={(e) => setSaveListDesc(e.target.value)}
+              placeholder="A short description"
+              className={fieldClass}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <p className={labelClass}>
+              {protectedParams.length} exact rule{protectedParams.length !== 1 ? "s" : ""} will be created
+            </p>
+            <div className="max-h-36 overflow-y-auto rounded-lg border border-border bg-secondary/50 px-3 py-2">
+              {protectedParams.slice(0, 8).map((p) => (
+                <p key={p.name} className="py-0.5 font-mono text-xs text-foreground">
+                  <span className="mr-1.5 text-muted-foreground">ex:</span>
+                  {p.name}
                 </p>
-                <div className="max-h-36 overflow-y-auto rounded-lg border border-border bg-secondary/50 px-3 py-2">
-                  {protectedParams.slice(0, 8).map((p) => (
-                    <p key={p.name} className="py-0.5 font-mono text-xs text-foreground">
-                      <span className="mr-1.5 text-muted-foreground">ex:</span>
-                      {p.name}
-                    </p>
-                  ))}
-                  {protectedParams.length > 8 && (
-                    <p className="pt-1 text-xs italic text-muted-foreground">
-                      …and {protectedParams.length - 8} more
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border bg-secondary/40 px-5 py-3">
-              <button
-                type="button"
-                onClick={() => setSaveListOpen(false)}
-                className={buttonClass("secondary")}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveList}
-                disabled={!saveListName.trim()}
-                className={buttonClass("primary")}
-              >
-                Create List
-              </button>
+              ))}
+              {protectedParams.length > 8 && (
+                <p className="pt-1 text-xs italic text-muted-foreground">…and {protectedParams.length - 8} more</p>
+              )}
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
+    </div>
+  );
+}
+
+function SourceSummary({ source, opening, fileName, count, connectedSerial, readAt }: {
+  source: Source | null;
+  opening: string | null;
+  fileName: string | null;
+  count: number;
+  connectedSerial: string | null;
+  readAt: number | null;
+}) {
+  let icon: LucideIcon = FileText;
+  let title: React.ReactNode = "Nothing loaded yet";
+  let detail: React.ReactNode = "Choose where the params come from below.";
+  let note: string | null = null;
+  let href: string | null = null;
+
+  if (opening) {
+    title = <span className="flex items-center gap-2"><Spinner className="h-3.5 w-3.5" /> Opening {opening}…</span>;
+    detail = "Fetching the file.";
+  } else if (source?.kind === "version") {
+    icon = source.serial ? Plane : Box;
+    title = <><span className={source.serial ? "font-mono" : undefined}>{source.subject}</span> <span className="font-mono">v{source.label}</span></>;
+    detail = <>{source.detail} · {count} params</>;
+    note = source.note;
+    href = source.href;
+  } else if (source?.kind === "drone") {
+    icon = Usb;
+    title = connectedSerial ? <span className="font-mono">{connectedSerial}</span> : "The connected drone";
+    detail = <>Read from the connected drone{readAt ? <> at {new Date(readAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</> : null} · {count} params</>;
+    note = "live";
+    href = connectedSerial ? droneHref(connectedSerial) : null;
+  } else if (source?.kind === "file") {
+    title = <span className="font-mono">{source.name}</span>;
+    detail = <>File from this computer · {count} params</>;
+  } else if (source?.kind === "blank") {
+    icon = FilePlus;
+    title = "Blank config";
+    detail = "Every ArduPilot param, value 0 — ArduPilot publishes no defaults";
+  } else if (fileName) {
+    title = <span className="font-mono">{fileName}</span>;
+  }
+  const Icon = icon;
+
+  return (
+    <div className="flex min-w-56 flex-1 items-center gap-3">
+      <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", source ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground")} aria-hidden="true">
+        <Icon className="h-4 w-4" />
+      </span>
+      <div className="min-w-0">
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-foreground">
+          {title}
+          {note && <Badge tone={note === "proposal" ? "muted" : "ok"}>{note}</Badge>}
+        </p>
+        <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+          <span>{detail}</span>
+          {href && (
+            <Link href={href} className="inline-flex items-center gap-1 font-medium text-primary hover:underline cursor-pointer whitespace-nowrap">
+              {source?.kind === "version" && !source.serial ? "Model page" : "Drone page"} <ExternalLink className="h-3 w-3" />
+            </Link>
+          )}
+        </p>
+      </div>
     </div>
   );
 }

@@ -144,13 +144,17 @@ function when(iso: string): string {
 }
 
 /**
- * Choose versions from any drone or model template, a .param file, or the
- * connected drone. Used on the Compare page and under a history's own versions.
+ * Choose versions from any drone or model template and, when `sources` is
+ * given, a .param file or the connected drone. Used on the Compare page, under
+ * a history's own versions, and by the Filter tool to open one version.
  */
-export function VersionPicker({ histories, selection, excludeHistoryId }: {
+export function VersionPicker({ histories, selection, sources, pickOne = false, excludeHistoryId }: {
   /** null while loading. */
   histories: PickerHistory[] | null;
-  selection: CompareSelection;
+  selection: Pick<CompareSelection, "has" | "toggle">;
+  sources?: Pick<CompareSelection, "drone" | "file" | "toggleDrone" | "setFile">;
+  /** Each press opens one version instead of ticking it. */
+  pickOne?: boolean;
   /** A history whose versions are already listed elsewhere on the page. */
   excludeHistoryId?: string;
 }) {
@@ -168,7 +172,7 @@ export function VersionPicker({ histories, selection, excludeHistoryId }: {
     setFileError(null);
     const params = parseParamFile(await f.text()).map((p) => ({ name: p.name, value: p.value }));
     if (params.length === 0) { setFileError("No params found in that file."); return; }
-    selection.setFile({ name: f.name, params });
+    sources?.setFile({ name: f.name, params });
   }
 
   const groups = useMemo(() => {
@@ -191,7 +195,7 @@ export function VersionPicker({ histories, selection, excludeHistoryId }: {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className={`${cardClass} divide-y divide-border`}>
+      {sources && <div className={`${cardClass} divide-y divide-border`}>
         {(hasDrone || serialMode !== "unsupported") && (
           <div className="flex flex-wrap items-center gap-3 px-4 py-3">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground"><Usb className="h-4 w-4" /></span>
@@ -202,8 +206,8 @@ export function VersionPicker({ histories, selection, excludeHistoryId }: {
               </p>
             </div>
             {hasDrone ? (
-              <button type="button" aria-pressed={selection.drone} onClick={selection.toggleDrone} className={buttonClass(selection.drone ? "primary" : "secondary")}>
-                {selection.drone ? <><Check className="h-3.5 w-3.5" /> Added</> : "Add"}
+              <button type="button" aria-pressed={sources.drone} onClick={sources.toggleDrone} className={buttonClass(sources.drone ? "primary" : "secondary")}>
+                {sources.drone ? <><Check className="h-3.5 w-3.5" /> Added</> : "Add"}
               </button>
             ) : (
               <button type="button" onClick={openImportDialog} className={buttonClass("secondary")}>
@@ -217,14 +221,14 @@ export function VersionPicker({ histories, selection, excludeHistoryId }: {
           <div className="min-w-40 flex-1">
             <p className="text-sm font-medium text-foreground">A .param file</p>
             <p className="text-xs text-muted-foreground">
-              {selection.file
-                ? <><span className="font-medium text-foreground">{selection.file.name}</span> · {selection.file.params.length} params · not saved</>
+              {sources.file
+                ? <><span className="font-medium text-foreground">{sources.file.name}</span> · {sources.file.params.length} params · not saved</>
                 : "For example one you received by email. It is compared without being uploaded or kept."}
             </p>
             {fileError && <p role="alert" className="text-xs text-destructive">{fileError}</p>}
           </div>
-          {selection.file ? (
-            <button type="button" onClick={() => selection.setFile(null)} className={buttonClass("secondary")}>Remove</button>
+          {sources.file ? (
+            <button type="button" onClick={() => sources.setFile(null)} className={buttonClass("secondary")}>Remove</button>
           ) : (
             <button type="button" onClick={() => fileInput.current?.click()} className={buttonClass("secondary")}>Choose file…</button>
           )}
@@ -238,7 +242,7 @@ export function VersionPicker({ histories, selection, excludeHistoryId }: {
             onChange={(e) => { pickFile(e.target.files?.[0] ?? null); e.target.value = ""; }}
           />
         </div>
-      </div>
+      </div>}
 
       {histories === null ? (
         <LoadingPanel label="Loading versions…" />
@@ -298,7 +302,7 @@ export function VersionPicker({ histories, selection, excludeHistoryId }: {
                           {[g.rows.some((h) => h.kind === "template") ? "template" : null, drones > 0 ? `${drones} drone${drones === 1 ? "" : "s"}` : null].filter(Boolean).join(" · ")}
                         </span>
                       </span>
-                      {picked > 0 && <span className="shrink-0 rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground">{picked} selected</span>}
+                      {picked > 0 && !pickOne && <span className="shrink-0 rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground">{picked} selected</span>}
                     </button>
                   </h3>
                   {open && (
@@ -345,7 +349,7 @@ export function VersionPicker({ histories, selection, excludeHistoryId }: {
                                   >
                                     {on
                                       ? <Check className="h-3 w-3" />
-                                      : <span className={`h-3 w-3 rounded-sm border ${v.needsReview ? "border-dashed border-muted-foreground" : "border-muted-foreground/60"}`} aria-hidden="true" />}
+                                      : !pickOne && <span className={`h-3 w-3 rounded-sm border ${v.needsReview ? "border-dashed border-muted-foreground" : "border-muted-foreground/60"}`} aria-hidden="true" />}
                                     <span className="font-mono">v{v.label}</span>
                                     {note && (
                                       <span className={`flex items-center gap-1 ${on ? "text-primary-foreground/85" : "text-muted-foreground"}`}>
@@ -385,7 +389,7 @@ export function ComparePicker({ histories, initial }: { histories: PickerHistory
         </p>
       </div>
       <SelectionTray selection={selection} labelFor={(id) => labels.get(id) ?? "A version"} />
-      <VersionPicker histories={histories} selection={selection} />
+      <VersionPicker histories={histories} selection={selection} sources={selection} />
     </div>
   );
 }

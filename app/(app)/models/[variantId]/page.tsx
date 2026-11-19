@@ -88,7 +88,6 @@ export default async function ModelPage({ params }: { params: Promise<{ variantI
         isAdmin={role === "admin"}
         isStaff
         fileBase={name.replace(/\s*·\s*/g, "-")}
-        filterSource={{ family: family?.name ?? "", variant: variant.name, client: "Template" }}
       />
 
       <section className="flex flex-col gap-4">

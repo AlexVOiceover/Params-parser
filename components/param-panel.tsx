@@ -54,16 +54,17 @@ function getSnippet(text: string, query: string, radius = 45): string {
 
 // ---------- layout constants ----------
 // Kept in one place so the column labels, group bands and rows stay aligned:
-// names start 72px in (chevron + checkbox), values sit in one fixed column.
-const COL_VALUE = "w-32 shrink-0";
+// names start 72px in (chevron + checkbox), values sit right-aligned and take
+// the width they need, so long floats are never cut.
+const COL_VALUE = "min-w-32 max-w-3/5 shrink-0";
 const NAME_INDENT = "pl-18";
 
 export type PanelTone = "protected" | "applied" | "defaults";
 
-const TONE: Record<PanelTone, { band: string; title: string; icon: LucideIcon }> = {
-  protected: { band: "border-red-500/25 bg-protected", title: "text-protected-text", icon: Shield },
-  applied: { band: "border-emerald-600/25 bg-applied", title: "text-applied-text", icon: FileCheck2 },
-  defaults: { band: "border-emerald-600/25 bg-emerald-500/15", title: "text-emerald-800 dark:text-emerald-200", icon: FilePlus },
+const TONE: Record<PanelTone, { tile: string; hint: string; icon: LucideIcon }> = {
+  protected: { tile: "bg-protected text-protected-text", hint: "Left out of the export", icon: Shield },
+  applied: { tile: "bg-applied text-applied-text", hint: "Written to the export", icon: FileCheck2 },
+  defaults: { tile: "bg-applied text-applied-text", hint: "Every ArduPilot param, value 0", icon: FilePlus },
 };
 
 // ---------- component ----------
@@ -203,12 +204,12 @@ export function ParamPanel({
 
   const q = searchQuery.trim();
   const isSearching = q.length > 0;
-  const { band, title: titleTone, icon: ToneIcon } = TONE[tone];
+  const { tile, hint, icon: ToneIcon } = TONE[tone];
 
   return (
     <div className={cn(cardClass, "flex min-w-0 flex-1 flex-col overflow-hidden")}>
       {/* Panel header */}
-      <div className={cn("flex min-h-12 shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b px-3 py-2", band)}>
+      <div className="flex min-h-14 shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 border-b border-border px-3 py-2">
         <input
           type="checkbox"
           checked={allChecked}
@@ -218,12 +219,16 @@ export function ParamPanel({
           onChange={(e) => onToggleAll(e.target.checked)}
           aria-label="Select all parameters"
         />
-        <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-card/70", titleTone)} aria-hidden="true">
+        <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", tile)} aria-hidden="true">
           <ToneIcon className="h-4 w-4" />
         </span>
-        <h2 className={cn("min-w-32 flex-1 truncate text-sm font-semibold", titleTone)}>
-          {title} ({params.length})
-        </h2>
+        <div className="min-w-32 flex-1">
+          <h2 className="flex items-baseline gap-2 truncate text-sm font-semibold text-foreground">
+            {title}
+            <span className="text-xs font-medium tabular-nums text-muted-foreground">{params.length}</span>
+          </h2>
+          <p className="truncate text-xs text-muted-foreground">{hint}</p>
+        </div>
         {headerAction && <div className="shrink-0">{headerAction}</div>}
       </div>
 
@@ -499,7 +504,7 @@ export function ParamPanel({
                               isAcknowledged={acknowledgedInvalid.has(param.name)}
                             />
                           ) : (
-                            <div className={cn(COL_VALUE, "flex h-7 items-center justify-end px-2 font-mono text-[13px] text-muted-foreground tabular-nums")}>
+                            <div className={cn(COL_VALUE, "flex h-7 items-center justify-end px-2 font-mono text-[13px] text-muted-foreground tabular-nums whitespace-nowrap")}>
                               {param.value}
                             </div>
                           )}

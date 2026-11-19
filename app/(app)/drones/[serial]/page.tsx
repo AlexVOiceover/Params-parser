@@ -125,7 +125,6 @@ export default async function DronePage({ params }: { params: Promise<{ serial: 
           isAdmin={isAdmin}
           isStaff={isStaff}
           fileBase={drone.serial}
-          filterSource={{ family: family?.name ?? "", variant: variant?.name ?? "", client: `${client?.name ?? "No client"} · ${drone.serial}` }}
         />
       ) : isStaff ? (
         <StartHistoryButton droneId={drone.id} serial={drone.serial} variantId={drone.variant_id} clientId={drone.client_id} clientName={client?.name ?? null} />

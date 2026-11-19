@@ -17,12 +17,14 @@ interface ClientSetRow { id: string; client_id: string | null; drone_id: string 
 interface VersionRow { client_set_id: string; version_label: string }
 
 interface Props {
+  /** The drone the params came from; picked for you when it exists. */
+  preferSerial?: string | null;
   content: string;
   suggestedName: string;
   onClose: () => void;
 }
 
-export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
+export function CatalogUploadModal({ preferSerial, content, suggestedName, onClose }: Props) {
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [drones, setDrones] = useState<DroneRow[]>([]);
   const [families, setFamilies] = useState<FamilyRow[]>([]);
@@ -62,9 +64,14 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
       setVariants(v.data ?? []);
       setClientSets(cs.data ?? []);
       setVersions(vs.data ?? []);
+      const preferred = preferSerial ? (d.data ?? []).find((x) => x.serial === preferSerial) : undefined;
+      if (preferred) {
+        setClientId(preferred.client_id);
+        setDroneId(preferred.id);
+      }
       setLoaded(true);
     });
-  }, []);
+  }, [preferSerial]);
 
   const variantById = useMemo(() => new Map(variants.map((v) => [v.id, v])), [variants]);
   const familyById = useMemo(() => new Map(families.map((f) => [f.id, f])), [families]);
@@ -173,7 +180,7 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
         className="relative z-10 flex max-h-[90vh] w-full max-w-sm flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
       >
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3.5">
-          <h2 id={titleId} className="text-base font-semibold text-foreground">Publish to Catalog</h2>
+          <h2 id={titleId} className="text-base font-semibold text-foreground">Save to a drone</h2>
           <button
             type="button"
             onClick={onClose}
@@ -188,7 +195,7 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
         {done ? (
           <div className="flex flex-col items-center gap-2 px-5 py-8 text-center">
             <CheckCircle className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
-            <p className="mt-1 text-sm font-medium text-foreground">Published to catalog</p>
+            <p className="mt-1 text-sm font-medium text-foreground">Saved</p>
             <p className="text-[13px] text-muted-foreground">Saved as {savedAs ?? "a new version"} in the drone&apos;s history.</p>
             <a
               href={donePath ?? "/"}
@@ -285,11 +292,11 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
                 type="submit"
                 variant="primary"
                 busy={submitting}
-                busyLabel="Publishing…"
+                busyLabel="Saving…"
                 disabled={submitDisabled}
                 icon={<Upload className="h-3.5 w-3.5" />}
               >
-                Publish
+                Save version
               </BusyButton>
             </div>
           </form>

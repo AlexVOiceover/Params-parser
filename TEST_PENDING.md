@@ -180,7 +180,13 @@ Checked by me in screenshots against sample data (light, dark, phone). Not check
 - [ ] Users: changing a role to **client** does not save until a company is chosen (before, it silently saved the first company in the list). Deleting a user asks in a dialog.
 
 ### Filter tool
-- [ ] Everything is readable in the light theme (values, warnings, search highlight). Behaviour is unchanged: load a file or a version, switch lists, move params, edit a value by holding, export, Publish to Catalog.
+- [ ] With nothing loaded, the page offers four starting points: **Choose a drone…**, **Connect a drone** (or **Use <serial>** when one is connected), **Load .param file** and **Blank config**.
+- [ ] **Choose a drone…** opens the same drone list as Compare (grouped by model, with search). Pressing a version opens it at once; the bar shows the serial, version, client and model, with a link to the drone page. Reloading the page reopens the same version.
+- [ ] Connected drone: the button shows its serial; the bar says when it was read. "Connect a drone" from Filter loads the params as soon as the read finishes.
+- [ ] Long values (e.g. ATC_ANG_YAW_P with 15 decimals) show in full, nothing cut on the left.
+- [ ] Once something is loaded, "Start over from" under the bar switches to another source.
+- [ ] Export → **Save to a drone…** (was Publish to Catalog) picks the drone the params came from when it was a drone version or the connected drone.
+- [ ] Unchanged: switch lists, move params, edit a value by holding, export the file, Save as list, Open in Filter from a drone's history.
 
 ### Dialogs that write to a drone (needs a drone)
 - [ ] Write to drone: with a firmware mismatch the "I understand — write anyway" tick box is visible and the Write button stays disabled until it is ticked.

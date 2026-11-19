@@ -17,6 +17,7 @@ export const CHANGELOG: ReleaseNote[] = [
       "Drones can be grouped by model or client, nested under a group that shows what needs attention, and sorted by any column; models can be edited, described, duplicated and deleted from the list",
       "Compare versions: tick any number of versions, add others from any drone, a model template, a file or the connected drone, and see them side by side",
       "A new look: white cards on a grey page, one style of button, a version timeline on each drone, and pages that work on a phone",
+      "Filter starts from any drone in the fleet, the connected drone (by its serial), a .param file or a blank config, shows long values in full, and saves the result straight to a drone",
     ],
   },
   {

@@ -35,7 +35,6 @@ interface Props {
   /** Prefix for downloaded file names, e.g. the serial. */
   fileBase: string;
   /** Labels the Filter tool shows for where a version came from. */
-  filterSource: { family: string; variant: string; client: string };
 }
 
 type Kind = Props["kind"];
@@ -50,7 +49,7 @@ const METHOD_TEXT: Record<string, string> = {
   assembly: "at assembly",
 };
 
-export function HistoryTimeline({ kind, setId, variantId, versions, events, drone, isAdmin, isStaff, fileBase, filterSource }: Props) {
+export function HistoryTimeline({ kind, setId, variantId, versions, events, drone, isAdmin, isStaff, fileBase }: Props) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const match = useConnectedDroneMatch();
@@ -179,7 +178,7 @@ export function HistoryTimeline({ kind, setId, variantId, versions, events, dron
             {othersFailed && (
               <p role="alert" className="text-[13px] text-destructive">Could not load the versions of other drones. Reload the page to try again.</p>
             )}
-            <VersionPicker histories={others} selection={selection} excludeHistoryId={setId ?? undefined} />
+            <VersionPicker histories={others} selection={selection} sources={selection} excludeHistoryId={setId ?? undefined} />
           </div>
         </>
       ) : (
@@ -218,7 +217,6 @@ export function HistoryTimeline({ kind, setId, variantId, versions, events, dron
                   isAdmin={isAdmin}
                   kind={kind}
                   fileBase={fileBase}
-                  filterSource={filterSource}
                   onRestore={() => setRestoreOf(item.version!)}
                   onCopy={isStaff ? () => setCopyOf(item.version!) : undefined}
                   onChanged={refresh}
@@ -338,7 +336,7 @@ function SelectableVersion({ v, kind, checked, onToggle, ...flags }: VersionFlag
 }
 
 function VersionCard({
-  v, kind, installable, installOther, canRestore, isAdmin, fileBase, filterSource, onRestore, onCopy, onChanged, ...flags
+  v, kind, installable, installOther, canRestore, isAdmin, fileBase, onRestore, onCopy, onChanged, ...flags
 }: VersionFlags & {
   v: TimelineVersion;
   kind: Kind;
@@ -348,7 +346,6 @@ function VersionCard({
   canRestore: boolean;
   isAdmin: boolean;
   fileBase: string;
-  filterSource: { family: string; variant: string; client: string };
   onRestore: () => void;
   onCopy?: () => void;
   onChanged: () => void;
@@ -414,7 +411,7 @@ function VersionCard({
           )}
           <DownloadMenu versionId={v.id} fileName={`${fileBase}-v${v.label}`} triggerClassName={quiet} />
           <Link
-            href={`/filter?versionId=${v.id}&family=${encodeURIComponent(filterSource.family)}&variant=${encodeURIComponent(filterSource.variant)}&client=${encodeURIComponent(filterSource.client)}&version=${encodeURIComponent(v.label)}`}
+            href={`/filter?versionId=${v.id}`}
             title="Open this version in the Filter tool, to prepare a file for another drone"
             className={quiet}
           >

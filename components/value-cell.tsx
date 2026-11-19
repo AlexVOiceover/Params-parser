@@ -162,7 +162,7 @@ export function ValueCell({
       {original}
       <span
         className={cn(
-          "relative flex h-7 items-center gap-1 font-mono text-[13px] tabular-nums",
+          "relative flex h-7 items-center gap-1 font-mono text-[13px] tabular-nums whitespace-nowrap",
           isInvalid
             ? isAcknowledged ? "text-blue-700 dark:text-blue-400" : "text-red-700 dark:text-red-400"
             : hasOverride ? "text-amber-700 dark:text-amber-400" : "text-foreground"
