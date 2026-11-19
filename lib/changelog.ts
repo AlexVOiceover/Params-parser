@@ -6,6 +6,16 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.25.1",
+    date: "2026-11-19",
+    items: [
+      "The header shows who is signed in: your initials in your own colour, and your name",
+      "Staff & clients replaces the Clients tab and the Users menu: AIR6 staff on one tab, each client company with its people on the other, and Change access to move someone",
+      "Invites can carry the person's name and surname, admins can rename anyone, and nobody can change their own access by mistake",
+      "In Filter, click a value to change it; the old value shows struck through next to the new one",
+    ],
+  },
+  {
     version: "0.25.0",
     date: "2026-11-19",
     items: [
