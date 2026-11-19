@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useCallback, useRef, useMemo } from "react";
-import { X, Plus, Trash2, Shield, Globe, User } from "lucide-react";
+import { useState, useCallback, useRef, useMemo, useId } from "react";
+import { X, Plus, Trash2, Shield, Globe, User, Power } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
 import { useAuth } from "@/components/auth-provider";
+import { Badge } from "@/components/status-badge";
+import { buttonClass, fieldClass, labelClass } from "@/components/ui/styles";
 import type { ProtectionList, ParamDefinition } from "@/lib/types";
 
 type SuggestionMode = "name" | "description" | "both";
@@ -26,7 +28,7 @@ function highlightText(text: string, query: string): React.ReactNode {
     }
     if (idx > cursor) nodes.push(text.slice(cursor, idx));
     nodes.push(
-      <mark key={idx} className="bg-amber-400/25 text-amber-200 rounded-xs px-px not-italic">
+      <mark key={idx} className="bg-amber-400/25 text-amber-900 dark:text-amber-200 rounded-xs px-px not-italic">
         {text.slice(idx, idx + query.length)}
       </mark>
     );
@@ -44,6 +46,17 @@ function getSnippet(text: string, query: string, radius = 45): string {
   const end = Math.min(text.length, idx + query.length + radius);
   return (start > 0 ? "…" : "") + text.slice(start, end) + (end < text.length ? "…" : "");
 }
+
+/** One option of a two-way switch (User / Global, PREFIX / EXACT). */
+function segmentClass(active: boolean): string {
+  return cn(
+    "flex h-full flex-1 items-center justify-center gap-1.5 rounded-md px-3 text-[13px] font-medium transition-colors cursor-pointer whitespace-nowrap",
+    active ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+  );
+}
+
+const segmentGroupClass = "flex h-8 shrink-0 items-center rounded-lg border border-border bg-secondary p-0.5";
+const columnTitleClass = "text-xs font-medium text-muted-foreground";
 
 // ---------- component ----------
 
@@ -79,6 +92,15 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
   const [newListName, setNewListName] = useState("");
   const [newListDesc, setNewListDesc] = useState("");
   const [newListIsGlobal, setNewListIsGlobal] = useState(false);
+
+  const titleId = useId();
+  const newNameId = useId();
+  const newDescId = useId();
+  const nameId = useId();
+  const descId = useId();
+  const typeLabelId = useId();
+  const ruleInputId = useId();
+  const modeId = useId();
 
   const selectedList = selectedIdx >= 0 ? lists[selectedIdx] : null;
   const isReadOnly = !!selectedList?.isGlobal && !isAdmin;
@@ -257,62 +279,71 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
     .filter(({ rule }) => rule.type === "exact") ?? [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-      <div className="flex w-full max-w-5xl max-h-[90vh] flex-col rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-xs" />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative z-10 flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+      >
 
         {/* ── Header ── */}
-        <div className="flex items-center gap-3 border-b border-border bg-toolbar px-5 py-3.5 shrink-0">
-          <Shield className="h-4 w-4 text-primary shrink-0" />
+        <div className="flex shrink-0 items-center gap-3 border-b border-border px-5 py-3.5">
           <div className="min-w-0">
-            <h2 className="text-sm font-bold text-foreground leading-none">
+            <h2 id={titleId} className="text-base font-semibold text-foreground">
               Protection Lists
             </h2>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
+            <p className="mt-0.5 text-[13px] text-muted-foreground">
               Define which parameters are protected from being overwritten
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="ml-auto rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+            aria-label="Close"
+            title="Close"
+            className={buttonClass("ghost", "icon", "ml-auto -mr-1.5")}
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="flex flex-1 min-h-0">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
           {/* ── Lists sidebar ── */}
-          <div className="flex w-52 flex-col border-r border-border bg-background/30 shrink-0">
-            <div className="px-3 py-2 border-b border-border">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          <div className="flex shrink-0 flex-col border-b border-border bg-secondary/40 md:w-56 md:border-b-0 md:border-r">
+            <div className="px-4 pb-1 pt-3">
+              <h3 className={columnTitleClass}>
                 Lists
-              </span>
+              </h3>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1">
+            <div className="flex max-h-44 flex-col gap-1 overflow-y-auto p-2 md:max-h-none md:flex-1">
               {lists.map((pl, i) => (
                 <button
+                  type="button"
                   key={i}
                   onClick={() => switchList(i)}
                   className={cn(
-                    "flex items-center gap-2 w-full rounded-md px-3 py-2.5 text-left transition-colors border",
+                    "flex min-h-9 w-full items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left transition-colors cursor-pointer",
                     i === selectedIdx
-                      ? "bg-primary/15 border-primary/30 text-foreground"
-                      : "border-transparent text-secondary-foreground hover:bg-secondary hover:text-foreground"
+                      ? "border-primary/40 bg-primary/10 text-foreground"
+                      : "border-transparent text-foreground hover:bg-secondary"
                   )}
                 >
                   {pl.isGlobal ? (
-                    <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                    <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   ) : (
-                    <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                    <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   )}
-                  <span className="flex-1 text-sm font-medium truncate">
+                  <span className="flex-1 truncate text-[13px] font-medium">
                     {pl.name}
                   </span>
                   <span
                     className={cn(
-                      "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
+                      "shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums",
                       i === selectedIdx
-                        ? "bg-primary/30 text-primary-foreground"
+                        ? "bg-primary/15 text-primary"
                         : "bg-secondary text-muted-foreground"
                     )}
                   >
@@ -324,8 +355,10 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
 
             {/* New list inline form / add button */}
             {showNewList ? (
-              <div className="border-t border-border p-3 flex flex-col gap-2 shrink-0">
+              <div className="flex shrink-0 flex-col gap-2 border-t border-border p-3">
+                <label htmlFor={newNameId} className="sr-only">List name</label>
                 <input
+                  id={newNameId}
                   autoFocus
                   type="text"
                   value={newListName}
@@ -339,128 +372,128 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                     }
                   }}
                   placeholder="List name..."
-                  className="w-full rounded-md border border-border bg-secondary px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
+                  className={cn(fieldClass, "h-8 w-full px-2.5 text-[13px]")}
                 />
+                <label htmlFor={newDescId} className="sr-only">Description</label>
                 <input
+                  id={newDescId}
                   type="text"
                   value={newListDesc}
                   onChange={(e) => setNewListDesc(e.target.value)}
                   placeholder="Description (optional)"
-                  className="w-full rounded-md border border-border bg-secondary px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
+                  className={cn(fieldClass, "h-8 w-full px-2.5 text-[13px]")}
                 />
                 {isAdmin && (
-                  <div className="flex rounded-md border border-border overflow-hidden text-xs font-medium">
+                  <div role="radiogroup" aria-label="Who can use the list" className={segmentGroupClass}>
                     <button
                       type="button"
+                      role="radio"
+                      aria-checked={!newListIsGlobal}
                       onClick={() => setNewListIsGlobal(false)}
-                      className={cn(
-                        "flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 transition-colors",
-                        !newListIsGlobal
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-secondary text-muted-foreground hover:text-foreground"
-                      )}
+                      className={segmentClass(!newListIsGlobal)}
                     >
                       <User className="h-3.5 w-3.5" />
                       User
                     </button>
                     <button
                       type="button"
+                      role="radio"
+                      aria-checked={newListIsGlobal}
                       onClick={() => setNewListIsGlobal(true)}
-                      className={cn(
-                        "flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 transition-colors border-l border-border",
-                        newListIsGlobal
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-secondary text-muted-foreground hover:text-foreground"
-                      )}
+                      className={segmentClass(newListIsGlobal)}
                     >
                       <Globe className="h-3.5 w-3.5" />
                       Global
                     </button>
                   </div>
                 )}
-                <div className="flex gap-1.5">
+                <div className="flex gap-2">
                   <button
+                    type="button"
                     onClick={() => {
                       setShowNewList(false);
                       setNewListName("");
                       setNewListDesc("");
                     }}
-                    className="flex-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-secondary transition-colors"
+                    className={buttonClass("ghost", "sm", "flex-1")}
                   >
                     Cancel
                   </button>
                   <button
+                    type="button"
                     onClick={handleNewList}
                     disabled={!newListName.trim()}
-                    className="flex-1 rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-30"
+                    className={buttonClass("secondary", "sm", "flex-1")}
                   >
                     Create
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="border-t border-border p-2 flex gap-1.5 shrink-0">
+              <div className="flex shrink-0 gap-1.5 border-t border-border p-2">
                 <button
+                  type="button"
                   onClick={() => setShowNewList(true)}
-                  className="flex-1 flex items-center justify-center gap-1 rounded-md border border-dashed border-border px-2 py-1.5 text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                  className={buttonClass("secondary", "sm", "flex-1")}
                 >
                   <Plus className="h-3.5 w-3.5" />
                   New List
                 </button>
                 <button
+                  type="button"
                   onClick={handleDeleteList}
                   disabled={selectedIdx < 0 || isReadOnly}
-                  className="flex items-center justify-center rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-destructive/20 hover:border-destructive hover:text-destructive transition-colors disabled:opacity-30"
+                  aria-label="Delete list"
+                  title="Delete list"
+                  className={buttonClass("dangerGhost", "icon")}
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <Trash2 className="h-4 w-4" />
                 </button>
               </div>
             )}
           </div>
 
           {/* ── Rules editor (center) ── */}
-          <div className="flex flex-1 flex-col min-w-0 overflow-hidden border-r border-border">
+          <div className="flex min-w-0 flex-1 flex-col border-b border-border md:overflow-hidden md:border-b-0 md:border-r">
             {selectedList ? (
               <>
                 {/* List info */}
-                <div className="border-b border-border px-5 py-3.5 shrink-0 flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
+                <div className="flex shrink-0 flex-col gap-2 border-b border-border px-5 py-4">
+                  <div className="flex flex-wrap items-center gap-2">
                     {isReadOnly ? (
-                      <h3 className="flex-1 text-sm font-bold text-foreground">
+                      <h3 className="min-w-0 flex-1 text-sm font-semibold text-foreground">
                         {selectedList.name}
                       </h3>
                     ) : (
-                      <input
-                        value={selectedList.name}
-                        onChange={(e) => updateSelectedList({ name: e.target.value })}
-                        className="flex-1 rounded-md border border-border bg-secondary px-2.5 py-1.5 text-sm font-bold text-foreground outline-none focus:ring-1 focus:ring-ring"
-                        placeholder="List name"
-                      />
+                      <>
+                        <label htmlFor={nameId} className="sr-only">List name</label>
+                        <input
+                          id={nameId}
+                          value={selectedList.name}
+                          onChange={(e) => updateSelectedList({ name: e.target.value })}
+                          className={`${fieldClass} min-w-40 flex-1 font-semibold`}
+                          placeholder="List name"
+                        />
+                      </>
                     )}
                     {isAdmin && (
-                      <div className="flex rounded-md border border-border overflow-hidden text-xs font-medium shrink-0">
+                      <div role="radiogroup" aria-label="Who can use the list" className={segmentGroupClass}>
                         <button
                           type="button"
+                          role="radio"
+                          aria-checked={!selectedList.isGlobal}
                           onClick={() => updateSelectedList({ isGlobal: false })}
-                          className={cn(
-                            "flex items-center gap-1.5 px-2.5 py-1.5 transition-colors",
-                            !selectedList.isGlobal
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-secondary text-muted-foreground hover:text-foreground"
-                          )}
+                          className={segmentClass(!selectedList.isGlobal)}
                         >
                           <User className="h-3.5 w-3.5" />
                           User
                         </button>
                         <button
                           type="button"
+                          role="radio"
+                          aria-checked={!!selectedList.isGlobal}
                           onClick={() => updateSelectedList({ isGlobal: true })}
-                          className={cn(
-                            "flex items-center gap-1.5 px-2.5 py-1.5 transition-colors border-l border-border",
-                            selectedList.isGlobal
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-secondary text-muted-foreground hover:text-foreground"
-                          )}
+                          className={segmentClass(!!selectedList.isGlobal)}
                         >
                           <Globe className="h-3.5 w-3.5" />
                           Global
@@ -470,61 +503,64 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                   </div>
                   {isReadOnly ? (
                     selectedList.description ? (
-                      <p className="text-xs text-muted-foreground leading-relaxed">
+                      <p className="text-[13px] leading-relaxed text-muted-foreground">
                         {selectedList.description}
                       </p>
                     ) : null
                   ) : (
-                    <input
-                      value={selectedList.description}
-                      onChange={(e) => updateSelectedList({ description: e.target.value })}
-                      className="rounded-md border border-border bg-secondary px-2.5 py-1.5 text-xs text-muted-foreground outline-none focus:ring-1 focus:ring-ring"
-                      placeholder="Description (optional)"
-                    />
+                    <>
+                      <label htmlFor={descId} className="sr-only">Description</label>
+                      <input
+                        id={descId}
+                        value={selectedList.description}
+                        onChange={(e) => updateSelectedList({ description: e.target.value })}
+                        className={`${fieldClass} text-[13px]`}
+                        placeholder="Description (optional)"
+                      />
+                    </>
                   )}
                   {isReadOnly && (
-                    <p className="text-[11px] text-muted-foreground/60 italic">
-                      Global list — view only
-                    </p>
+                    <div>
+                      <Badge tone="muted">
+                        <Globe className="h-3 w-3" aria-hidden="true" />
+                        Global list — view only
+                      </Badge>
+                    </div>
                   )}
                 </div>
 
                 {/* Add rule area */}
-                {!isReadOnly && <div className="border-b border-border px-5 py-4 shrink-0">
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">
+                {!isReadOnly && <div className="shrink-0 border-b border-border bg-secondary/40 px-5 py-4">
+                  <h4 className="mb-3 text-[13px] font-semibold text-foreground">
                     Add Rule
-                  </p>
+                  </h4>
 
                   {/* Type toggle */}
-                  <div className="flex items-center gap-3 mb-3">
-                    <span className="text-xs text-muted-foreground w-10 shrink-0">
+                  <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                    <span id={typeLabelId} className={`${labelClass} w-10 shrink-0`}>
                       Type
                     </span>
-                    <div className="flex rounded-md border border-border overflow-hidden text-xs font-medium">
+                    <div role="radiogroup" aria-labelledby={typeLabelId} className={segmentGroupClass}>
                       <button
+                        type="button"
+                        role="radio"
+                        aria-checked={ruleType === "prefix"}
                         onClick={() => switchType("prefix")}
-                        className={cn(
-                          "px-3 py-1.5 transition-colors",
-                          ruleType === "prefix"
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-secondary text-muted-foreground hover:text-foreground"
-                        )}
+                        className={segmentClass(ruleType === "prefix")}
                       >
                         PREFIX
                       </button>
                       <button
+                        type="button"
+                        role="radio"
+                        aria-checked={ruleType === "exact"}
                         onClick={() => switchType("exact")}
-                        className={cn(
-                          "px-3 py-1.5 transition-colors border-l border-border",
-                          ruleType === "exact"
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-secondary text-muted-foreground hover:text-foreground"
-                        )}
+                        className={segmentClass(ruleType === "exact")}
                       >
                         EXACT
                       </button>
                     </div>
-                    <span className="text-[11px] text-muted-foreground">
+                    <span className="text-xs text-muted-foreground">
                       {ruleType === "prefix"
                         ? "protects any param whose name starts with this"
                         : "protects only this exact parameter name"}
@@ -532,14 +568,15 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                   </div>
 
                   {/* Autocomplete input */}
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-muted-foreground w-10 shrink-0">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <label htmlFor={ruleInputId} className={`${labelClass} w-10 shrink-0`}>
                       Value
-                    </span>
-                    <div className="relative flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <div className="relative flex-1 min-w-0">
+                    </label>
+                    <div className="relative min-w-48 flex-1">
+                      <div className="flex items-center gap-2">
+                        <div className="relative min-w-0 flex-1">
                           <input
+                            id={ruleInputId}
                             ref={inputRef}
                             type="text"
                             value={ruleInput}
@@ -560,10 +597,11 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                                 ? "search by description..."
                                 : "e.g. MOT_THST_HOVER  →  exact name"
                             }
-                            className="w-full rounded-md border border-border bg-secondary px-3 py-2 pr-7 text-xs font-mono text-foreground placeholder:text-muted-foreground/60 outline-none focus:ring-1 focus:ring-ring"
+                            className={`${fieldClass} w-full pr-7 font-mono text-[13px]`}
                           />
                           {ruleInput && (
                             <button
+                              type="button"
                               onMouseDown={(e) => {
                                 e.preventDefault();
                                 setRuleInput("");
@@ -571,31 +609,35 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                                 setSuggestionIdx(-1);
                                 inputRef.current?.focus();
                               }}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
                               aria-label="Clear input"
                             >
-                              <X className="h-3 w-3" />
+                              <X className="h-3.5 w-3.5" />
                             </button>
                           )}
                         </div>
                         {ruleType === "exact" && (
-                          <select
-                            value={suggestionMode}
-                            onChange={(e) =>
-                              setSuggestionMode(e.target.value as SuggestionMode)
-                            }
-                            className="shrink-0 rounded-md border border-border bg-secondary px-2 py-2 text-xs text-muted-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer"
-                          >
-                            <option value="name">Name</option>
-                            <option value="description">Description</option>
-                            <option value="both">Both</option>
-                          </select>
+                          <>
+                            <label htmlFor={modeId} className="sr-only">Suggest by</label>
+                            <select
+                              id={modeId}
+                              value={suggestionMode}
+                              onChange={(e) =>
+                                setSuggestionMode(e.target.value as SuggestionMode)
+                              }
+                              className={`${fieldClass} shrink-0 text-[13px] cursor-pointer`}
+                            >
+                              <option value="name">Name</option>
+                              <option value="description">Description</option>
+                              <option value="both">Both</option>
+                            </select>
+                          </>
                         )}
                       </div>
 
                       {/* Suggestions dropdown */}
                       {showSuggestions && suggestions.length > 0 && (
-                        <div className="absolute left-0 right-0 top-full z-10 mt-1 rounded-md border border-border bg-card shadow-2xl overflow-y-auto max-h-48">
+                        <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg">
                           {suggestions.map((s, i) => {
                             const q = ruleInput.trim();
                             const def = paramDefs[s];
@@ -613,20 +655,21 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
 
                             return (
                               <button
+                                type="button"
                                 key={s}
                                 onMouseDown={() => addRule(s)}
                                 className={cn(
-                                  "flex w-full flex-col items-start px-3 py-1.5 text-xs text-left transition-colors",
+                                  "flex w-full flex-col items-start rounded-md px-2.5 py-1.5 text-left text-[13px] text-foreground transition-colors cursor-pointer",
                                   i === suggestionIdx
-                                    ? "bg-primary/20 text-foreground"
-                                    : "text-foreground hover:bg-secondary"
+                                    ? "bg-primary/15"
+                                    : "hover:bg-secondary"
                                 )}
                               >
                                 <span className="font-mono">
                                   {nameMatches ? highlightText(s, q) : s}
                                 </span>
                                 {snippet && (
-                                  <span className="font-sans text-[10px] text-muted-foreground mt-0.5 leading-snug">
+                                  <span className="mt-0.5 font-sans text-[10px] text-muted-foreground leading-snug">
                                     {highlightText(snippet, q)}
                                   </span>
                                 )}
@@ -637,25 +680,26 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                       )}
                     </div>
                     <button
+                      type="button"
                       onClick={() => addRule(ruleInput)}
                       disabled={!ruleInput.trim()}
-                      className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-30 shrink-0"
+                      className={buttonClass("secondary", "md")}
                     >
-                      <Plus className="h-3.5 w-3.5" />
+                      <Plus className="h-4 w-4" />
                       Add
                     </button>
                   </div>
                 </div>}
 
                 {/* Rules list */}
-                <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0">
+                <div className="px-5 py-4 md:min-h-0 md:flex-1 md:overflow-y-auto">
                   {selectedList.rules.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-center">
-                      <Shield className="h-10 w-10 text-muted-foreground/20 mb-3" />
-                      <p className="text-sm text-muted-foreground">
+                    <div className="flex h-full flex-col items-center justify-center py-6 text-center">
+                      <Shield className="mb-3 h-10 w-10 text-muted-foreground/30" />
+                      <p className="text-sm font-medium text-foreground">
                         No rules yet
                       </p>
-                      <p className="text-xs text-muted-foreground/60 mt-1">
+                      <p className="mt-1 text-[13px] text-muted-foreground">
                         Add prefix or exact rules above to protect parameters
                       </p>
                     </div>
@@ -663,9 +707,9 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                     <div className="space-y-5">
                       {prefixRules.length > 0 && (
                         <div>
-                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2.5">
+                          <p className="mb-2.5 text-[13px] font-medium text-foreground">
                             Prefix rules
-                            <span className="normal-case ml-1 text-muted-foreground/60">
+                            <span className="ml-1 font-normal text-muted-foreground">
                               — protects any param starting with
                             </span>
                           </p>
@@ -678,13 +722,14 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                                 <span
                                   key={origIdx}
                                   className={cn(
-                                    "flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-mono transition-colors",
+                                    "flex h-8 items-center gap-1.5 rounded-lg border px-2.5 font-mono text-xs text-foreground transition-colors",
                                     isSelected
-                                      ? "border-primary/50 bg-primary/15 text-foreground"
-                                      : "border-border bg-secondary text-foreground"
+                                      ? "border-primary/50 bg-primary/15"
+                                      : "border-border bg-secondary/60"
                                   )}
                                 >
                                   <button
+                                    type="button"
                                     onClick={() =>
                                       setSelectedRule(
                                         isSelected
@@ -692,14 +737,14 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                                           : { type: "prefix", value: rule.value }
                                       )
                                     }
-                                    className="flex items-center gap-1.5 cursor-pointer"
+                                    className="flex h-full items-center gap-1.5 cursor-pointer"
                                   >
                                     <span
                                       className={cn(
-                                        "text-[10px]",
+                                        "text-[11px]",
                                         isSelected
-                                          ? "text-primary/70"
-                                          : "text-muted-foreground/60"
+                                          ? "text-primary"
+                                          : "text-muted-foreground"
                                       )}
                                     >
                                       pre:
@@ -708,11 +753,13 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                                   </button>
                                   {!isReadOnly && (
                                     <button
+                                      type="button"
                                       onClick={() => removeRule(origIdx)}
-                                      className="text-muted-foreground hover:text-destructive transition-colors ml-0.5"
+                                      className="-mr-1 rounded p-0.5 text-muted-foreground transition-colors hover:text-destructive cursor-pointer"
                                       aria-label={`Remove rule ${rule.value}`}
+                                      title={`Remove rule ${rule.value}`}
                                     >
-                                      <X className="h-3 w-3" />
+                                      <X className="h-3.5 w-3.5" />
                                     </button>
                                   )}
                                 </span>
@@ -724,9 +771,9 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
 
                       {exactRules.length > 0 && (
                         <div>
-                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-2.5">
+                          <p className="mb-2.5 text-[13px] font-medium text-foreground">
                             Exact rules
-                            <span className="normal-case ml-1 text-muted-foreground/60">
+                            <span className="ml-1 font-normal text-muted-foreground">
                               — protects this specific parameter
                             </span>
                           </p>
@@ -739,13 +786,14 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                                 <span
                                   key={origIdx}
                                   className={cn(
-                                    "flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-mono transition-colors",
+                                    "flex h-8 items-center gap-1.5 rounded-lg border px-2.5 font-mono text-xs text-foreground transition-colors",
                                     isSelected
-                                      ? "border-primary/50 bg-primary/15 text-foreground"
-                                      : "border-blue-900/40 bg-blue-950/30 text-foreground"
+                                      ? "border-primary/50 bg-primary/15"
+                                      : "border-blue-500/30 bg-blue-500/10"
                                   )}
                                 >
                                   <button
+                                    type="button"
                                     onClick={() =>
                                       setSelectedRule(
                                         isSelected
@@ -753,14 +801,14 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                                           : { type: "exact", value: rule.value }
                                       )
                                     }
-                                    className="flex items-center gap-1.5 cursor-pointer"
+                                    className="flex h-full items-center gap-1.5 cursor-pointer"
                                   >
                                     <span
                                       className={cn(
-                                        "text-[10px]",
+                                        "text-[11px]",
                                         isSelected
-                                          ? "text-primary/70"
-                                          : "text-blue-400/60"
+                                          ? "text-primary"
+                                          : "text-blue-700 dark:text-blue-400"
                                       )}
                                     >
                                       ex:
@@ -769,11 +817,13 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                                   </button>
                                   {!isReadOnly && (
                                     <button
+                                      type="button"
                                       onClick={() => removeRule(origIdx)}
-                                      className="text-muted-foreground hover:text-destructive transition-colors ml-0.5"
+                                      className="-mr-1 rounded p-0.5 text-muted-foreground transition-colors hover:text-destructive cursor-pointer"
                                       aria-label={`Remove rule ${rule.value}`}
+                                      title={`Remove rule ${rule.value}`}
                                     >
-                                      <X className="h-3 w-3" />
+                                      <X className="h-3.5 w-3.5" />
                                     </button>
                                   )}
                                 </span>
@@ -787,8 +837,8 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
                 </div>
               </>
             ) : (
-              <div className="flex flex-col items-center justify-center flex-1 gap-2 text-center">
-                <Shield className="h-10 w-10 text-muted-foreground/20" />
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 px-5 py-10 text-center">
+                <Shield className="h-10 w-10 text-muted-foreground/30" />
                 <p className="text-sm text-muted-foreground">
                   Select a list to edit
                 </p>
@@ -797,17 +847,17 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
           </div>
 
           {/* ── Info panel (right) ── */}
-          <div className="flex w-64 flex-col shrink-0">
-            <div className="px-3 py-2 border-b border-border">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+          <div className="flex shrink-0 flex-col md:w-64">
+            <div className="px-4 pb-1 pt-3">
+              <h3 className={columnTitleClass}>
                 Parameter Info
-              </span>
+              </h3>
             </div>
 
-            <div className="flex-1 overflow-y-auto min-h-0">
+            <div className="max-h-72 overflow-y-auto md:max-h-none md:min-h-0 md:flex-1">
               {!selectedRule ? (
-                <div className="flex items-center justify-center h-full text-center px-4">
-                  <p className="text-xs text-muted-foreground">
+                <div className="flex h-full items-center justify-center px-4 py-6 text-center">
+                  <p className="text-[13px] text-muted-foreground">
                     Click a rule to see details
                   </p>
                 </div>
@@ -824,22 +874,24 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
         </div>
 
         {/* ── Footer ── */}
-        <div className="flex items-center justify-between border-t border-border bg-toolbar px-5 py-3 shrink-0">
-          <p className="text-xs text-muted-foreground">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border bg-secondary/40 px-5 py-3">
+          <p className="text-[13px] text-muted-foreground">
             {selectedList
               ? `${selectedList.rules.length} rule${selectedList.rules.length !== 1 ? "s" : ""} in this list`
               : ""}
           </p>
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={onClose}
-              className="rounded-md border border-border px-4 py-2 text-sm text-foreground hover:bg-secondary transition-colors"
+              className={buttonClass("secondary")}
             >
               Cancel
             </button>
             <button
+              type="button"
               onClick={handleSave}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+              className={buttonClass("primary")}
             >
               Save Changes
             </button>
@@ -854,7 +906,7 @@ export function ListEditorDialog({ onClose }: ListEditorDialogProps) {
 
 function InfoLabel({ children }: { children: React.ReactNode }) {
   return (
-    <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+    <span className="text-xs font-medium text-muted-foreground">
       {children}
     </span>
   );
@@ -869,23 +921,23 @@ function ExactRuleInfo({
 }) {
   const hasInfo = def.DisplayName || def.Description;
   return (
-    <div className="flex flex-col gap-3 p-4">
+    <div className="flex flex-col gap-3 px-4 pb-4 pt-2">
       <div>
-        <p className="font-mono text-sm font-bold text-foreground">{value}</p>
-        <p className="text-[11px] text-muted-foreground mt-0.5">Exact match</p>
+        <p className="break-all font-mono text-sm font-semibold text-foreground">{value}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">Exact match</p>
       </div>
 
       {def.DisplayName && (
         <div className="flex flex-col gap-0.5">
           <InfoLabel>Label</InfoLabel>
-          <p className="text-xs text-foreground">{def.DisplayName}</p>
+          <p className="text-[13px] text-foreground">{def.DisplayName}</p>
         </div>
       )}
 
       {def.Description && (
         <div className="flex flex-col gap-0.5">
           <InfoLabel>Description</InfoLabel>
-          <p className="text-xs text-foreground leading-relaxed">
+          <p className="text-[13px] leading-relaxed text-foreground">
             {def.Description}
           </p>
         </div>
@@ -894,7 +946,7 @@ function ExactRuleInfo({
       {def.Units && (
         <div className="flex flex-col gap-0.5">
           <InfoLabel>Units</InfoLabel>
-          <p className="text-xs text-foreground">{def.Units}</p>
+          <p className="text-[13px] text-foreground">{def.Units}</p>
         </div>
       )}
 
@@ -935,13 +987,14 @@ function ExactRuleInfo({
       )}
 
       {def.RebootRequired === "True" && (
-        <div className="rounded bg-destructive/20 px-3 py-2 text-xs font-medium text-destructive">
+        <div className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-700 dark:text-red-300">
+          <Power className="h-3.5 w-3.5 shrink-0" />
           Reboot required after change
         </div>
       )}
 
       {!hasInfo && (
-        <p className="text-xs text-muted-foreground italic">
+        <p className="text-xs italic text-muted-foreground">
           No definition found in ArduPilot database
         </p>
       )}
@@ -957,24 +1010,24 @@ function PrefixRuleInfo({
   matches: [string, import("@/lib/types").ParamDefinition][];
 }) {
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-border shrink-0">
-        <p className="font-mono text-sm font-bold text-foreground">
+    <div className="flex flex-col md:h-full">
+      <div className="shrink-0 border-b border-border px-4 pb-4 pt-2">
+        <p className="break-all font-mono text-sm font-semibold text-foreground">
           {value}
           <span className="text-muted-foreground">*</span>
         </p>
-        <p className="text-[11px] text-muted-foreground mt-0.5">
+        <p className="mt-0.5 text-xs text-muted-foreground">
           Prefix — {matches.length} matching param{matches.length !== 1 ? "s" : ""}
         </p>
-        <p className="text-[11px] text-muted-foreground/60 mt-2 leading-relaxed">
+        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
           ArduPilot does not publish group-level descriptions. Showing matched
           params from the official database.
         </p>
       </div>
 
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="md:min-h-0 md:flex-1 md:overflow-y-auto">
         {matches.length === 0 ? (
-          <p className="p-4 text-xs text-muted-foreground italic">
+          <p className="p-4 text-xs italic text-muted-foreground">
             No matching parameters found in the database
           </p>
         ) : (
@@ -985,7 +1038,7 @@ function PrefixRuleInfo({
                   {name}
                 </p>
                 {def.DisplayName && (
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                  <p className="mt-0.5 text-xs text-muted-foreground">
                     {def.DisplayName}
                   </p>
                 )}

@@ -74,8 +74,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const { error } = await supabase.from("drone_events").insert({
+  const admin = createAdminClient();
+  const { error } = await admin.from("drone_events").insert({
     drone_id: drone.id,
+    created_by: caller.id,
     param_version_id: body.versionId,
     chip_id: chipId,
     firmware: body.firmware ?? null,
@@ -86,7 +88,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // First verified config marks the drone as initialised (clients can't update drones directly).
   if (!drone.initialised_at) {
-    await createAdminClient().from("drones").update({ initialised_at: new Date().toISOString() }).eq("id", drone.id);
+    await admin.from("drones").update({ initialised_at: new Date().toISOString() }).eq("id", drone.id);
   }
 
   return NextResponse.json({ ok: true });

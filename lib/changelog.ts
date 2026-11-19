@@ -6,6 +6,21 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
   {
+    version: "0.25.0",
+    date: "2026-11-19",
+    items: [
+      "The app now starts from your drones: a list with each drone's status, and one page per drone with its whole history, the connected drone on top and its settings",
+      "The header always shows the connected drone and whether it is up to date; models and their templates have their own page",
+      "Restore saves an old version as the next one, new versions from a file show what they change before saving, and Download can leave out per-drone params; staff can also install an older version on the connected drone without changing its target",
+      "Every page requires signing in, files download only for people allowed to see them, and only admins' versions are approved without review",
+      "Filter and Compare are in the header; any version can be opened in Filter or copied to another drone",
+      "Drones can be grouped by model or client, nested under a group that shows what needs attention, and sorted by any column; models can be edited, described, duplicated and deleted from the list",
+      "Compare versions: tick any number of versions, add others from any drone, a model template, a file or the connected drone, and see them side by side",
+      "A new look: white cards on a grey page, one style of button, a version timeline on each drone, and pages that work on a phone",
+      "Filter starts from any drone in the fleet, the connected drone (by its serial), a .param file or a blank config, shows long values in full, and saves the result straight to a drone",
+    ],
+  },
+  {
     version: "0.24.0",
     date: "2026-11-16",
     items: [

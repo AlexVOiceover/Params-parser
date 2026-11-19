@@ -57,7 +57,7 @@ export async function DELETE(
 
   if (count && count > 0) {
     return NextResponse.json(
-      { error: `Cannot delete: ${count} client set${count === 1 ? "" : "s"} reference this client` },
+      { error: `Cannot delete: ${count} drone histor${count === 1 ? "y belongs" : "ies belong"} to this client` },
       { status: 409 }
     );
   }

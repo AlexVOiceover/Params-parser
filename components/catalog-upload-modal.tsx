@@ -1,10 +1,13 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useId } from "react";
 import { X, Upload, CheckCircle, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useDroneParams } from "@/lib/drone-params-context";
+import { droneHref } from "@/lib/versions";
+import { BusyButton, Spinner } from "@/components/ui/busy";
+import { buttonClass, fieldClass, labelClass } from "@/components/ui/styles";
 
 interface ClientRow { id: string; name: string }
 interface DroneRow { id: string; client_id: string; variant_id: string; serial: string }
@@ -14,18 +17,14 @@ interface ClientSetRow { id: string; client_id: string | null; drone_id: string 
 interface VersionRow { client_set_id: string; version_label: string }
 
 interface Props {
+  /** The drone the params came from; picked for you when it exists. */
+  preferSerial?: string | null;
   content: string;
   suggestedName: string;
   onClose: () => void;
 }
 
-const inputClass =
-  "rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring";
-const selectClass = inputClass + " cursor-pointer";
-const labelClass = "flex flex-col gap-1.5";
-const labelTextClass = "text-xs font-medium text-muted-foreground";
-
-export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
+export function CatalogUploadModal({ preferSerial, content, suggestedName, onClose }: Props) {
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [drones, setDrones] = useState<DroneRow[]>([]);
   const [families, setFamilies] = useState<FamilyRow[]>([]);
@@ -37,12 +36,16 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
   const { autopilot } = useDroneParams();
   const [clientId, setClientId] = useState("");
   const [droneId, setDroneId] = useState("");
-  const [versionLabel, setVersionLabel] = useState("");
-  const [versionTouched, setVersionTouched] = useState(false);
+  const [changelog, setChangelog] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [donePath, setDonePath] = useState<string | null>(null);
+  const [savedAs, setSavedAs] = useState<string | null>(null);
+  const titleId = useId();
+  const clientFieldId = useId();
+  const droneFieldId = useId();
+  const changelogFieldId = useId();
 
   useEffect(() => {
     const supabase = createClient();
@@ -61,9 +64,14 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
       setVariants(v.data ?? []);
       setClientSets(cs.data ?? []);
       setVersions(vs.data ?? []);
+      const preferred = preferSerial ? (d.data ?? []).find((x) => x.serial === preferSerial) : undefined;
+      if (preferred) {
+        setClientId(preferred.client_id);
+        setDroneId(preferred.id);
+      }
       setLoaded(true);
     });
-  }, []);
+  }, [preferSerial]);
 
   const variantById = useMemo(() => new Map(variants.map((v) => [v.id, v])), [variants]);
   const familyById = useMemo(() => new Map(families.map((f) => [f.id, f])), [families]);
@@ -107,209 +115,189 @@ export function CatalogUploadModal({ content, suggestedName, onClose }: Props) {
     return max + 1;
   }, [versions, existingClientSet]);
 
-  // Auto-fill version label whenever drone changes (unless user typed something).
-  useEffect(() => {
-    if (versionTouched) return;
-    if (!selectedDrone) {
-      setVersionLabel("");
-      return;
-    }
-    setVersionLabel(String(nextVersion));
-  }, [selectedDrone, nextVersion, versionTouched]);
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedDrone) return;
-    if (!/^\d+$/.test(versionLabel.trim())) {
-      setError("Version must be a whole number (e.g. 1)");
-      return;
-    }
     setSubmitting(true);
     setError(null);
 
-    const filename = suggestedName.endsWith(".param") ? suggestedName : `${suggestedName}.param`;
-    const file = new File([content], filename, { type: "text/plain" });
-
-    const fd = new FormData();
-    if (existingClientSet) {
-      fd.set("mode", "existing");
-      fd.set("clientSetId", existingClientSet.id);
-    } else {
+    // Every drone has its own history; start it if this one has none yet.
+    let setId = existingClientSet?.id ?? null;
+    if (!setId) {
       const client = clients.find((c) => c.id === clientId);
-      fd.set("mode", "new-client-set");
-      fd.set("variantId", selectedDrone.variant_id);
-      fd.set("clientId", clientId);
-      fd.set("droneId", selectedDrone.id);
-      fd.set("clientName", client?.name ?? "");
-      fd.set("serial", selectedDrone.serial);
+      const res = await fetch("/api/admin/client-sets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          variantId: selectedDrone.variant_id,
+          clientId,
+          droneId: selectedDrone.id,
+          clientName: client?.name ?? selectedDrone.serial,
+          serial: selectedDrone.serial,
+        }),
+      });
+      const body = await res.json().catch(() => ({})) as { id?: string; error?: string };
+      if (!res.ok || !body.id) {
+        setError(body.error ?? "Could not start the drone's history");
+        setSubmitting(false);
+        return;
+      }
+      setId = body.id;
     }
-    fd.set("versionLabel", versionLabel);
-    fd.set("file", file);
+
+    const filename = suggestedName.endsWith(".param") ? suggestedName : `${suggestedName}.param`;
+    const fd = new FormData();
+    fd.set("clientSetId", setId);
+    fd.set("changelog", changelog.trim());
+    fd.set("file", new File([content], filename, { type: "text/plain" }));
     if (autopilot?.firmware) fd.set("firmware", autopilot.firmware);
 
     const res = await fetch("/api/upload", { method: "POST", body: fd });
-    const reader = res.body?.getReader();
-    if (!reader) {
-      setError("No response from server");
-      setSubmitting(false);
+    const body = await res.json().catch(() => ({})) as { label?: string; approved?: boolean; error?: string };
+    setSubmitting(false);
+    if (!res.ok) {
+      setError(body.error ?? "Upload failed");
       return;
     }
-
-    const decoder = new TextDecoder();
-    let buffer = "";
-    let finished = false;
-
-    while (!finished) {
-      const { done: streamDone, value } = await reader.read();
-      if (streamDone) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const parsed = JSON.parse(line);
-          if (parsed.error) {
-            setError(parsed.text ?? "Upload failed");
-            setSubmitting(false);
-            return;
-          }
-          if (parsed.done) {
-            finished = true;
-            break;
-          }
-        } catch {
-          // ignore malformed line
-        }
-      }
-    }
-
-    // Build the deep link to the variant page (Default + all client sets).
-    const variant = variantById.get(selectedDrone.variant_id);
-    const family = variant?.family_id ? familyById.get(variant.family_id) : null;
-    if (family && variant) {
-      setDonePath(`/${family.slug}/${variant.id}`);
-    }
-
+    setSavedAs(body.label ? `v${body.label}${body.approved ? "" : " (waiting for review)"}` : null);
+    setDonePath(droneHref(selectedDrone.serial));
     setDone(true);
-    setSubmitting(false);
   }
 
   const submitDisabled =
     submitting ||
     !droneId ||
-    !versionLabel.trim();
+    !changelog.trim();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-xs" onClick={onClose} />
 
-      <div className="relative z-10 w-full max-w-sm rounded-xl border border-border bg-card shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between border-b border-border bg-toolbar px-5 py-3.5 shrink-0">
-          <div className="flex items-center gap-2">
-            <Upload className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-bold text-foreground">Publish to Catalog</h2>
-          </div>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative z-10 flex max-h-[90vh] w-full max-w-sm flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+      >
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3.5">
+          <h2 id={titleId} className="text-base font-semibold text-foreground">Save to a drone</h2>
           <button
+            type="button"
             onClick={onClose}
-            className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer"
+            aria-label="Close"
+            title="Close"
+            className={buttonClass("ghost", "icon", "-mr-1.5")}
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
         {done ? (
-          <div className="px-5 py-8 text-center flex flex-col items-center gap-3">
-            <CheckCircle className="h-8 w-8 text-emerald-400" />
-            <p className="text-sm text-foreground font-medium">Published to catalog</p>
-            <p className="text-xs text-muted-foreground">The version is now visible in the catalog.</p>
+          <div className="flex flex-col items-center gap-2 px-5 py-8 text-center">
+            <CheckCircle className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
+            <p className="mt-1 text-sm font-medium text-foreground">Saved</p>
+            <p className="text-[13px] text-muted-foreground">Saved as {savedAs ?? "a new version"} in the drone&apos;s history.</p>
             <a
               href={donePath ?? "/"}
-              className="flex items-center gap-1.5 mt-2 text-xs text-primary hover:underline cursor-pointer"
+              className={buttonClass("secondary", "sm", "mt-3")}
             >
-              {donePath ? "Open variant" : "Go to catalog"} <ExternalLink className="h-3 w-3" />
+              {donePath ? "Open the drone" : "Go to drones"} <ExternalLink className="h-3.5 w-3.5" />
             </a>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-5 py-4 overflow-y-auto">
-            {/* Client */}
-            <label className={labelClass}>
-              <span className={labelTextClass}>Client <span className="text-destructive">*</span></span>
-              <select
-                required
-                value={clientId}
-                onChange={(e) => { setClientId(e.target.value); setDroneId(""); setVersionTouched(false); }}
-                className={selectClass}
-                disabled={!loaded}
-              >
-                <option value="">Select client…</option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </label>
-
-            {/* Drone */}
-            {clientId && (
-              <label className={labelClass}>
-                <span className={labelTextClass}>Drone <span className="text-destructive">*</span></span>
-                {dronesForClient.length === 0 ? (
-                  <p className="text-xs text-muted-foreground italic">
-                    No drones registered for this client. Add one in <Link href="/admin/clients" className="text-primary hover:underline" onClick={onClose}>Clients</Link>.
-                  </p>
-                ) : (
-                  <select
-                    required
-                    value={droneId}
-                    onChange={(e) => { setDroneId(e.target.value); setVersionTouched(false); }}
-                    className={selectClass}
-                  >
-                    <option value="">Select drone…</option>
-                    {dronesForClient.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.serial} — {variantLabel(d.variant_id)}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </label>
-            )}
-
-            {/* Version */}
-            {droneId && (
-              <label className={labelClass}>
-                <span className={labelTextClass}>Version label <span className="text-destructive">*</span></span>
-                <input
+          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
+              {/* Client */}
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor={clientFieldId} className={labelClass}>Client <span className="text-destructive">*</span></label>
+                <select
+                  id={clientFieldId}
                   required
-                  value={versionLabel}
-                  onChange={(e) => { setVersionLabel(e.target.value); setVersionTouched(true); }}
-                  placeholder="e.g. 1"
-                  className={inputClass + " font-mono"}
-                />
-                {versionLabel.trim() && !/^\d+$/.test(versionLabel.trim()) && (
-                  <p className="text-xs text-destructive mt-0.5">Must be a whole number (e.g. 1)</p>
+                  value={clientId}
+                  onChange={(e) => { setClientId(e.target.value); setDroneId(""); }}
+                  className={`${fieldClass} cursor-pointer`}
+                  disabled={!loaded}
+                >
+                  <option value="">Select client…</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                {!loaded && (
+                  <p role="status" className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Spinner /> Loading clients and drones…
+                  </p>
                 )}
-              </label>
-            )}
+              </div>
 
-            {error && (
-              <p className="text-xs text-destructive bg-destructive/15 border border-destructive/40 rounded-md px-3 py-2">
-                {error}
-              </p>
-            )}
+              {/* Drone */}
+              {clientId && (
+                <div className="flex flex-col gap-1.5">
+                  {dronesForClient.length === 0 ? (
+                    <>
+                      <span className={labelClass}>Drone <span className="text-destructive">*</span></span>
+                      <p className="text-[13px] text-muted-foreground">
+                        No drones registered for this client. Add one on the <Link href="/" className="text-primary hover:underline cursor-pointer" onClick={onClose}>Drones</Link> list.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <label htmlFor={droneFieldId} className={labelClass}>Drone <span className="text-destructive">*</span></label>
+                      <select
+                        id={droneFieldId}
+                        required
+                        value={droneId}
+                        onChange={(e) => setDroneId(e.target.value)}
+                        className={`${fieldClass} cursor-pointer`}
+                      >
+                        <option value="">Select drone…</option>
+                        {dronesForClient.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.serial} — {variantLabel(d.variant_id)}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  )}
+                </div>
+              )}
 
-            <div className="flex items-center justify-end gap-2 pt-1">
-              <button type="button" onClick={onClose} className="rounded-md border border-border px-4 py-2 text-sm text-foreground hover:bg-secondary transition-colors cursor-pointer">
+              {/* Changelog */}
+              {droneId && (
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor={changelogFieldId} className={labelClass}>What does this version change? <span className="text-destructive">*</span></label>
+                  <input
+                    id={changelogFieldId}
+                    required
+                    value={changelog}
+                    onChange={(e) => setChangelog(e.target.value)}
+                    className={fieldClass}
+                  />
+                  <p className="text-xs text-muted-foreground">Saved as v{nextVersion} of {selectedDrone?.serial}.</p>
+                </div>
+              )}
+
+              {error && (
+                <p role="alert" className="text-[13px] text-destructive">
+                  {error}
+                </p>
+              )}
+            </div>
+
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border bg-secondary/40 px-5 py-3">
+              <button type="button" onClick={onClose} className={buttonClass("secondary")}>
                 Cancel
               </button>
-              <button
+              <BusyButton
                 type="submit"
+                variant="primary"
+                busy={submitting}
+                busyLabel="Saving…"
                 disabled={submitDisabled}
-                className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                icon={<Upload className="h-3.5 w-3.5" />}
               >
-                <Upload className="h-3.5 w-3.5" />
-                {submitting ? "Publishing…" : "Publish"}
-              </button>
+                Save version
+              </BusyButton>
             </div>
           </form>
         )}

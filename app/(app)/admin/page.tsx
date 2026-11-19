@@ -6,7 +6,7 @@ import { AdminDashboard } from "@/components/admin-dashboard";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Admin — AIR6",
+  title: "Users — AIR6",
 };
 
 export default async function AdminPage() {

@@ -69,8 +69,8 @@ export function WriteNFCButton({ serial, iconOnly = false, label = "Write NFC ta
       {/* Modal overlay */}
       {modalOpen && (
         <div className="fixed inset-0 z-60 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={status === "waiting" ? undefined : handleClose} />
-          <div className="relative z-10 w-full max-w-xs rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
+          <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-xs" onClick={status === "waiting" ? undefined : handleClose} />
+          <div className="relative z-10 w-full max-w-xs rounded-2xl border border-border bg-card shadow-2xl overflow-hidden">
 
             {/* Header */}
             <div className="flex items-center justify-between border-b border-border bg-toolbar px-5 py-3.5">
@@ -107,7 +107,7 @@ export function WriteNFCButton({ serial, iconOnly = false, label = "Write NFC ta
                   <p className="text-sm font-medium text-foreground">Tap phone to tag</p>
                   <p className="text-xs text-muted-foreground">Hold the phone close to the NFC sticker</p>
                   <div className="rounded-md border border-border bg-secondary/40 px-3 py-2 w-full text-left">
-                    <p className="text-[10px] text-muted-foreground mb-0.5">Writing serial:</p>
+                    <p className="text-[11px] text-muted-foreground mb-0.5">Writing serial:</p>
                     <p className="text-xs font-mono text-foreground">{serial}</p>
                   </div>
                 </>
@@ -116,7 +116,7 @@ export function WriteNFCButton({ serial, iconOnly = false, label = "Write NFC ta
               {/* Success */}
               {status === "success" && (
                 <>
-                  <CheckCircle className="h-12 w-12 text-emerald-400" />
+                  <CheckCircle className="h-12 w-12 text-emerald-600 dark:text-emerald-400" />
                   <p className="text-sm font-medium text-foreground">Tag written</p>
                   <p className="text-xs text-muted-foreground">The NFC sticker now links to drone <span className="font-mono">{serial}</span>.</p>
                   <button onClick={handleClose} className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer">
@@ -128,7 +128,7 @@ export function WriteNFCButton({ serial, iconOnly = false, label = "Write NFC ta
               {/* Error */}
               {status === "error" && (
                 <>
-                  <AlertTriangle className="h-10 w-10 text-amber-400" />
+                  <AlertTriangle className="h-10 w-10 text-amber-600 dark:text-amber-400" />
                   <p className="text-sm font-medium text-foreground">Write failed</p>
                   <p className="text-xs text-muted-foreground">{errorMsg}</p>
                   <div className="flex gap-2 w-full">

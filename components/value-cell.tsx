@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { CircleCheck } from "lucide-react";
+import { CircleCheck, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { fieldClass } from "@/components/ui/styles";
 
 function DroneIcon({ className }: { className?: string }) {
   return (
@@ -107,20 +108,23 @@ export function ValueCell({
 
   const stopClick = (e: React.MouseEvent) => e.stopPropagation();
 
+  const original = hasOverride && (
+    <span className="relative pt-1 font-mono text-[11px] leading-none tabular-nums text-muted-foreground line-through">
+      {originalValue}
+    </span>
+  );
+
   if (editing) {
     return (
       <div
-        className={cn("px-2 py-0.5 flex flex-col items-end justify-center gap-0.5", className)}
+        className={cn("flex flex-col items-end gap-0.5 pl-1", className)}
         onClick={stopClick}
       >
-        {hasOverride && (
-          <span className="font-mono text-[10px] tabular-nums text-muted-foreground/50 line-through leading-none">
-            {originalValue}
-          </span>
-        )}
+        {original}
         <input
           ref={inputRef}
           type="text"
+          aria-label="Override value"
           value={override ?? ""}
           onChange={(e) => onOverride(e.target.value)}
           onBlur={() => setEditing(false)}
@@ -128,7 +132,7 @@ export function ValueCell({
             if (e.key === "Enter" || e.key === "Escape") setEditing(false);
           }}
           placeholder={originalValue}
-          className="w-full bg-transparent border-b border-primary/60 outline-none font-mono text-xs text-foreground placeholder:text-muted-foreground/30 tabular-nums"
+          className={cn(fieldClass, "h-7 w-full rounded-md px-2 text-right font-mono text-[13px] tabular-nums")}
         />
       </div>
     );
@@ -137,7 +141,7 @@ export function ValueCell({
   return (
     <div
       className={cn(
-        "px-2 py-1 relative overflow-hidden select-none cursor-pointer hover:bg-secondary/30 flex flex-col items-end justify-center gap-0.5",
+        "relative flex cursor-pointer select-none flex-col items-end gap-0.5 overflow-hidden rounded-md px-2 hover:bg-secondary",
         className
       )}
       title="Hold to override value"
@@ -146,29 +150,27 @@ export function ValueCell({
     >
       {lp.pressing && (
         <>
-          <div className="absolute inset-0 pointer-events-none" style={{ background: "rgba(59,130,246,0.12)" }} />
+          <div className="pointer-events-none absolute inset-0 bg-primary/15" />
           <div
-            className="absolute pointer-events-none flex items-center z-10"
+            className="pointer-events-none absolute z-10 flex items-center"
             style={{ top: 0, bottom: 0, animation: `dronefly ${lp.fillDuration}ms linear forwards` }}
           >
-            <DroneIcon className="text-blue-400" />
+            <DroneIcon className="text-primary" />
           </div>
         </>
       )}
-      {hasOverride && (
-        <span className="relative font-mono text-[10px] tabular-nums text-muted-foreground/50 line-through leading-none">
-          {originalValue}
-        </span>
-      )}
+      {original}
       <span
         className={cn(
-          "relative flex items-center gap-0.5 font-mono text-xs tabular-nums",
+          "relative flex h-7 items-center gap-1 font-mono text-[13px] tabular-nums whitespace-nowrap",
           isInvalid
-            ? isAcknowledged ? "text-blue-400" : "text-red-400"
-            : hasOverride ? "text-amber-400" : "text-muted-foreground"
+            ? isAcknowledged ? "text-blue-700 dark:text-blue-400" : "text-red-700 dark:text-red-400"
+            : hasOverride ? "text-amber-700 dark:text-amber-400" : "text-foreground"
         )}
       >
-        {isInvalid && isAcknowledged && <CircleCheck className="h-2.5 w-2.5 shrink-0" />}
+        {isInvalid && (isAcknowledged
+          ? <CircleCheck className="h-3 w-3 shrink-0" aria-hidden="true" />
+          : <TriangleAlert className="h-3 w-3 shrink-0" aria-hidden="true" />)}
         {hasOverride ? override : originalValue}
       </span>
     </div>

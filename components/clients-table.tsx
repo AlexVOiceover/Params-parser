@@ -1,523 +1,315 @@
 "use client";
 
-import { Fragment, useState, useTransition, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronRight, Trash2, Plus, X, Pencil, Check, Upload, Usb } from "lucide-react";
-// Plus is still used for the Add client button below
-import { WriteNFCButton } from "@/components/write-nfc-button";
-import { UploadParamFileModal } from "@/components/upload-param-file-modal";
+import { useRouter } from "next/navigation";
+import { Building2, Pencil, Plus, Trash2 } from "lucide-react";
+import { BusyButton } from "@/components/ui/busy";
+import { Dialog } from "@/components/ui/dialog";
+import { buttonClass, cardClass, fieldClass, labelClass, pageLeadClass, pageTitleClass } from "@/components/ui/styles";
 
-export interface ClientWithDrones {
+export interface ClientRow {
   id: string;
   name: string;
-  drones: { id: string; serial: string; variant_id: string; client_set_id: string | null }[];
+  drones: number;
+  users: number;
+  /** Drone histories that still name this client without belonging to one of its drones. */
+  histories: number;
 }
 
-export interface FamilyOption {
-  id: string;
-  name: string;
-  slug: string;
+// Phones: name and actions on one line, the counts under it. From sm up: one line, four columns.
+const ROW_GRID = "grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(12rem,2fr)_minmax(7rem,1fr)_minmax(6rem,1fr)_4.25rem]";
+
+/** Sends one change and returns the error to show, or null when it worked. */
+async function send(url: string, method: "POST" | "PATCH" | "DELETE", body?: { name: string }): Promise<string | null> {
+  const res = await fetch(url, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  }).catch(() => null);
+  if (res?.ok) return null;
+  const answer = (res ? await res.json().catch(() => ({})) : {}) as { error?: string };
+  return answer.error ?? "That did not work";
 }
 
-export interface VariantOption {
-  id: string;
-  name: string;
-  family_id: string;
+interface Blocker { key: string; title: string; hint: string; reason: string; link?: { href: string; label: string } }
+
+/** Why the server would refuse to delete this client. Empty when it can be deleted. */
+function blockers(c: ClientRow): Blocker[] {
+  const list: Blocker[] = [];
+  if (c.drones > 0) {
+    list.push({
+      key: "drones",
+      title: c.drones === 1 ? "1 drone belongs to it" : `${c.drones} drones belong to it`,
+      hint: "Move them to another client, or delete them, from each drone's page.",
+      reason: "Move or delete its drones first",
+      link: { href: `/?client=${c.id}`, label: c.drones === 1 ? "Show the drone" : "Show the drones" },
+    });
+  }
+  if (c.users > 0) {
+    list.push({
+      key: "users",
+      title: c.users === 1 ? "1 user signs in under it" : `${c.users} users sign in under it`,
+      hint: "A client user always needs a client: give them another one, or delete them.",
+      reason: "Move or delete its users first",
+      link: { href: "/admin", label: "Open Users" },
+    });
+  }
+  if (c.histories > 0) {
+    list.push({
+      key: "histories",
+      title: c.histories === 1 ? "1 drone history still belongs to it" : `${c.histories} drone histories still belong to it`,
+      hint: "A client that still has drone histories cannot be deleted.",
+      reason: "It still has drone histories",
+    });
+  }
+  return list;
 }
 
-interface Props {
-  clients: ClientWithDrones[];
-  families: FamilyOption[];
-  variants: VariantOption[];
-}
-
-export function ClientsTable({ clients, families, variants }: Props) {
+/** Client companies. Their drones are managed on the Drones list, filtered by client. */
+export function ClientsTable({ clients }: { clients: ClientRow[] }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
+  const [newName, setNewName] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<ClientRow | null>(null);
+  const [deleting, setDeleting] = useState<ClientRow | null>(null);
+  const opener = useRef<HTMLButtonElement | null>(null);
+  const newId = useId();
 
-  // Lookups for displaying family/variant labels next to drone serials
-  const variantById = useMemo(() => new Map(variants.map((v) => [v.id, v])), [variants]);
-  const familyById = useMemo(() => new Map(families.map((f) => [f.id, f])), [families]);
-  function variantLabel(variantId: string): string {
-    const v = variantById.get(variantId);
-    if (!v) return "?";
-    const f = familyById.get(v.family_id);
-    return `${f?.name ?? "?"} / ${v.name}`;
-  }
+  const refresh = () => startTransition(() => router.refresh());
 
-  // ── Row expansion ─────────────────────────────────────────
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-
-  function toggleExpanded(id: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  // ── Upload a received param file ─────────────────────────
-  // Holds the client whose modal is open, so the client is implied by context
-  // rather than re-picked inside the modal.
-  const [uploadFor, setUploadFor] = useState<ClientWithDrones | null>(null);
-
-  // ── Create client ────────────────────────────────────────
-  const [showAddClient, setShowAddClient] = useState(false);
-  const [newClientName, setNewClientName] = useState("");
-  const [submittingClient, setSubmittingClient] = useState(false);
-  const [createClientError, setCreateClientError] = useState<string | null>(null);
-
-  async function handleCreateClient(e: React.FormEvent) {
+  async function add(e: React.FormEvent) {
     e.preventDefault();
-    if (!newClientName.trim()) return;
-    setSubmittingClient(true);
-    setCreateClientError(null);
-    const res = await fetch("/api/admin/clients", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newClientName.trim() }),
-    });
-    setSubmittingClient(false);
-    if (res.ok) {
-      setShowAddClient(false);
-      setNewClientName("");
-      startTransition(() => router.refresh());
-    } else {
-      const msg = await res.json().then((b) => b?.error).catch(() => null);
-      setCreateClientError(msg ?? "Create failed");
-    }
+    setAdding(true);
+    setAddError(null);
+    const failed = await send("/api/admin/clients", "POST", { name: newName.trim() });
+    setAdding(false);
+    if (failed) { setAddError(failed); return; }
+    setNewName("");
+    refresh();
   }
 
-  // ── Edit client name ─────────────────────────────────────
-  const [editingClientId, setEditingClientId] = useState<string | null>(null);
-  const [editClientName, setEditClientName] = useState("");
-  const [savingClient, setSavingClient] = useState(false);
-  const [editClientErrors, setEditClientErrors] = useState<Record<string, string>>({});
-
-  function startEditClient(c: ClientWithDrones) {
-    setEditingClientId(c.id);
-    setEditClientName(c.name);
-    setEditClientErrors((prev) => { const n = { ...prev }; delete n[c.id]; return n; });
+  function open(e: React.MouseEvent<HTMLButtonElement>, set: (c: ClientRow) => void, c: ClientRow) {
+    opener.current = e.currentTarget;
+    setAddError(null);
+    set(c);
   }
-
-  async function handleSaveClient(id: string, e: React.FormEvent) {
-    e.preventDefault();
-    if (!editClientName.trim()) return;
-    setSavingClient(true);
-    const res = await fetch(`/api/admin/clients/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: editClientName.trim() }),
-    });
-    setSavingClient(false);
-    if (res.ok) {
-      setEditingClientId(null);
-      startTransition(() => router.refresh());
-    } else {
-      const msg = await res.json().then((b) => b?.error).catch(() => null);
-      setEditClientErrors((prev) => ({ ...prev, [id]: msg ?? "Save failed" }));
-    }
-  }
-
-  // ── Delete client ────────────────────────────────────────
-  const [deleteClientErrors, setDeleteClientErrors] = useState<Record<string, string>>({});
-
-  async function handleDeleteClient(id: string) {
-    setDeleteClientErrors((prev) => { const n = { ...prev }; delete n[id]; return n; });
-    const res = await fetch(`/api/admin/clients/${id}`, { method: "DELETE" });
-    if (res.ok) {
-      startTransition(() => router.refresh());
-    } else {
-      const msg = await res.json().then((b) => b?.error).catch(() => null);
-      setDeleteClientErrors((prev) => ({ ...prev, [id]: msg ?? "Cannot delete" }));
-    }
-  }
-
-  // ── Edit drone (serial + variant) ────────────────────────
-  const [editingDroneId, setEditingDroneId] = useState<string | null>(null);
-  const [editDroneSerial, setEditDroneSerial] = useState("");
-  const [editDroneFamilyId, setEditDroneFamilyId] = useState("");
-  const [editDroneVariantId, setEditDroneVariantId] = useState("");
-  const [savingDrone, setSavingDrone] = useState(false);
-  const [editDroneErrors, setEditDroneErrors] = useState<Record<string, string>>({});
-
-  function startEditDrone(droneId: string, serial: string, variantId: string) {
-    setEditingDroneId(droneId);
-    setEditDroneSerial(serial);
-    setEditDroneVariantId(variantId);
-    setEditDroneFamilyId(variantById.get(variantId)?.family_id ?? "");
-    setEditDroneErrors((prev) => { const n = { ...prev }; delete n[droneId]; return n; });
-  }
-
-  async function handleSaveDrone(droneId: string, originalVariantId: string, e: React.FormEvent) {
-    e.preventDefault();
-    if (!editDroneSerial.trim() || !editDroneVariantId) return;
-
-    if (editDroneVariantId !== originalVariantId) {
-      const ok = window.confirm(
-        `Changing the family/variant of this drone will move all of its existing param sets to "${variantLabel(editDroneVariantId)}". Continue?`
-      );
-      if (!ok) return;
-    }
-
-    setSavingDrone(true);
-    const res = await fetch(`/api/admin/drones/${droneId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ serial: editDroneSerial.trim(), variantId: editDroneVariantId }),
-    });
-    setSavingDrone(false);
-    if (res.ok) {
-      setEditingDroneId(null);
-      startTransition(() => router.refresh());
-    } else {
-      const msg = await res.json().then((b) => b?.error).catch(() => null);
-      setEditDroneErrors((prev) => ({ ...prev, [droneId]: msg ?? "Save failed" }));
-    }
-  }
-
-  // ── Delete drone ─────────────────────────────────────────
-  const [deleteDroneErrors, setDeleteDroneErrors] = useState<Record<string, string>>({});
-
-  async function handleDeleteDrone(droneId: string) {
-    setDeleteDroneErrors((prev) => { const n = { ...prev }; delete n[droneId]; return n; });
-    const res = await fetch(`/api/admin/drones/${droneId}`, { method: "DELETE" });
-    if (res.ok) {
-      startTransition(() => router.refresh());
-    } else {
-      const msg = await res.json().then((b) => b?.error).catch(() => null);
-      setDeleteDroneErrors((prev) => ({ ...prev, [droneId]: msg ?? "Cannot delete" }));
-    }
+  // A closed dialog hands the keyboard back to the button that opened it.
+  function close() {
+    setRenaming(null);
+    setDeleting(null);
+    opener.current?.focus();
   }
 
   return (
-    <div className="rounded-lg border border-border bg-card overflow-hidden">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border bg-secondary/50 text-xs text-muted-foreground">
-            <th className="px-3 py-2.5 text-left font-medium w-8"></th>
-            <th className="px-3 py-2.5 text-left font-medium">Name</th>
-            <th className="px-3 py-2.5 text-left font-medium w-32">Drones</th>
-            <th className="px-3 py-2.5 text-right font-medium w-24"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {clients.map((c) => {
-            const isExpanded = expanded.has(c.id);
-            const isEditing = editingClientId === c.id;
-            const editError = editClientErrors[c.id];
-            const deleteError = deleteClientErrors[c.id];
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className={pageTitleClass}>Clients</h1>
+          <p className={`${pageLeadClass} max-w-xl`}>
+            Companies that own drones. Their users only ever see their own drones. Assign a drone to a client from the drone&apos;s page.
+          </p>
+        </div>
+        <form onSubmit={add} className="flex w-full flex-col gap-1.5 sm:w-auto">
+          <div className="flex items-center gap-2">
+            <label htmlFor={newId} className="sr-only">New client name</label>
+            <input
+              id={newId}
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="New client name"
+              className={`${fieldClass} min-w-0 flex-1 sm:w-60 sm:flex-none`}
+            />
+            <BusyButton type="submit" variant="primary" size="md" busy={adding} busyLabel="Adding…" disabled={!newName.trim()} icon={<Plus className="h-4 w-4" />}>
+              Add client
+            </BusyButton>
+          </div>
+          {addError && <p role="alert" className="text-[13px] text-destructive">{addError}</p>}
+        </form>
+      </div>
 
-            return (
-              <Fragment key={c.id}>
-                {/* Client row */}
-                <tr className="border-b border-border hover:bg-secondary/30 group/row">
-                  <td className="px-3 py-2">
+      {clients.length === 0 ? (
+        <div className={`${cardClass} px-6 py-14 text-center`}>
+          <p className="text-sm text-muted-foreground">No clients yet.</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <div className={`hidden items-center gap-x-4 px-4 text-xs font-medium text-muted-foreground sm:grid ${ROW_GRID}`}>
+            <span>Client</span>
+            <span>Drones</span>
+            <span>Users</span>
+            <span />
+          </div>
+          <ul className={`${cardClass} divide-y divide-border overflow-hidden`}>
+            {clients.map((c) => {
+              const blocked = blockers(c);
+              return (
+                <li key={c.id} className={`grid items-center gap-x-4 gap-y-1 px-4 py-3 sm:py-2.5 ${ROW_GRID}`}>
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
+                      <Building2 className="h-4 w-4" />
+                    </span>
+                    <span className="truncate text-sm font-semibold text-foreground">{c.name}</span>
+                  </span>
+                  <span className="col-span-2 flex flex-wrap items-center gap-x-4 gap-y-1 pl-11 text-[13px] sm:contents">
+                    <span>
+                      {c.drones > 0
+                        ? <Link href={`/?client=${c.id}`} className="font-medium text-primary hover:underline cursor-pointer whitespace-nowrap">{c.drones} drone{c.drones === 1 ? "" : "s"} →</Link>
+                        : <span className="text-muted-foreground">No drones</span>}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {c.users > 0 ? `${c.users} user${c.users === 1 ? "" : "s"}` : "No users"}
+                    </span>
+                  </span>
+                  <span className="col-start-2 row-start-1 flex items-center justify-end gap-1 sm:col-start-auto sm:row-start-auto">
                     <button
-                      onClick={() => toggleExpanded(c.id)}
-                      title={isExpanded ? "Collapse" : "Expand"}
-                      className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+                      type="button"
+                      aria-label={`Rename ${c.name}`}
+                      title={`Rename ${c.name}`}
+                      onClick={(e) => open(e, setRenaming, c)}
+                      className={buttonClass("ghost", "icon")}
                     >
-                      {isExpanded ? (
-                        <ChevronDown className="h-3.5 w-3.5" />
-                      ) : (
-                        <ChevronRight className="h-3.5 w-3.5" />
-                      )}
+                      <Pencil className="h-4 w-4" />
                     </button>
-                  </td>
-                  <td className="px-3 py-2">
-                    {isEditing ? (
-                      <form
-                        onSubmit={(e) => handleSaveClient(c.id, e)}
-                        className="flex items-center gap-2"
-                      >
-                        <input
-                          required
-                          autoFocus
-                          value={editClientName}
-                          onChange={(e) => setEditClientName(e.target.value)}
-                          disabled={savingClient}
-                          className="flex-1 rounded-md border border-primary/40 bg-secondary px-2.5 py-1 text-sm text-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
-                        />
-                        <button
-                          type="submit"
-                          disabled={savingClient || !editClientName.trim()}
-                          title="Save"
-                          className="rounded-md bg-primary p-1.5 text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed"
-                        >
-                          <Check className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setEditingClientId(null)}
-                          disabled={savingClient}
-                          title="Cancel"
-                          className="rounded-md border border-border p-1.5 text-muted-foreground hover:bg-secondary transition-colors cursor-pointer disabled:opacity-40"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </form>
-                    ) : (
-                      <span
-                        onClick={() => toggleExpanded(c.id)}
-                        className="font-medium text-foreground cursor-pointer"
-                      >
-                        {c.name}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground">
-                    {c.drones.length}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    {!isEditing && (
-                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => startEditClient(c)}
-                          title={`Rename ${c.name}`}
-                          className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteClient(c.id)}
-                          title={`Delete ${c.name}`}
-                          className="rounded p-1 text-muted-foreground hover:text-destructive hover:bg-secondary transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-
-                {/* Inline error messages for this client */}
-                {(editError || deleteError) && (
-                  <tr className="border-b border-border bg-destructive/5">
-                    <td colSpan={4} className="px-3 py-1.5">
-                      <p className="text-xs text-destructive">
-                        {editError ?? deleteError}
-                      </p>
-                    </td>
-                  </tr>
-                )}
-
-                {/* Expanded: drone rows */}
-                {isExpanded && (
-                  <>
-                    {c.drones.map((d) => {
-                      const isEditingDrone = editingDroneId === d.id;
-                      const editVariantOptions = variants.filter((v) => v.family_id === editDroneFamilyId);
-                      return (
-                        <Fragment key={d.id}>
-                          {isEditingDrone ? (
-                            <tr className="border-b border-border bg-secondary/15">
-                              <td className="px-3 py-2"></td>
-                              <td colSpan={3} className="px-3 py-2 pl-8">
-                                <form
-                                  onSubmit={(e) => handleSaveDrone(d.id, d.variant_id, e)}
-                                  className="flex flex-wrap items-center gap-2"
-                                >
-                                  <input
-                                    required
-                                    autoFocus
-                                    value={editDroneSerial}
-                                    onChange={(e) => setEditDroneSerial(e.target.value)}
-                                    disabled={savingDrone}
-                                    placeholder="Serial"
-                                    className="w-32 rounded-md border border-primary/40 bg-card px-2.5 py-1 text-xs font-mono text-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
-                                  />
-                                  <select
-                                    required
-                                    value={editDroneFamilyId}
-                                    onChange={(e) => { setEditDroneFamilyId(e.target.value); setEditDroneVariantId(""); }}
-                                    disabled={savingDrone}
-                                    className="rounded-md border border-primary/40 bg-card px-2 py-1 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer disabled:opacity-40"
-                                  >
-                                    <option value="">Family…</option>
-                                    {families.map((f) => (
-                                      <option key={f.id} value={f.id}>{f.name}</option>
-                                    ))}
-                                  </select>
-                                  <select
-                                    required
-                                    value={editDroneVariantId}
-                                    onChange={(e) => setEditDroneVariantId(e.target.value)}
-                                    disabled={savingDrone || !editDroneFamilyId}
-                                    className="rounded-md border border-primary/40 bg-card px-2 py-1 text-xs text-foreground outline-none focus:ring-1 focus:ring-ring cursor-pointer disabled:opacity-40"
-                                  >
-                                    <option value="">Variant…</option>
-                                    {editVariantOptions.map((v) => (
-                                      <option key={v.id} value={v.id}>{v.name}</option>
-                                    ))}
-                                  </select>
-                                  <button
-                                    type="submit"
-                                    disabled={savingDrone || !editDroneSerial.trim() || !editDroneVariantId}
-                                    title="Save"
-                                    className="rounded-md bg-primary p-1 text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed"
-                                  >
-                                    <Check className="h-3 w-3" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => setEditingDroneId(null)}
-                                    disabled={savingDrone}
-                                    title="Cancel"
-                                    className="rounded-md border border-border p-1 text-muted-foreground hover:bg-secondary transition-colors cursor-pointer disabled:opacity-40"
-                                  >
-                                    <X className="h-3 w-3" />
-                                  </button>
-                                </form>
-                              </td>
-                            </tr>
-                          ) : (
-                            <tr className="border-b border-border bg-secondary/15 group/drone">
-                              <td className="px-3 py-1.5"></td>
-                              <td className="px-3 py-1.5 pl-8">
-                                {(() => {
-                                  const variant = variantById.get(d.variant_id);
-                                  const family = variant ? familyById.get(variant.family_id) : null;
-                                  const url = family?.slug && d.client_set_id
-                                    ? `/${family.slug}/${d.variant_id}/${d.client_set_id}`
-                                    : null;
-                                  return url ? (
-                                    <Link href={url} className="font-mono text-xs text-primary hover:underline cursor-pointer">
-                                      {d.serial}
-                                    </Link>
-                                  ) : (
-                                    <span className="font-mono text-xs text-foreground">{d.serial}</span>
-                                  );
-                                })()}
-                                <span className="ml-2 text-[11px] text-muted-foreground">
-                                  — {variantLabel(d.variant_id)}
-                                </span>
-                              </td>
-                              <td className="px-3 py-1.5"></td>
-                              <td className="px-3 py-1.5 text-right">
-                                <div className="flex items-center justify-end gap-1 opacity-0 group-hover/drone:opacity-100 transition-opacity">
-                                  <WriteNFCButton serial={d.serial} iconOnly />
-                                  <button
-                                    onClick={() => startEditDrone(d.id, d.serial, d.variant_id)}
-                                    title={`Edit drone ${d.serial}`}
-                                    className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
-                                  >
-                                    <Pencil className="h-3 w-3" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteDrone(d.id)}
-                                    title={`Delete drone ${d.serial}`}
-                                    className="rounded p-1 text-muted-foreground hover:text-destructive hover:bg-secondary transition-colors cursor-pointer"
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                          {(editDroneErrors[d.id] || deleteDroneErrors[d.id]) && (
-                            <tr className="border-b border-border bg-destructive/5">
-                              <td colSpan={4} className="px-3 py-1.5 pl-8">
-                                <p className="text-xs text-destructive">
-                                  {editDroneErrors[d.id] ?? deleteDroneErrors[d.id]}
-                                </p>
-                              </td>
-                            </tr>
-                          )}
-                        </Fragment>
-                      );
-                    })}
-
-                    {/* Add-drone actions — USB import, or a param file received by email */}
-                    <tr className="border-b border-border bg-secondary/15">
-                      <td className="px-3 py-1.5"></td>
-                      <td colSpan={3} className="px-3 py-1.5 pl-8">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setUploadFor(c)}
-                            className="flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-[11px] text-foreground hover:bg-secondary transition-colors cursor-pointer whitespace-nowrap"
-                          >
-                            <Upload className="h-3 w-3" />
-                            Upload param file
-                          </button>
-                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                            or connect the drone via
-                            <Usb className="h-3 w-3" />
-                            <span className="text-foreground">Import from drone</span>
-                            above.
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  </>
-                )}
-              </Fragment>
-            );
-          })}
-
-          {/* Add client row */}
-          {showAddClient ? (
-            <tr className="bg-secondary/15">
-              <td className="px-3 py-2"></td>
-              <td colSpan={3} className="px-3 py-2">
-                <form onSubmit={handleCreateClient} className="flex items-center gap-2">
-                  <input
-                    required
-                    autoFocus
-                    value={newClientName}
-                    onChange={(e) => setNewClientName(e.target.value)}
-                    disabled={submittingClient}
-                    placeholder="Client name (e.g. Acme Corp)"
-                    className="flex-1 max-w-md rounded-md border border-primary/40 bg-card px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
-                  />
-                  <button
-                    type="submit"
-                    disabled={submittingClient || !newClientName.trim()}
-                    className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors cursor-pointer disabled:cursor-not-allowed"
-                  >
-                    {submittingClient ? "Creating…" : "Create"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setShowAddClient(false); setNewClientName(""); setCreateClientError(null); }}
-                    disabled={submittingClient}
-                    className="rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-secondary transition-colors cursor-pointer disabled:opacity-40"
-                  >
-                    Cancel
-                  </button>
-                </form>
-                {createClientError && (
-                  <p className="text-xs text-destructive mt-1.5">{createClientError}</p>
-                )}
-              </td>
-            </tr>
-          ) : (
-            <tr className="bg-secondary/15 hover:bg-secondary/30 cursor-pointer" onClick={() => setShowAddClient(true)}>
-              <td className="px-3 py-2"></td>
-              <td colSpan={3} className="px-3 py-2">
-                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Plus className="h-3.5 w-3.5" />
-                  Add client
-                </span>
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-
-      {uploadFor && (
-        <UploadParamFileModal
-          clientId={uploadFor.id}
-          clientName={uploadFor.name}
-          families={families}
-          variants={variants}
-          drones={uploadFor.drones}
-          onClose={() => setUploadFor(null)}
-        />
+                    <button
+                      type="button"
+                      aria-label={`Delete ${c.name}`}
+                      title={blocked.length ? `Cannot be deleted yet: ${blocked[0].reason.toLowerCase()}` : `Delete ${c.name}`}
+                      onClick={(e) => open(e, setDeleting, c)}
+                      className={buttonClass("dangerGhost", "icon")}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
+
+      {renaming && <RenameClientDialog client={renaming} onClose={close} onDone={() => { close(); refresh(); }} />}
+      {deleting && <DeleteClientDialog client={deleting} onClose={close} onDone={() => { close(); refresh(); }} />}
     </div>
+  );
+}
+
+interface ClientDialogProps {
+  client: ClientRow;
+  onClose: () => void;
+  onDone: () => void;
+}
+
+function RenameClientDialog({ client, onClose, onDone }: ClientDialogProps) {
+  const [name, setName] = useState(client.name);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const id = useId();
+
+  // Start in the field with the old name selected, ready to be typed over.
+  useEffect(() => {
+    input.current?.focus();
+    input.current?.select();
+  }, []);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    const failed = await send(`/api/admin/clients/${client.id}`, "PATCH", { name: name.trim() });
+    if (failed) {
+      setBusy(false);
+      setError(failed);
+      return;
+    }
+    onDone();
+  }
+
+  return (
+    <Dialog
+      title="Rename client"
+      size="sm"
+      onClose={onClose}
+      busy={busy}
+      onSubmit={submit}
+      footer={
+        <>
+          <button type="button" onClick={onClose} disabled={busy} className={buttonClass("secondary")}>Cancel</button>
+          <BusyButton type="submit" variant="primary" busy={busy} busyLabel="Saving…">Save</BusyButton>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={id} className={labelClass}>Client name</label>
+        <input ref={input} id={id} value={name} onChange={(e) => setName(e.target.value)} className={`${fieldClass} w-full`} />
+        <p className="text-xs text-muted-foreground">Its drones and users stay with it under the new name.</p>
+      </div>
+      {error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}
+    </Dialog>
+  );
+}
+
+function DeleteClientDialog({ client, onClose, onDone }: ClientDialogProps) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const blocked = blockers(client);
+
+  async function remove() {
+    setBusy(true);
+    setError(null);
+    const failed = await send(`/api/admin/clients/${client.id}`, "DELETE");
+    if (failed) {
+      setBusy(false);
+      setError(failed);
+      return;
+    }
+    onDone();
+  }
+
+  if (blocked.length > 0) {
+    return (
+      <Dialog
+        title={`${client.name} cannot be deleted yet`}
+        onClose={onClose}
+        footer={<button type="button" onClick={onClose} className={buttonClass("secondary")}>Close</button>}
+      >
+        <p className="text-sm text-foreground">A client can only be deleted once nothing belongs to it any more.</p>
+        <ul className="flex flex-col divide-y divide-border border-y border-border">
+          {blocked.map((b) => (
+            <li key={b.key} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3">
+              <span className="min-w-0 flex-1 basis-56">
+                <span className="block text-sm font-medium text-foreground">{b.title}</span>
+                <span className="block text-[13px] text-muted-foreground">{b.hint}</span>
+              </span>
+              {b.link && <Link href={b.link.href} className={buttonClass("secondary")}>{b.link.label}</Link>}
+            </li>
+          ))}
+        </ul>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Dialog
+      title={`Delete ${client.name}?`}
+      size="sm"
+      onClose={onClose}
+      busy={busy}
+      footer={
+        <>
+          <button type="button" onClick={onClose} disabled={busy} className={buttonClass("secondary")}>Cancel</button>
+          <BusyButton type="button" variant="danger" busy={busy} busyLabel="Deleting…" onClick={remove}>Delete client</BusyButton>
+        </>
+      }
+    >
+      <p className="text-sm text-foreground">
+        <span className="font-semibold">{client.name}</span> has no drones and no users, so nothing else is removed with it.
+      </p>
+      <p className="text-[13px] text-muted-foreground">This cannot be undone.</p>
+      {error && <p role="alert" className="text-[13px] text-destructive">{error}</p>}
+    </Dialog>
   );
 }

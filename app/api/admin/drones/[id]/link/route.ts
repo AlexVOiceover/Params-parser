@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSessionClient } from "@/lib/supabase/server";
+import { createSessionClient, createAdminClient } from "@/lib/supabase/server";
 import { requireContributor } from "@/lib/supabase/auth";
 import { parseChipIdInput } from "@/lib/chip-id";
 import type { LinkMethod } from "@/lib/types";
@@ -57,7 +57,8 @@ export async function POST(
     );
   }
 
-  const { error: updateError } = await supabase.from("drones").update({ chip_id: chipId }).eq("id", id);
+  const admin = createAdminClient();
+  const { error: updateError } = await admin.from("drones").update({ chip_id: chipId }).eq("id", id);
   if (updateError) {
     const conflict = updateError.code === "23505";
     return NextResponse.json(
@@ -66,8 +67,9 @@ export async function POST(
     );
   }
 
-  await supabase.from("drone_events").insert({
+  await admin.from("drone_events").insert({
     drone_id: id,
+    created_by: caller.id,
     chip_id: chipId,
     firmware: body.firmware ?? null,
     kind: relink ? "relinked" : "linked",
@@ -91,9 +93,10 @@ export async function DELETE(
   if (!drone) return NextResponse.json({ error: "Drone not found" }, { status: 404 });
   if (!drone.chip_id) return NextResponse.json({ ok: true });
 
-  const { error } = await supabase.from("drones").update({ chip_id: null }).eq("id", id);
+  const admin = createAdminClient();
+  const { error } = await admin.from("drones").update({ chip_id: null }).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  await supabase.from("drone_events").insert({ drone_id: id, chip_id: drone.chip_id, kind: "unlinked" });
+  await admin.from("drone_events").insert({ drone_id: id, created_by: caller.id, chip_id: drone.chip_id, kind: "unlinked" });
   return NextResponse.json({ ok: true });
 }

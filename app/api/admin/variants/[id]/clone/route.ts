@@ -28,12 +28,13 @@ export async function POST(
     .single();
   if (origError || !original) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // Fetch all client sets of the original variant
+  // Only the template is copied: drones belong to one model, so their
+  // histories stay with them.
   const { data: clientSets } = await admin
     .from("client_sets")
     .select("id, client_name, serial, description")
     .eq("variant_id", id)
-    .order("created_at", { ascending: true });
+    .eq("is_default", true);
 
   // Create new variant
   const { data: newVariant, error: variantError } = await admin
@@ -57,6 +58,7 @@ export async function POST(
         serial: cs.serial,
         description: cs.description,
         variant_id: newVariant.id,
+        is_default: true,
         created_by: user.id,
       })
       .select("id")
@@ -65,7 +67,7 @@ export async function POST(
 
     const { data: versions } = await admin
       .from("param_versions")
-      .select("id, version_label, storage_path, changelog, is_latest, firmware")
+      .select("id, version_label, storage_path, changelog, is_latest, needs_review, firmware")
       .eq("client_set_id", cs.id)
       .order("created_at", { ascending: true });
 
@@ -85,7 +87,8 @@ export async function POST(
           changelog: v.changelog,
           created_by: user.id,
           is_latest: v.is_latest,
-        firmware: v.firmware,
+          needs_review: v.needs_review,
+          firmware: v.firmware,
         })
         .select("id")
         .single();

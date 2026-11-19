@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ChevronRight } from "lucide-react";
 import { createSessionClient, createAdminClient } from "@/lib/supabase/server";
-import { ClientsTable, type ClientWithDrones, type FamilyOption, type VariantOption } from "@/components/clients-table";
+import { ClientsTable, type ClientRow } from "@/components/clients-table";
 
 export const dynamic = "force-dynamic";
 
@@ -11,49 +9,44 @@ export const metadata: Metadata = {
   title: "Clients — AIR6",
 };
 
+interface DroneRef { id: string; client_id: string | null }
+interface UserRef { client_id: string | null }
+interface HistoryRef { client_id: string | null; drone_id: string | null }
+
 export default async function ClientsPage() {
   const supabase = await createSessionClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
   if (profile?.role !== "admin") redirect("/");
 
   const admin = createAdminClient();
-  const [{ data: clientsData }, { data: familiesData }, { data: variantsData }] = await Promise.all([
-    admin.from("clients").select("id, name, drones(id, serial, variant_id, client_sets(id))").order("name"),
-    admin.from("families").select("id, name, slug").order("name"),
-    admin.from("variants").select("id, name, family_id").order("name"),
+  const [{ data: clients }, { data: droneData }, { data: userData }, { data: historyData }] = await Promise.all([
+    admin.from("clients").select("id, name").order("name"),
+    admin.from("drones").select("id, client_id"),
+    admin.from("profiles").select("client_id"),
+    admin.from("client_sets").select("client_id, drone_id").not("client_id", "is", null),
   ]);
+  const drones = (droneData ?? []) as DroneRef[];
+  const users = (userData ?? []) as UserRef[];
+  const histories = (historyData ?? []) as HistoryRef[];
 
-  const families: FamilyOption[] = (familiesData ?? []).map((f) => ({ id: f.id, name: f.name, slug: (f as { slug?: string }).slug ?? "" }));
-  const variants: VariantOption[] = (variantsData ?? []).map((v) => ({ id: v.id, name: v.name, family_id: v.family_id ?? "" }));
-
-  const clients: ClientWithDrones[] = (clientsData ?? []).map((c) => ({
-    id: c.id,
-    name: c.name,
-    drones: ((c.drones as unknown) as { id: string; serial: string; variant_id: string; client_sets: { id: string }[] }[] ?? [])
-      .slice()
-      .sort((a, b) => a.serial.localeCompare(b.serial))
-      .map((d) => ({ ...d, client_set_id: d.client_sets?.[0]?.id ?? null })),
-  }));
+  const rows: ClientRow[] = (clients ?? []).map((c) => {
+    const own = new Set(drones.filter((d) => d.client_id === c.id).map((d) => d.id));
+    return {
+      id: c.id,
+      name: c.name,
+      drones: own.size,
+      users: users.filter((u) => u.client_id === c.id).length,
+      // The delete route refuses while any history names the client. Those of its own drones go
+      // away with the drones, so only the others need their own explanation.
+      histories: histories.filter((h) => h.client_id === c.id && !(h.drone_id && own.has(h.drone_id))).length,
+    };
+  });
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-10">
-      <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-6">
-        <Link href="/" className="text-primary hover:underline cursor-pointer">Catalog</Link>
-        <ChevronRight className="h-3 w-3" />
-        <span className="text-foreground">Clients</span>
-      </nav>
-      <h1 className="text-xl font-semibold text-foreground mb-1">Clients</h1>
-      <p className="text-sm text-muted-foreground mt-2 mb-6">
-        Companies that own drones in the catalog. Register a new drone by connecting it via USB and using the Import button, or expand a client and upload a param file you received.
-      </p>
-      <ClientsTable clients={clients} families={families} variants={variants} />
+    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+      <ClientsTable clients={rows} />
     </div>
   );
 }

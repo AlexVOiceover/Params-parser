@@ -21,7 +21,8 @@ export default function AuthCallbackPage() {
     const refresh_token = params.get("refresh_token");
 
     const search = new URLSearchParams(window.location.search);
-    const next = search.get("next") ?? "/";
+    const rawNext = search.get("next") ?? "/";
+    const next = rawNext.startsWith("/") && !rawNext.startsWith("//") && !rawNext.startsWith("/\\") ? rawNext : "/";
 
     // Supabase reports failures in either the query or the fragment. Surface
     // the real reason — an expired/used token is the common one, and the

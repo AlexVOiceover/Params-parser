@@ -6,11 +6,20 @@ import type { Rule } from "@/lib/types";
 import { matchesRule } from "@/lib/param-engine";
 import unmanagedJson from "@/data/unmanaged-params.json";
 
-const UNMANAGED_RULES: Rule[] = (unmanagedJson as { rules: Rule[] }).rules;
+type PerDroneCategory = "calibration" | "tuning" | "radio" | "hardware" | "identity" | "runtime";
+type PerDroneRule = Rule & { category: PerDroneCategory; reason: string };
 
-/** Managed by default: a param is excluded only if a rule in data/unmanaged-params.json matches it. */
+const UNMANAGED_RULES = (unmanagedJson as { rules: PerDroneRule[] }).rules;
+const RUNTIME_RULES = UNMANAGED_RULES.filter((r) => r.category === "runtime");
+
+/** Managed by default: a param is per-drone only if a rule in data/unmanaged-params.json matches it. */
 export function isUnmanaged(name: string): boolean {
   return UNMANAGED_RULES.some((rule) => matchesRule(name, rule));
+}
+
+/** Params that change by themselves: left out of version-to-version change counts and Compare. */
+export function isRuntime(name: string): boolean {
+  return RUNTIME_RULES.some((rule) => matchesRule(name, rule));
 }
 
 /**

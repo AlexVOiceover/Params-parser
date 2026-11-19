@@ -36,11 +36,15 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   const path = request.nextUrl.pathname;
-  const needsAuth = path.startsWith("/admin") || path.startsWith("/upload") || path.startsWith("/mission");
+  // Every page needs a session. API routes answer 401 themselves; public files stay reachable.
+  const isPublic = path === "/login" || path.startsWith("/auth/") || path.startsWith("/api/")
+    || path === "/sw.js" || path.startsWith("/swe-worker") || path === "/manifest.webmanifest" || path === "/manifest.json";
+  const needsAuth = !isPublic;
 
   if (needsAuth && !user) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    url.search = path === "/" ? "" : `?next=${encodeURIComponent(path + request.nextUrl.search)}`;
     return NextResponse.redirect(url);
   }
 

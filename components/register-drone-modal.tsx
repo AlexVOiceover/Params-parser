@@ -9,7 +9,8 @@ import { refreshDroneMatch } from "@/lib/use-connected-drone-match";
 import { WriteDroneDialog, type WriteChange } from "@/components/write-drone-dialog";
 import { WriteNFCButton } from "@/components/write-nfc-button";
 import { parseSerialId } from "@/lib/param-engine";
-import { changesFor, fetchVersionValues, type WriteOutcome } from "@/lib/drone-flash-engine";
+import { droneHref } from "@/lib/versions";
+import { applyVersion, changesFor, fetchVersionValues, type WriteOutcome } from "@/lib/drone-flash-engine";
 
 
 type Stage = "form" | "confirm" | "flashing" | "done" | "error";
@@ -43,12 +44,12 @@ interface Props {
   mode: RegisterMode;
 }
 
-const inputClass = "rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring";
+const inputClass = "rounded-lg border border-input bg-field px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-ring focus:ring-2 focus:ring-ring/25";
 const selectClass = inputClass + " cursor-pointer";
 const labelClass = "flex flex-col gap-1.5";
 const labelTextClass = "text-xs font-medium text-muted-foreground";
 
-/** Suggest a catalog-formatted serial: <PREFIX>-<MMYY>-<padded int>. */
+/** Suggest a serial in the AIR6 format: <PREFIX>-<MMYY>-<padded int>. */
 function suggestCatalogSerial(familySlug: string | undefined, droneNum: number): string {
   const prefix = (familySlug ?? "DRN").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
   const d = new Date();
@@ -93,6 +94,7 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
 
   // Flash
   const [writeChanges, setWriteChanges] = useState<WriteChange[] | null>(null);
+  const [defaultTarget, setDefaultTarget] = useState<{ id: string; label: string; desired: Map<string, number> } | null>(null);
   const [flashedVersion, setFlashedVersion] = useState<string>("1");
   const [needsReview, setNeedsReview] = useState(false);
 
@@ -167,7 +169,7 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
 
   const variantsForFamily = variants.filter((v) => v.family_id === familyId);
 
-  // Auto-suggest the catalog serial from family slug + current MMYY + padded
+  // Auto-suggest the serial from family slug + current MMYY + padded
   // SCR_USER1, unless the user has manually edited it or this is an existing drone.
   useEffect(() => {
     if (serialTouched || existingDrone) return;
@@ -294,7 +296,7 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
       .eq("variant_id", variantId)
       .eq("is_default", true)
       .maybeSingle();
-    if (!defaultCS) { fail("No Default param set found for this variant. Upload one first."); return; }
+    if (!defaultCS) { fail("This model has no template yet. Upload one on its Models page first."); return; }
 
     const { data: defaultVersions } = await supabase
       .from("param_versions")
@@ -303,14 +305,15 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
     const latest = (defaultVersions ?? [])
       .filter((v) => !v.needs_review)
       .sort((a, b) => parseInt(b.version_label, 10) - parseInt(a.version_label, 10))[0];
-    if (!latest) { fail("The Default has no approved version. Upload one first."); return; }
+    if (!latest) { fail("This model's template has no approved version yet. Approve or upload one on its Models page first."); return; }
 
     const desired = await fetchVersionValues(latest.id);
     const changes = changesFor(desired, droneParams ?? []);
     if (changes.length === 0) {
-      if (await saveVersion(droneParams ?? [], `Registered — Default v${latest.version_label} already applied`)) finishRegistration();
+      if (await saveVersion(droneParams ?? [], `Registered — model template v${latest.version_label} already on the drone`)) finishRegistration();
       return;
     }
+    setDefaultTarget({ id: latest.id, label: latest.version_label, desired });
     setWriteChanges(changes);
   }
 
@@ -319,11 +322,13 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
     setWriteChanges(null);
     if (!outcome.ok) {
       const failed = outcome.results.filter((r) => !r.success).map((r) => r.name);
-      fail(`Not every Default param took (${failed.join(", ")}). The drone is linked; apply again from its history.`);
+      fail(failed.length
+        ? `Not every template param took (${failed.join(", ")}). The drone is linked; install again from its page.`
+        : outcome.error ?? "The template could not be verified. The drone is linked; install again from its page.");
       return;
     }
     // The verified result becomes v1 of the drone's history.
-    if (await saveVersion(outcome.params, "Registered — Default applied and verified")) finishRegistration();
+    if (await saveVersion(outcome.params, "Registered — model template installed and verified")) finishRegistration();
   }
 
   const selectedClient = clients.find((c) => c.id === clientId);
@@ -334,8 +339,8 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center">
-        <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => stage !== "flashing" && onClose()} />
-        <div className="relative z-10 w-full max-w-sm rounded-xl border border-border bg-card shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-xs" onClick={() => stage !== "flashing" && onClose()} />
+        <div className="relative z-10 w-full max-w-sm rounded-2xl border border-border bg-card shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-border bg-toolbar px-5 py-3.5 shrink-0">
             <div className="flex items-center gap-2">
@@ -365,7 +370,7 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
               <>
                 {existingDrone && (
                   <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-                    This drone is already registered. You can still assign a client or re-flash the Default.
+                    This drone is already registered. You can still assign a client or install the model template again.
                   </div>
                 )}
 
@@ -377,9 +382,9 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
                   </div>
                 )}
 
-                {/* Catalog serial — editable, auto-suggested */}
+                {/* Serial — editable, auto-suggested */}
                 <label className={labelClass}>
-                  <span className={labelTextClass}>Catalog serial <span className="text-destructive">*</span></span>
+                  <span className={labelTextClass}>Serial (as on the airframe label) <span className="text-destructive">*</span></span>
                   {fieldsLocked ? (
                     <div className="font-mono text-sm text-foreground bg-secondary border border-border rounded-md px-3 py-2">
                       {serial}
@@ -398,19 +403,19 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
                     const parsed = parseSerialId(serial);
                     if (parsed !== null && parsed !== scrUser1Val) {
                       return (
-                        <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                        <span className="text-[11px] text-amber-600 dark:text-amber-400">
                           Trailing number ({parsed}) doesn&apos;t match what the drone reports ({scrUser1Val})
                         </span>
                       );
                     }
                     return null;
                   })()}
-                  {checkingDB && <span className="text-[10px] text-muted-foreground">Checking database…</span>}
+                  {checkingDB && <span className="text-[11px] text-muted-foreground">Checking database…</span>}
                 </label>
 
                 {/* Family */}
                 <label className={labelClass}>
-                  <span className={labelTextClass}>Family <span className="text-destructive">*</span></span>
+                  <span className={labelTextClass}>Product line <span className="text-destructive">*</span></span>
                   {fieldsLocked ? (
                     <div className="font-mono text-sm text-muted-foreground bg-secondary/50 border border-border rounded-md px-3 py-2" title="Cannot change — edit in Clients & Drones">
                       {existingDrone?.familyName ?? selectedFamily?.name ?? "—"}
@@ -460,12 +465,12 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
                       onChange={(e) => setClientId(e.target.value)}
                       className={selectClass}
                     >
-                      <option value="__orphan__">No client (orphan — tracks Default)</option>
+                      <option value="__orphan__">No client yet (AIR6 stock)</option>
                       {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-[11px] text-muted-foreground">
                       {isOrphan
-                        ? "Drone will track the Default param set. Assign a client later from Clients & Drones."
+                        ? "Assign a client later from the drone's page."
                         : "A param set for this client will be created on this drone."}
                     </p>
                   </label>
@@ -491,11 +496,11 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
                 <dl className="rounded-lg border border-border bg-secondary/30 divide-y divide-border text-sm">
                   {[
                     ["Serial", serial],
-                    ["Family / Variant", `${selectedFamily?.name ?? existingDrone?.familyName ?? "?"} / ${selectedVariant?.name ?? existingDrone?.variantName ?? "?"}`],
+                    ["Model", `${selectedFamily?.name ?? existingDrone?.familyName ?? "?"} · ${selectedVariant?.name ?? existingDrone?.variantName ?? "?"}`],
                     ["Client", isOrphan ? "No client (orphan)" : (selectedClient?.name ?? "?")],
                     ["Action", mode === "capture"
                       ? "Link this flight controller; save current params as a version"
-                      : (existingDrone ? "Link + apply the Default" : "Register, link + apply the Default")],
+                      : (existingDrone ? "Link and install the model template" : "Register, link and install the model template")],
                   ].map(([label, value]) => (
                     <div key={label} className="flex items-start justify-between px-3 py-2 gap-3">
                       <dt className="text-muted-foreground shrink-0">{label}</dt>
@@ -514,7 +519,7 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
                   <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2">
                     <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
                     <p className="text-xs text-foreground leading-relaxed">
-                      The Default will be applied, overwriting any tuning — except calibration and other per-drone params. Every change is read back, and the result is saved as the drone&apos;s first version. Make sure the drone is safe (disarmed, no props).
+                      The model template will be installed, overwriting its settings — except calibration, tuning and other per-drone params. Every change is read back, and the result is saved as the drone&apos;s first version. Make sure the drone is safe (disarmed, no props).
                     </p>
                   </div>
                 )}
@@ -541,13 +546,13 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
             {/* ── DONE ── */}
             {stage === "done" && (
               <div className="flex flex-col items-center gap-3 py-6 text-center">
-                <CheckCircle className="h-10 w-10 text-emerald-400" />
+                <CheckCircle className="h-10 w-10 text-emerald-600 dark:text-emerald-400" />
                 <p className="text-sm font-medium text-foreground">Drone registered</p>
                 <p className="text-xs text-muted-foreground">
                   <span className="font-mono">{serial}</span> is now registered.{" "}
                   {mode === "capture"
                     ? <>Current params saved as <span className="font-mono">v{flashedVersion}</span></>
-                    : <>Default applied, verified and saved as <span className="font-mono">v{flashedVersion}</span></>}
+                    : <>Model template installed, verified and saved as <span className="font-mono">v{flashedVersion}</span></>}
                   {needsReview ? " — waiting for admin review." : "."}
                 </p>
                 <div className="flex flex-col items-center gap-1.5 mt-1">
@@ -556,13 +561,13 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
                     label="Write NFC tag"
                     className="w-full justify-center"
                   />
-                  <p className="text-[10px] text-muted-foreground">Write the serial to the NFC sticker on the drone</p>
+                  <p className="text-[11px] text-muted-foreground">Write the serial to the NFC sticker on the drone</p>
                 </div>
                 <button
-                  onClick={() => { onSuccess?.(); onClose(); }}
+                  onClick={() => { onSuccess?.(); onClose(); router.push(droneHref(serial.trim())); }}
                   className="mt-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer whitespace-nowrap"
                 >
-                  Done
+                  Open {serial.trim()}
                 </button>
               </div>
             )}
@@ -588,8 +593,11 @@ export function RegisterDroneModal({ onClose, onSuccess, mode }: Props) {
       {writeChanges && (
         <WriteDroneDialog
           changes={writeChanges}
-          onClose={() => { if (stage === "flashing") { setWriteChanges(null); fail("Cancelled — the drone is linked but the Default was not applied."); } }}
+          onClose={() => { if (stage === "flashing") { setWriteChanges(null); fail("Cancelled — the drone is linked but the template was not installed."); } }}
           onSuccess={handleWriteSuccess}
+          onStart={defaultTarget
+            ? (addLog) => applyVersion(defaultTarget.id, defaultTarget.label, defaultTarget.desired, droneParams ?? [], autopilot, addLog)
+            : undefined}
         />
       )}
     </>

@@ -19,7 +19,7 @@ const APP_NAME = "AIR6 Params";
 export const metadata: Metadata = {
   title: { default: APP_NAME, template: "%s" },
   description:
-    "AIR6 drone parameter catalog and filter tool. Manage versioned param sets and apply them safely to your fleet.",
+    "Keep every AIR6 drone on the right ArduPilot params: one history per drone, verified installs, and model templates for new drones.",
   applicationName: APP_NAME,
   manifest: "/manifest.webmanifest",
   appleWebApp: {
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#0d0f14" },
+    { media: "(prefers-color-scheme: dark)", color: "#11141b" },
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
   ],
   viewportFit: "cover",

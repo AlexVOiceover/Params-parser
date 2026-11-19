@@ -1,12 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronLeft, ListChecks } from "lucide-react";
 import { createClient, createAdminClient, createSessionClient } from "@/lib/supabase/server";
-import { parseParamFile, RUNTIME_PARAMS } from "@/lib/param-engine";
-import { VersionTree } from "@/components/compare/version-tree";
+import { parseParamFile } from "@/lib/param-engine";
+import { isRuntime } from "@/lib/desired-state";
+import { ComparePicker } from "@/components/compare/version-picker";
+import { getPickerHistories } from "@/lib/version-picker";
+import { FILE_VERSION_ID } from "@/lib/file-compare-shared";
+import { droneHref, modelHref } from "@/lib/versions";
+import { buttonClass } from "@/components/ui/styles";
 import { CompareTableWrapper } from "@/components/compare/compare-table-wrapper";
 import { DRONE_VERSION_ID } from "@/lib/drone-params-shared";
-import { FILE_VERSION_ID } from "@/lib/file-compare-shared";
 import type { CompareVersion, CompareRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -15,161 +19,13 @@ export const metadata: Metadata = {
   title: "Compare — AIR6",
 };
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface VersionNode {
-  id: string;
-  label: string;
-  isLatest: boolean;
-}
-
-interface ClientSetNode {
-  id: string;
-  name: string;
-  isDefault: boolean;
-  versions: VersionNode[];
-}
-
-interface VariantNode {
-  id: string;
-  name: string;
-  clientSets: ClientSetNode[];
-}
-
-interface FamilyNode {
-  id: string;
-  name: string;
-  slug: string;
-  variants: VariantNode[];
-}
-
-// ── Selection branch: full hierarchy for version tree ─────────────────────────
-
-type VariantRow = { id: string; name: string; family_id: string | null };
-type ClientSetRow = {
-  id: string;
-  client_name: string;
-  serial: string;
-  variant_id: string;
-  client_id: string | null;
-  drone_id: string | null;
-  is_default: boolean;
-};
-type VersionRow = { id: string; version_label: string; is_latest: boolean; client_set_id: string };
-
-async function fetchTree(): Promise<FamilyNode[]> {
-  const supabase = await createSessionClient().catch(() => createClient());
-
-  const { data: families } = await supabase
-    .from("families")
-    .select("id, name, slug")
-    .order("name");
-
-  if (!families?.length) return [];
-
-  const familyIds = families.map((f) => f.id);
-  const { data: variantsRaw } = await supabase
-    .from("variants")
-    .select("id, name, family_id")
-    .in("family_id", familyIds)
-    .not("family_id", "is", null)
-    .order("name");
-
-  const variants: VariantRow[] = variantsRaw ?? [];
-  const variantIds = variants.map((v) => v.id);
-
-  let clientSets: ClientSetRow[] = [];
-  if (variantIds.length) {
-    const { data } = await supabase
-      .from("client_sets")
-      .select("id, client_name, serial, variant_id, client_id, drone_id, is_default")
-      .in("variant_id", variantIds)
-      .order("is_default", { ascending: false })
-      .order("client_name")
-      .order("serial");
-    clientSets = data ?? [];
-  }
-
-  // Live lookups so renames in /admin/clients propagate.
-  const clientIds = [...new Set(clientSets.map((c) => c.client_id).filter((id): id is string => !!id))];
-  const droneIds = [...new Set(clientSets.map((c) => c.drone_id).filter((id): id is string => !!id))];
-  const [{ data: liveClients }, { data: liveDrones }] = await Promise.all([
-    clientIds.length ? supabase.from("clients").select("id, name").in("id", clientIds) : Promise.resolve({ data: [] }),
-    droneIds.length ? supabase.from("drones").select("id, serial").in("id", droneIds) : Promise.resolve({ data: [] }),
-  ]);
-  const clientNameById = new Map((liveClients ?? []).map((c) => [c.id, c.name]));
-  const droneSerialById = new Map((liveDrones ?? []).map((d) => [d.id, d.serial]));
-  function liveLabel(c: ClientSetRow): string {
-    const name = (c.client_id && clientNameById.get(c.client_id)) || c.client_name;
-    const serial = (c.drone_id && droneSerialById.get(c.drone_id)) || c.serial;
-    return serial ? `${name} · ${serial}` : name;
-  }
-
-  const clientSetIds = clientSets.map((c) => c.id);
-  let versions: VersionRow[] = [];
-  if (clientSetIds.length) {
-    const { data } = await supabase
-      .from("param_versions")
-      .select("id, version_label, is_latest, client_set_id")
-      .in("client_set_id", clientSetIds)
-      .order("version_label");
-    versions = data ?? [];
-  }
-
-  const variantsByFamily = new Map<string, VariantRow[]>();
-  for (const v of variants) {
-    if (!v.family_id) continue;
-    const arr = variantsByFamily.get(v.family_id) ?? [];
-    arr.push(v);
-    variantsByFamily.set(v.family_id, arr);
-  }
-
-  const clientSetsByVariant = new Map<string, ClientSetRow[]>();
-  for (const c of clientSets) {
-    const arr = clientSetsByVariant.get(c.variant_id) ?? [];
-    arr.push(c);
-    clientSetsByVariant.set(c.variant_id, arr);
-  }
-
-  const versionsByClientSet = new Map<string, VersionRow[]>();
-  for (const v of versions) {
-    const arr = versionsByClientSet.get(v.client_set_id) ?? [];
-    arr.push(v);
-    versionsByClientSet.set(v.client_set_id, arr);
-  }
-
-  return families
-    .map((f) => ({
-      id: f.id,
-      name: f.name,
-      slug: f.slug,
-      variants: (variantsByFamily.get(f.id) ?? [])
-        .map((v) => ({
-          id: v.id,
-          name: v.name,
-          clientSets: (clientSetsByVariant.get(v.id) ?? [])
-            .map((c) => ({
-              id: c.id,
-              name: liveLabel(c),
-              isDefault: c.is_default,
-              versions: (versionsByClientSet.get(c.id) ?? []).map((ver) => ({
-                id: ver.id,
-                label: ver.version_label,
-                isLatest: ver.is_latest,
-              })),
-            }))
-            .filter((c) => c.versions.length > 0),
-        }))
-        .filter((v) => v.clientSets.length > 0),
-    }))
-    .filter((f) => f.variants.length > 0);
-}
-
 // ── Compare branch: param values for selected versions ────────────────────────
+
+interface BackLink { href: string; label: string }
 
 async function fetchCompareData(
   versionIds: string[]
-): Promise<{ versions: CompareVersion[]; rows: CompareRow[] }> {
+): Promise<{ versions: CompareVersion[]; rows: CompareRow[]; back: BackLink | null }> {
   const supabase = await createSessionClient().catch(() => createClient());
   const admin = createAdminClient();
 
@@ -211,7 +67,7 @@ async function fetchCompareData(
 
   const clientSetIds = [...new Set((versionsData ?? []).map((v) => v.client_set_id))];
   const { data: clientSetsData } = clientSetIds.length
-    ? await supabase.from("client_sets").select("id, client_name, serial, variant_id, client_id, drone_id").in("id", clientSetIds)
+    ? await supabase.from("client_sets").select("id, client_name, serial, variant_id, client_id, drone_id, is_default").in("id", clientSetIds)
     : { data: [] };
 
   // Live name/serial lookups
@@ -296,10 +152,22 @@ async function fetchCompareData(
   );
 
   const rows: CompareRow[] = Array.from(rowMap.entries())
-    .filter(([name]) => !RUNTIME_PARAMS.has(name))
+    .filter(([name]) => !isRuntime(name))
     .map(([name, values]) => ({ name, values }));
 
-  return { versions, rows };
+  // When everything compared belongs to one history, the way back is that drone or model.
+  let back: BackLink | null = null;
+  if (clientSetsData?.length === 1) {
+    const set = clientSetsData[0];
+    const variant = variantMap.get(set.variant_id);
+    const family = variant?.family_id ? familyMap.get(variant.family_id) : undefined;
+    const serial = (set.drone_id && droneSerialById2.get(set.drone_id)) || null;
+    back = set.is_default || !serial
+      ? { href: modelHref(set.variant_id), label: [family?.name, variant?.name].filter(Boolean).join(" · ") || "Model" }
+      : { href: droneHref(serial), label: serial };
+  }
+
+  return { versions, rows, back };
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -307,50 +175,41 @@ async function fetchCompareData(
 export default async function ComparePage({
   searchParams,
 }: {
-  searchParams: Promise<{ v?: string | string[] }>;
+  searchParams: Promise<{ v?: string | string[]; pick?: string | string[] }>;
 }) {
-  const { v } = await searchParams;
+  const { v, pick } = await searchParams;
   const allIds = Array.isArray(v) ? v : v ? [v] : [];
+  const picked = Array.isArray(pick) ? pick : pick ? [pick] : [];
   const hasDroneVersion = allIds.includes(DRONE_VERSION_ID);
-  // A transient .param file lives in sessionStorage, so the column is merged
-  // client-side — the server only needs to know it was requested.
+  // A .param file lives in sessionStorage, so its column is merged client-side.
   const hasFileVersion = allIds.includes(FILE_VERSION_ID);
   const dbVersionIds = allIds.filter((id) => id !== DRONE_VERSION_ID && id !== FILE_VERSION_ID);
 
   if (dbVersionIds.length >= 1 || hasDroneVersion || hasFileVersion) {
-    const { versions, rows } = dbVersionIds.length > 0
+    const { versions, rows, back } = dbVersionIds.length > 0
       ? await fetchCompareData(dbVersionIds)
-      : { versions: [], rows: [] };
+      : { versions: [], rows: [], back: null };
     const totalCount = versions.length + (hasDroneVersion ? 1 : 0) + (hasFileVersion ? 1 : 0);
+    const onlyOneHistory = back && !hasDroneVersion && !hasFileVersion ? back : null;
     return (
       <div className="h-full flex flex-col">
-        <div className="flex items-center flex-wrap gap-x-1 gap-y-0.5 px-4 py-2 border-b border-border text-xs text-muted-foreground shrink-0 min-w-0">
-          <Link href="/" className="text-primary hover:underline cursor-pointer shrink-0">Catalog</Link>
-          <ChevronRight className="h-3 w-3 shrink-0" />
-          {(() => {
-            const dbV = versions.filter((v) => v.clientSetId && v.familySlug && v.variantId);
-            const uniqueClientSets = new Set(dbV.map((v) => v.clientSetId));
-            if (uniqueClientSets.size === 1 && dbV[0]?.familySlug && dbV[0]?.variantId && dbV[0]?.clientSetId) {
-              const v = dbV[0];
-              return (
-                <>
-                  <Link href={`/${v.familySlug}`} className="text-primary hover:underline cursor-pointer shrink-0">{v.familyName}</Link>
-                  <ChevronRight className="h-3 w-3 shrink-0" />
-                  <Link href={`/${v.familySlug}/${v.variantId}`} className="text-primary hover:underline cursor-pointer shrink-0">{v.variantName}</Link>
-                  <ChevronRight className="h-3 w-3 shrink-0" />
-                  <Link href={`/${v.familySlug}/${v.variantId}/${v.clientSetId}`} className="text-primary hover:underline cursor-pointer shrink-0">{v.clientName}</Link>
-                  <ChevronRight className="h-3 w-3 shrink-0" />
-                </>
-              );
-            }
-            return (
-              <>
-                <Link href="/compare" className="text-primary hover:underline cursor-pointer shrink-0">Compare</Link>
-                <ChevronRight className="h-3 w-3 shrink-0" />
-              </>
-            );
-          })()}
-          <span className="text-foreground shrink-0">{totalCount} version{totalCount !== 1 ? "s" : ""}</span>
+        <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border bg-card px-4 py-2 text-[13px]">
+          <Link
+            href={onlyOneHistory?.href ?? "/compare"}
+            className="flex min-w-0 items-center gap-1 text-primary hover:underline cursor-pointer"
+          >
+            <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{onlyOneHistory?.label ?? "Compare"}</span>
+          </Link>
+          <span className="font-medium text-foreground whitespace-nowrap">
+            {totalCount === 1 ? "Viewing 1 version" : `Comparing ${totalCount} versions`}
+          </span>
+          <Link
+            href={`/compare?${allIds.map((id) => `pick=${encodeURIComponent(id)}`).join("&")}`}
+            className={buttonClass("secondary", "sm", "ml-auto")}
+          >
+            <ListChecks className="h-3.5 w-3.5" /> Add or change versions
+          </Link>
         </div>
         <div className="flex-1 overflow-hidden">
           <CompareTableWrapper
@@ -364,17 +223,7 @@ export default async function ComparePage({
     );
   }
 
-  const tree = await fetchTree();
-  return (
-    <div className="h-full flex flex-col">
-      <div className="flex items-center flex-wrap gap-x-1 gap-y-0.5 px-4 py-2 border-b border-border text-xs text-muted-foreground shrink-0">
-        <Link href="/" className="text-primary hover:underline cursor-pointer shrink-0">Catalog</Link>
-        <ChevronRight className="h-3 w-3 shrink-0" />
-        <span className="text-foreground shrink-0">Compare</span>
-      </div>
-      <div className="flex-1 overflow-hidden">
-        <VersionTree tree={tree} />
-      </div>
-    </div>
-  );
+  const supabase = await createSessionClient().catch(() => createClient());
+  const histories = await getPickerHistories(supabase);
+  return <ComparePicker histories={histories} initial={picked} />;
 }

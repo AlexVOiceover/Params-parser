@@ -16,8 +16,11 @@ export async function PATCH(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const body = await request.json() as { serial?: string; variantId?: string };
-  const update: Record<string, unknown> = {};
+  const body = await request.json() as { serial?: string; variantId?: string; clientId?: string | null };
+  if ((body.variantId !== undefined || body.clientId !== undefined) && profile.role !== "admin") {
+    return NextResponse.json({ error: "Only an admin can move a drone to another model or client" }, { status: 403 });
+  }
+  const update: { serial?: string; variant_id?: string; client_id?: string | null } = {};
   if (body.serial !== undefined) {
     if (!body.serial.trim()) return NextResponse.json({ error: "Serial cannot be empty" }, { status: 400 });
     update.serial = body.serial.trim();
@@ -26,6 +29,7 @@ export async function PATCH(
     if (!body.variantId) return NextResponse.json({ error: "Variant cannot be empty" }, { status: 400 });
     update.variant_id = body.variantId;
   }
+  if (body.clientId !== undefined) update.client_id = body.clientId || null;
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
   }
@@ -37,7 +41,7 @@ export async function PATCH(
     const { data: existing } = await admin
       .from("drones")
       .select("id")
-      .eq("serial", update.serial as string)
+      .eq("serial", update.serial)
       .neq("id", id)
       .maybeSingle();
     if (existing) {
@@ -58,6 +62,21 @@ export async function PATCH(
     if (csError) {
       return NextResponse.json({ error: `Failed to update param sets: ${csError.message}` }, { status: 500 });
     }
+  }
+
+  // The drone's history follows its owner, and its cached name/serial follow the drone.
+  if (update.client_id !== undefined || update.serial) {
+    const { data: drone } = await admin.from("drones").select("serial").eq("id", id).maybeSingle();
+    const { data: client } = update.client_id
+      ? await admin.from("clients").select("name").eq("id", update.client_id).maybeSingle()
+      : { data: null };
+    const serial = update.serial ?? drone?.serial ?? "";
+    const setUpdate: { serial: string; client_id?: string | null; client_name?: string } = { serial };
+    if (update.client_id !== undefined) {
+      setUpdate.client_id = update.client_id;
+      setUpdate.client_name = client?.name ?? serial;
+    }
+    await admin.from("client_sets").update(setUpdate).eq("drone_id", id);
   }
 
   const { error } = await admin.from("drones").update(update).eq("id", id);

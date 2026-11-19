@@ -81,14 +81,113 @@ Things to verify when you have time. Tick them off as you go.
 - [ ] Apply/Restore writes also skip the picker
 - [ ] Android (WebUSB): reconnects without the device picker
 
-### Ghost card on a drone's history page
-- [ ] Connected drone differs from v3 → dashed "v4 · from the connected drone" card above v3
-- [ ] Save as v4 is disabled until a changelog is typed; saving adds v4 and a "saved from the drone" log entry
-- [ ] Ghost card has only Save (no Install/Restore)
-- [ ] Install on drone on v3's card writes v3; the ghost card disappears and v3 shows "on drone"
-- [ ] Staff: Install on v2 shows the "v3 is still the target" notice; afterwards the drone shows "update available: v3"
-- [ ] Client: only the target version has Install on drone
-- [ ] Drone on an older version → amber "Install vN" banner, no Save
-- [ ] Another drone connected → "The connected drone is X, not this one" with a link to its history, no actions
-- [ ] Unlinked FC (staff) → "Link to <serial>"; record already linked to another chip → admin-only "Re-link"
-- [ ] "Upload new version from a file…" no longer offers "From drone"
+### Drone page live card (replaces the ghost-card list above)
+- [ ] No drone read → "Plug <serial> in…" with Connect drone
+- [ ] Connected and in sync → green "Connected and matching vN, its target"
+- [ ] Changed on the drone → dashed "vN+1 · from the connected drone · not saved" with Show diff and Save (changelog required)
+- [ ] Saving adds vN+1 and the drone shows as saved from the drone in its history
+- [ ] Drone on an older version → amber "Install vN" banner
+- [ ] Another drone connected → "The connected drone is X, not this one" with "Open X"
+- [ ] Unlinked FC (staff) → "Link to <serial>"; record already linked → admin-only "Re-link"
+
+---
+
+## 0.25.0 — Drone-first redesign + security lockdown
+
+### Before testing
+- Test on this branch (`fix/security-lockdown`) with `npm run dev --turbopack`. It points at the live database, so saves and installs are real.
+- The migration `20261116180000_security_lockdown.sql` is NOT applied yet. Apply it only after the code is deployed (see below).
+
+### Navigation
+- [ ] Signed out: every page redirects to /login and comes back to the same page after signing in
+- [ ] Header shows Drones · Models · Review · Clients for admin; clients only see "My drones"
+- [ ] Header chip: "Connect drone" → after reading, "<serial> · Up to date / Update to vN / Changed on drone"; clicking it opens that drone; ↻ reads again
+- [ ] Old links redirect: /AIR4Rugged → Models, /AIR4Rugged/<variant> → model page, /…/<client set> → drone page, /drone/<serial> (NFC) → drone page, /filter, /upload, /admin/drones → Drones
+
+### Drones list
+- [ ] Every drone listed with model, client, status, target, last verified; drones needing attention first
+- [ ] Search and status chips filter; client filter works; Clients page "N drones →" opens the list filtered
+- [ ] The connected drone shows a "connected" tag
+- [ ] Add drone (serial, model, client, "start from template") opens the new drone's page with v1 copied from the template
+- [ ] Client with one drone lands straight on its page; with several, sees only theirs
+
+### Drone page
+- [ ] History interleaves versions and log lines (installed, linked) newest first; the target has a "Target" badge
+- [ ] "What changed" opens Compare with the previous version; "Compare versions" → tick two → Compare
+- [ ] Download → Full file / Shareable (shareable has no COMPASS_, INS_ offsets, ATC_, RCn_MIN/MAX/TRIM, SRn_ …)
+- [ ] Restore v2 → "Save as vN+1" → becomes the target (admin) or a proposal (client)
+- [ ] Install button only on the target, only when this drone is connected and not on it
+- [ ] Delete: a proposal can be deleted; a version a drone was verified on cannot (error explains)
+- [ ] New version from file: diff vs target listed before saving; per-drone params hidden behind a checkbox; changelog required
+- [ ] Settings: rename serial (URL follows), change client/model (admin), link FC, write NFC tag, delete drone
+
+### Models
+- [ ] Models list shows template version, proposals and drone counts; Add model (existing or new product line)
+- [ ] Model page: template history with New version from file, Restore, Download; drones of this model; rename/delete (delete blocked while drones use it)
+
+### Review
+- [ ] Proposals show drone/template, author, note; Approve makes it the target; "Compare with vN"; Reject deletes it
+- [ ] Approving an old proposal after a newer version was approved is refused with an explanation
+
+### Per-drone params
+- [ ] A drone that differs only in ATC_ gains, SRn_ rates or RC calibration shows as Up to date
+- [ ] A drone whose SERIALn_ settings differ from its target now shows as changed, and Install writes them
+
+### Security (after the migration is applied)
+- [ ] A client cannot insert versions or drone-log rows through the Supabase API
+- [ ] Stored-file URLs (…/storage/v1/object/public/param-files/…) return 400/404
+- [ ] Downloads still work from the drone page
+
+### Restored after review (2026-11-16)
+- [ ] Filter in the header: load a file / the drone / a version ("Open in Filter" on a version card), protection lists, notes, export, Publish to Catalog (asks for a changelog, saves into the drone's history)
+- [ ] Compare in the header: tree across all drones and templates; "Add a .param file…" adds a file column; "Add or change versions…" from a comparison keeps the current picks
+- [ ] Version card: "Compare with…" opens the tree with that version ticked
+- [ ] Version card: "Copy to…" → pick a drone or a model template → saved as its next version
+- [ ] Drones list: Group by model / client (remembered), click column headers to sort
+- [ ] Models list: edit name + description of a line or variant; delete a variant with no drones; delete an empty line
+- [ ] Model page: description shown; Duplicate variant (copies the template history); each drone shows how many params differ from the template
+- [ ] Drone page: description shown and editable in settings
+
+---
+
+## 0.25.0 — New look, nested groups, one Compare flow
+
+Checked by me in screenshots against sample data (light, dark, phone). Not checked: anything that needs a real drone on USB, real e-mail, or NFC.
+
+### Drones list
+- [ ] Group by **Client** and by **Model**: each group is its own card, its drones are indented under it, the group shows a status summary, and the grouped column is not repeated in the rows. Collapse and expand a group.
+- [ ] Status chips filter the list; search, the client filter and column sorting still work; the grouping is remembered after a reload.
+- [ ] On a phone every row shows serial, status, model, client, target and last verified (nothing hidden), and the header has a menu button.
+- [ ] **Add drone**: the "Start its history from the model template" tick box is visible.
+
+### Drone page
+- [ ] The header says in words what state the drone is in, with a card of facts (model, client, target, last verified, flight controller).
+- [ ] History is a timeline; the target version is marked green. Each version has Download, Open in Filter, Copy to…, Restore and (admin) delete, and nothing else.
+- [ ] **Compare versions** (the only compare entry): tick boxes appear on every version, the bar says how many are selected, nothing happens until you press **Compare N versions**, and Cancel leaves the mode.
+- [ ] In that mode, under your versions: **Add versions from somewhere else**. Tick a version of another drone, a model template, add a .param file; all of them show as chips in the bar and as columns in the comparison.
+- [ ] Connected drone (needs a drone): update banner with Install, "matching" banner, and the unsaved "vN from the connected drone" draft with the list of differing params and Save.
+- [ ] Install an older version (staff, needs a drone): with the drone connected, every version other than the one on the drone and the target has **Install on the drone**. The confirm dialog says the target does not change and the drone will be offered the target again on its next connect. A client does not see the button.
+- [ ] Drone settings: details, flight controller, NFC sticker and delete are separate parts; a contributor sees why Client and Model are disabled.
+
+### Compare page
+- [ ] The picker lists every drone as one row with its versions as tick chips, grouped by model, with a search box. The target (or current template) and proposals are marked.
+- [ ] In a comparison: "Differences only", the colour legend, the frozen Param column while scrolling sideways, "Add or change versions", and the back link to the drone when everything compared belongs to one drone.
+
+### Models, Review, Clients, Users
+- [ ] Models: variants are nested under their product line and the columns line up between product lines. Edit and delete open dialogs. Deleting is still refused while drones use a variant.
+- [ ] Review: a template proposal shows the whole model name; **Reject** now asks before deleting.
+- [ ] Clients: delete asks first.
+- [ ] Users: changing a role to **client** does not save until a company is chosen (before, it silently saved the first company in the list). Deleting a user asks in a dialog.
+
+### Filter tool
+- [ ] With nothing loaded, the page offers four starting points: **Choose a drone…**, **Connect a drone** (or **Use <serial>** when one is connected), **Load .param file** and **Blank config**.
+- [ ] **Choose a drone…** opens the same drone list as Compare (grouped by model, with search). Pressing a version opens it at once; the bar shows the serial, version, client and model, with a link to the drone page. Reloading the page reopens the same version.
+- [ ] Connected drone: the button shows its serial; the bar says when it was read. "Connect a drone" from Filter loads the params as soon as the read finishes.
+- [ ] Long values (e.g. ATC_ANG_YAW_P with 15 decimals) show in full, nothing cut on the left.
+- [ ] Once something is loaded, "Start over from" under the bar switches to another source.
+- [ ] Export → **Save to a drone…** (was Publish to Catalog) picks the drone the params came from when it was a drone version or the connected drone.
+- [ ] Unchanged: switch lists, move params, edit a value by holding, export the file, Save as list, Open in Filter from a drone's history.
+
+### Dialogs that write to a drone (needs a drone)
+- [ ] Write to drone: with a firmware mismatch the "I understand — write anyway" tick box is visible and the Write button stays disabled until it is ticked.
+- [ ] Connect, register and NFC dialogs look right and still behave the same.

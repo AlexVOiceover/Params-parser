@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useId } from "react";
 import { Download, Upload, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/lib/app-context";
 import { validateParam } from "@/lib/param-engine";
+import { buttonClass } from "@/components/ui/styles";
 import type { Param } from "@/lib/types";
 
 interface SaveConfirmModalProps {
@@ -27,9 +28,9 @@ function StatRow({
   colorClass: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className={cn("font-mono text-lg font-bold tabular-nums shrink-0", colorClass)}>
+    <div className="flex items-center justify-between gap-4 py-2">
+      <span className="text-sm text-foreground">{label}</span>
+      <span className={cn("shrink-0 font-mono text-lg font-semibold tabular-nums", colorClass)}>
         {value}
       </span>
     </div>
@@ -47,6 +48,8 @@ export function SaveResumeModal({
 }: SaveConfirmModalProps) {
   const { paramDefs, acknowledgedInvalid, activeListName } = useApp();
   const [includeHeader, setIncludeHeader] = useState(true);
+  const titleId = useId();
+  const headerId = useId();
 
   const invalidCount = useMemo(() => {
     let count = 0;
@@ -99,99 +102,106 @@ export function SaveResumeModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-xs" onClick={onClose} />
 
-      <div className="relative z-10 w-full max-w-md rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative z-10 flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+      >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border bg-toolbar px-5 py-3.5">
-          <div className="flex items-center gap-2">
-            <Download className="h-4 w-4 text-primary" />
-            <h2 className="text-sm font-bold text-foreground">Save Filtered File</h2>
-          </div>
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-5 py-3.5">
+          <h2 id={titleId} className="text-base font-semibold text-foreground">Save Filtered File</h2>
           <button
+            type="button"
             onClick={onClose}
-            className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer"
+            className={buttonClass("ghost", "icon", "-mr-1.5")}
             aria-label="Close"
+            title="Close"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Stats */}
-        <div className="px-5 py-4 flex flex-col gap-2.5">
-          <StatRow
-            value={protectedParams.length}
-            label="params filtered out (protected)"
-            colorClass="text-red-400"
-          />
-          <StatRow
-            value={remainingParams.length}
-            label="params will be written"
-            colorClass="text-applied-text"
-          />
-          {invalidCount > 0 && (
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-2">
+          {/* Stats */}
+          <div className="flex flex-col divide-y divide-border">
             <StatRow
-              value={invalidCount}
-              label="invalid values"
-              colorClass="text-red-400"
+              value={protectedParams.length}
+              label="params filtered out (protected)"
+              colorClass="text-protected-text"
             />
-          )}
-          {acknowledgedCount > 0 && (
             <StatRow
-              value={acknowledgedCount}
-              label="acknowledged by user"
-              colorClass="text-blue-400"
+              value={remainingParams.length}
+              label="params will be written"
+              colorClass="text-applied-text"
             />
-          )}
-          {modifiedCount > 0 && (
-            <StatRow
-              value={modifiedCount}
-              label="value overrides"
-              colorClass="text-amber-400"
-            />
-          )}
-        </div>
+            {invalidCount > 0 && (
+              <StatRow
+                value={invalidCount}
+                label="invalid values"
+                colorClass="text-red-700 dark:text-red-400"
+              />
+            )}
+            {acknowledgedCount > 0 && (
+              <StatRow
+                value={acknowledgedCount}
+                label="acknowledged by user"
+                colorClass="text-blue-700 dark:text-blue-400"
+              />
+            )}
+            {modifiedCount > 0 && (
+              <StatRow
+                value={modifiedCount}
+                label="value overrides"
+                colorClass="text-amber-700 dark:text-amber-400"
+              />
+            )}
+          </div>
 
-        {/* Metadata toggle */}
-        <div className="border-t border-border px-5 py-3">
-          <label className="flex items-center gap-2 cursor-pointer select-none">
+          {/* Metadata toggle */}
+          <div className="flex items-center gap-2.5 border-t border-border py-3">
             <input
+              id={headerId}
               type="checkbox"
               checked={includeHeader}
               onChange={(e) => setIncludeHeader(e.target.checked)}
-              className="h-3.5 w-3.5 rounded accent-foreground cursor-pointer"
             />
-            <span className="text-sm text-foreground">Include metadata header</span>
-          </label>
+            <label htmlFor={headerId} className="cursor-pointer select-none text-sm text-foreground">
+              Include metadata header
+            </label>
+          </div>
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between gap-2 border-t border-border bg-toolbar px-5 py-3">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border bg-secondary/40 px-5 py-3">
           <button
+            type="button"
             onClick={onClose}
-            className="rounded-md border border-border px-4 py-2 text-sm text-foreground hover:bg-secondary transition-colors cursor-pointer"
+            className={buttonClass("secondary")}
           >
             Cancel
           </button>
-          <div className="flex items-center gap-2">
-            {onPublishToCatalog && (
-              <button
-                onClick={() => { onPublishToCatalog(includeHeader ? buildHeader() : null); onClose(); }}
-                className="flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20 transition-colors cursor-pointer whitespace-nowrap"
-              >
-                <Upload className="h-3.5 w-3.5" />
-                Publish to Catalog
-              </button>
-            )}
+          {onPublishToCatalog && (
             <button
-              onClick={handleDownload}
-              className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
+              type="button"
+              onClick={() => { onPublishToCatalog(includeHeader ? buildHeader() : null); onClose(); }}
+              className={buttonClass("secondary")}
             >
-              <Download className="h-3.5 w-3.5" />
-              Download
+              <Upload className="h-3.5 w-3.5" />
+              Save to a drone…
             </button>
-          </div>
+          )}
+          <button
+            type="button"
+            onClick={handleDownload}
+            className={buttonClass("primary")}
+          >
+            <Download className="h-3.5 w-3.5" />
+            Download
+          </button>
         </div>
       </div>
     </div>

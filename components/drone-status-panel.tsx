@@ -4,11 +4,13 @@ import { useEffect, useId, useState } from "react";
 import Link from "next/link";
 import { CheckCircle, AlertTriangle, AlertCircle, Bell, Link2, Save, RefreshCw, ArrowRight } from "lucide-react";
 import { BusyButton, Spinner } from "@/components/ui/busy";
+import { fieldClass, labelClass } from "@/components/ui/styles";
 import { ApplyUpdateButton } from "@/components/apply-update-button";
 import { ParamInfoHover } from "@/components/param-info-hover";
 import { useAuth } from "@/components/auth-provider";
 import { useDroneParams } from "@/lib/drone-params-context";
 import { refreshDroneMatch, type DroneMatchResult } from "@/lib/use-connected-drone-match";
+import { droneHref } from "@/lib/versions";
 import { firmwareMinor, type ParamDiff } from "@/lib/desired-state";
 
 interface Props {
@@ -30,23 +32,23 @@ export function DiffList({ diff, versionLabel }: { diff: ParamDiff[]; versionLab
   const [all, setAll] = useState(false);
   const shown = all ? diff : diff.slice(0, 8);
   return (
-    <div className="rounded border border-border bg-background/50 max-h-56 overflow-auto">
-      <table className="w-full font-mono text-[11px] whitespace-nowrap">
-        <thead className="sticky top-0 z-10 bg-secondary font-sans text-[10px] uppercase tracking-wider">
-          <tr className="border-b-2 border-border">
-            <th scope="col" className="px-2 py-1.5 text-left font-semibold text-foreground">Param</th>
-            <th scope="col" className="px-2 py-1.5 text-right font-semibold text-sky-700 dark:text-sky-300">Read from drone</th>
-            <th scope="col" className="px-2 py-1.5 text-right font-semibold text-amber-700 dark:text-amber-300">Stored v{versionLabel}</th>
+    <div className="max-h-56 overflow-auto rounded-lg border border-border bg-card">
+      <table className="w-full font-mono text-xs whitespace-nowrap">
+        <thead className="sticky top-0 z-10 bg-secondary font-sans text-xs text-muted-foreground">
+          <tr>
+            <th scope="col" className="px-3 py-2 text-left font-medium">Param</th>
+            <th scope="col" className="px-3 py-2 text-right font-medium">On the drone now</th>
+            <th scope="col" className="px-3 py-2 text-right font-medium">In v{versionLabel}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
           {shown.map((d) => (
             <tr key={d.name}>
-              <td className="px-2 py-1"><ParamInfoHover name={d.name} drone={d.actual === null ? undefined : String(d.actual)} stored={String(d.desired)} /></td>
-              <td className="px-2 py-1 text-right text-sky-700 dark:text-sky-300">
+              <td className="px-3 py-1.5"><ParamInfoHover name={d.name} drone={d.actual === null ? undefined : String(d.actual)} stored={String(d.desired)} /></td>
+              <td className="px-3 py-1.5 text-right font-semibold text-foreground">
                 {d.actual === null ? "not on drone" : formatParamValue(d.actual)}
               </td>
-              <td className="px-2 py-1 text-right text-amber-700 dark:text-amber-300">{formatParamValue(d.desired)}</td>
+              <td className="px-3 py-1.5 text-right text-muted-foreground">{formatParamValue(d.desired)}</td>
             </tr>
           ))}
         </tbody>
@@ -55,7 +57,7 @@ export function DiffList({ diff, versionLabel }: { diff: ParamDiff[]; versionLab
         <button
           type="button"
           onClick={() => setAll((v) => !v)}
-          className="w-full border-t border-border px-2 py-1 text-[11px] text-primary hover:underline cursor-pointer whitespace-nowrap"
+          className="w-full border-t border-border px-3 py-1.5 text-xs font-medium text-primary hover:underline cursor-pointer whitespace-nowrap"
         >
           {all ? "Show fewer" : `Show all ${diff.length}`}
         </button>
@@ -107,9 +109,9 @@ export function SaveFromDroneForm({
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-col gap-1">
-        <label htmlFor={inputId} className="text-[11px] font-medium text-muted-foreground">
+    <div className="flex flex-col gap-2.5">
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={inputId} className={labelClass}>
           What changed on the drone? <span className="text-destructive">*</span>
         </label>
         <input
@@ -118,44 +120,43 @@ export function SaveFromDroneForm({
           onChange={(e) => setChangelog(e.target.value)}
           disabled={saving}
           placeholder="e.g. RTK moving baseline set up on site"
-          className="rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-ring disabled:opacity-40"
+          className={`${fieldClass} w-full`}
         />
       </div>
       <div className="flex items-center gap-2 flex-wrap">
         <BusyButton
           type="button"
+          variant="primary"
           busy={saving}
           busyLabel="Saving…"
           icon={<Save className="h-3.5 w-3.5" />}
           onClick={save}
           disabled={!changelog.trim()}
-          className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
         >
           {saveLabel}
         </BusyButton>
       </div>
       {result && (
-        <p className={`text-[11px] ${result.ok ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-300"}`}>{result.text}</p>
+        <p role={result.ok ? "status" : "alert"} className={`text-[13px] ${result.ok ? "text-emerald-700 dark:text-emerald-400" : "text-destructive"}`}>{result.text}</p>
       )}
     </div>
   );
 }
 
-/** Sends the user to the drone's history page, where saving and installing happen. */
+/** Sends the user to the drone's page, where saving and installing happen. */
 function HistoryLink({ match, onNavigate, hint }: { match: DroneMatchResult; onNavigate?: () => void; hint: string }) {
   const drone = match.drone;
-  const setId = drone?.client_set_id ?? drone?.history_set_id;
-  if (!drone || !drone.family_slug || !setId) return null;
+  if (!drone) return null;
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <Link
-        href={`/${drone.family_slug}/${drone.variant_id}/${setId}`}
+        href={droneHref(drone.serial)}
         onClick={onNavigate}
         className="flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 cursor-pointer whitespace-nowrap"
       >
-        Open {drone.serial}&apos;s history <ArrowRight className="h-3.5 w-3.5" />
+        Open {drone.serial} <ArrowRight className="h-3.5 w-3.5" />
       </Link>
-      <span className="text-[10px] text-muted-foreground">{hint}</span>
+      <span className="text-[11px] text-muted-foreground">{hint}</span>
     </div>
   );
 }
@@ -226,7 +227,7 @@ function LinkPicker({ match, onRegister }: Props) {
                       {c.client_name ?? <span className="italic">no client</span>}
                       {c.family_name && ` · ${c.family_name}${c.variant_name ? ` / ${c.variant_name}` : ""}`}
                     </span>
-                    <span className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                    <span className="flex flex-wrap items-center gap-1.5 text-[11px]">
                       {c.id === match.suggestedId && (
                         <span className="rounded bg-emerald-500/15 px-1 py-px text-emerald-700 dark:text-emerald-300">
                           matches SCR_USER1
@@ -245,7 +246,7 @@ function LinkPicker({ match, onRegister }: Props) {
               );
             })}
           </fieldset>
-          <p className="text-[10px] text-muted-foreground leading-snug">
+          <p className="text-[11px] text-muted-foreground leading-snug">
             Check the serial on the airframe label before linking. The order is only a hint.
           </p>
           <div className="flex items-center gap-2 flex-wrap">
@@ -326,7 +327,7 @@ export function DroneStatusPanel({ match, onRegister, onNavigate }: Props) {
       </div>
 
       {match.status === "loading" && (
-        <p className="flex items-center gap-2 text-xs text-muted-foreground"><Spinner /> Checking against the catalog…</p>
+        <p className="flex items-center gap-2 text-xs text-muted-foreground"><Spinner /> Checking it against its history…</p>
       )}
 
       {match.status === "no_chip" && (
@@ -338,7 +339,7 @@ export function DroneStatusPanel({ match, onRegister, onNavigate }: Props) {
 
       {match.status === "error" && (
         <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-xs text-amber-700 dark:text-amber-400">Couldn&apos;t check against the catalog.</p>
+          <p className="text-xs text-amber-700 dark:text-amber-400">Couldn&apos;t check it against its history.</p>
           <button
             type="button"
             onClick={refreshDroneMatch}
@@ -378,7 +379,7 @@ export function DroneStatusPanel({ match, onRegister, onNavigate }: Props) {
             AIR6 has an update for this drone: v{desired.label} — {diff.length} param{diff.length === 1 ? "" : "s"} change
           </p>
           <DiffList diff={diff} versionLabel={desired.label} />
-          <p className="text-[10px] text-muted-foreground leading-snug">
+          <p className="text-[11px] text-muted-foreground leading-snug">
             Install writes the stored v{desired.label} values to the drone.
           </p>
           <div><ApplyUpdateButton version={desired} label={`Install v${desired.label}`} /></div>
@@ -393,7 +394,7 @@ export function DroneStatusPanel({ match, onRegister, onNavigate }: Props) {
             {diff.length} param{diff.length === 1 ? "" : "s"}{state === "modified" ? ` differ from v${desired.label}` : ""}
           </p>
           <DiffList diff={diff} versionLabel={desired.label} />
-          <HistoryLink match={match} onNavigate={onNavigate} hint="to save it as a new version or install a stored one" />
+          <HistoryLink match={match} onNavigate={onNavigate} hint="to keep these changes as a new version, or undo them" />
         </div>
       )}
 

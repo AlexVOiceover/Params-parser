@@ -80,7 +80,7 @@ export function ChipLinkCell({ droneId, serial, chipId }: { droneId: string; ser
           )}
         </div>
         {input && (
-          <span className={`text-[10px] font-mono ${parsed ? "text-muted-foreground" : "text-rose-700 dark:text-rose-300"}`}>
+          <span className={`text-[11px] font-mono ${parsed ? "text-muted-foreground" : "text-rose-700 dark:text-rose-300"}`}>
             {parsed ?? "Not a chip ID or Messages line"}
           </span>
         )}
@@ -103,7 +103,7 @@ export function ChipLinkCell({ droneId, serial, chipId }: { droneId: string; ser
             Cancel
           </button>
         </div>
-        {error && <span className="text-[10px] text-rose-700 dark:text-rose-300">{error}</span>}
+        {error && <span className="text-[11px] text-rose-700 dark:text-rose-300">{error}</span>}
       </div>
     );
   }
@@ -135,7 +135,7 @@ export function ChipLinkCell({ droneId, serial, chipId }: { droneId: string; ser
           />
         )}
       </div>
-      {error && <span className="text-[10px] text-rose-700 dark:text-rose-300">{error}</span>}
+      {error && <span className="text-[11px] text-rose-700 dark:text-rose-300">{error}</span>}
     </div>
   );
 }
