@@ -186,8 +186,21 @@ Checked by me in screenshots against sample data (light, dark, phone). Not check
 - [ ] Long values (e.g. ATC_ANG_YAW_P with 15 decimals) show in full, nothing cut on the left.
 - [ ] Once something is loaded, "Start over from" under the bar switches to another source.
 - [ ] Export → **Save to a drone…** (was Publish to Catalog) picks the drone the params came from when it was a drone version or the connected drone.
-- [ ] Unchanged: switch lists, move params, edit a value by holding, export the file, Save as list, Open in Filter from a drone's history.
+- [ ] Changing a value: one click on a value opens the box (a pencil shows on hover); Enter or clicking away keeps it, Escape undoes it, an empty box goes back to the original. The old value shows struck through to the left of the new one.
+- [ ] Unchanged: switch lists, move params, export the file, Save as list, Open in Filter from a drone's history.
 
 ### Dialogs that write to a drone (needs a drone)
 - [ ] Write to drone: with a firmware mismatch the "I understand — write anyway" tick box is visible and the Write button stays disabled until it is ticked.
 - [ ] Connect, register and NFC dialogs look right and still behave the same.
+
+## 0.25.1 — Names, initials and safer roles
+
+- [ ] Header: your initials in a coloured circle and your name; the colour is the same every time for the same person.
+- [ ] **Staff & clients** tab (admins) replaces the Clients tab and the Users item in the account menu; `/admin` redirects there. Two tabs: **AIR6 staff** and **Clients**, each with one sentence saying what it is.
+- [ ] AIR6 staff: initials, name (pencil to rename), e-mail, **Level** (Admin / Contributor), Joined, and a ⋯ menu with Change access… and Delete. **Invite staff member** asks for the level.
+- [ ] Clients: one card per company (drones link, people count, rename, delete) with **People at …** inside it and **Invite someone from …**.
+- [ ] ⋯ → **Change access…**: Admin, Contributor, or Person at a client (choose the company). Moving someone shows them in their new place after saving.
+- [ ] With **Name and surname** filled in, an invited account already has that name once accepted; left empty, the start of the e-mail is used. A name someone else has is refused.
+- [ ] Your own level select, Change access and Delete are disabled with a note; nobody can demote or delete themselves.
+- [ ] "Viewer" is no longer offered. An account without access would show under **No access** on the staff tab.
+- [ ] Re-sending an invite to someone whose name was changed keeps their new name.

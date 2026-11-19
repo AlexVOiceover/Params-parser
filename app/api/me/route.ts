@@ -7,11 +7,11 @@ export async function GET() {
   try {
     const supabase = await createSessionClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ role: null, clientName: null });
+    if (!user) return NextResponse.json({ role: null, clientName: null, username: null });
 
     const { data } = await supabase
       .from("profiles")
-      .select("role, client_id")
+      .select("role, client_id, username")
       .eq("id", user.id)
       .single();
 
@@ -25,8 +25,9 @@ export async function GET() {
       clientName = client?.name ?? null;
     }
 
-    return NextResponse.json({ role: data?.role ?? null, clientName });
+    return NextResponse.json({ role: data?.role ?? null, clientName, username: data?.username ?? null });
   } catch {
-    return NextResponse.json({ role: null, clientName: null });
+    return NextResponse.json({ role: null, clientName: null, username: null });
   }
 }
+

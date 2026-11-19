@@ -3,8 +3,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
-  Users,
-  User as UserIcon,
   LogOut,
   LogIn,
   ChevronDown,
@@ -18,6 +16,7 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { DroneChip } from "@/components/drone-chip";
 import { WhatsNewDialog } from "@/components/whats-new-dialog";
+import { Avatar } from "@/components/ui/avatar";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { buttonClass } from "@/components/ui/styles";
 import { CURRENT_VERSION } from "@/lib/changelog";
@@ -25,7 +24,8 @@ import { CURRENT_VERSION } from "@/lib/changelog";
 export function AppHeader() {
   const pathname = usePathname();
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
-  const { user, role, clientName, signOut } = useAuth();
+  const { user, role, clientName, username, signOut } = useAuth();
+  const displayName = username || user?.email?.split("@")[0] || "Account";
 
   const isAdmin = role === "admin";
   const isStaff = isAdmin || role === "contributor";
@@ -81,7 +81,7 @@ export function AppHeader() {
     { href: "/compare", label: "Compare", active: pathname.startsWith("/compare") },
     { href: "/filter", label: "Filter", active: pathname.startsWith("/filter") },
     ...(isAdmin ? [{ href: "/admin/review", label: "Review", active: pathname.startsWith("/admin/review"), count: reviewCount }] : []),
-    ...(isAdmin ? [{ href: "/admin/clients", label: "Clients", active: pathname.startsWith("/admin/clients") }] : []),
+    ...(isAdmin ? [{ href: "/admin/clients", label: "Staff & clients", active: pathname === "/admin" || pathname.startsWith("/admin/clients") }] : []),
   ];
 
   const updateLabel = checkingUpdate ? "Checking…" : updateStatus === "found" ? "Update found — reloading" : updateStatus === "latest" ? "Already up to date" : "Check for updates";
@@ -143,31 +143,34 @@ export function AppHeader() {
       {user ? (
         <Menu
           align="end"
-          label={user.email ?? "Account"}
+          label={`Signed in as ${displayName}`}
           trigger={
             <>
-              <UserIcon className="h-3.5 w-3.5" />
-              <span className="hidden max-w-36 truncate lg:inline">{user.email}</span>
+              <Avatar name={displayName} seed={user.id} />
+              <span className="hidden max-w-32 truncate sm:inline">{displayName}</span>
               <ChevronDown className="h-3 w-3" />
             </>
           }
-          triggerClassName={buttonClass("secondary", "sm")}
+          triggerClassName={buttonClass("secondary", "sm", "pl-1")}
         >
-          <div className="px-2.5 py-2">
-            <div className="truncate text-[13px] font-medium">{user.email}</div>
-            {role && (
-              <div className="mt-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">
-                {role}
-                {role === "client" && clientName && (
-                  <span className="normal-case"> · {clientName}</span>
-                )}
-              </div>
-            )}
+          <div className="flex items-center gap-2.5 px-2.5 py-2">
+            <Avatar name={displayName} seed={user.id} size="lg" />
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-semibold">{displayName}</div>
+              {user.email && <div className="truncate text-xs text-muted-foreground">{user.email}</div>}
+              {role && (
+                <div className="mt-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+                  {role}
+                  {role === "client" && clientName && (
+                    <span className="normal-case"> · {clientName}</span>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
           <MenuSeparator />
           {isAdmin && (
             <>
-              <MenuItem href="/admin" icon={<Users className="h-3.5 w-3.5" />}>Users</MenuItem>
               <MenuItem href="/mission" icon={<MapIcon className="h-3.5 w-3.5" />}>Mission planner</MenuItem>
               <MenuSeparator />
             </>
@@ -190,6 +193,7 @@ export function AppHeader() {
       )}
     </header>
     {whatsNewOpen && <WhatsNewDialog onClose={() => setWhatsNewOpen(false)} />}
+
     </>
   );
 }

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSessionClient, createAdminClient } from "@/lib/supabase/server";
+import { cleanUsername, USERNAME_TAKEN } from "@/lib/username";
 
-const ROLES = ["viewer", "contributor", "admin", "client"] as const;
+const ROLES = ["contributor", "admin", "client"] as const;
 type Role = (typeof ROLES)[number];
 
 export async function PATCH(
@@ -17,7 +18,21 @@ export async function PATCH(
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
   if (profile?.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const body = await request.json() as { role?: string; clientId?: string | null };
+  const body = await request.json() as { role?: string; clientId?: string | null; username?: string };
+  const admin = createAdminClient();
+
+  if (body.username !== undefined) {
+    const name = cleanUsername(body.username);
+    if (!name.ok) return NextResponse.json({ error: name.error }, { status: 400 });
+    const { error } = await admin.from("profiles").update({ username: name.value }).eq("id", id);
+    if (error?.code === USERNAME_TAKEN) return NextResponse.json({ error: "Someone else already has that name" }, { status: 409 });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, username: name.value });
+  }
+
+  // An admin who demotes themselves cannot undo it, so their own role is changed by another admin.
+  if (id === user.id) return NextResponse.json({ error: "You cannot change your own role. Ask another admin." }, { status: 400 });
+
   const role = body.role as Role | undefined;
   const clientId = body.clientId ?? null;
 
@@ -25,7 +40,6 @@ export async function PATCH(
   if (role === "client" && !clientId) return NextResponse.json({ error: "Client required for client role" }, { status: 400 });
   if (role !== "client" && clientId) return NextResponse.json({ error: "Client must be empty for non-client roles" }, { status: 400 });
 
-  const admin = createAdminClient();
   const { error } = await admin.from("profiles").update({ role, client_id: clientId }).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
