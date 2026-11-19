@@ -7,7 +7,7 @@ export interface ReleaseNote {
 export const CHANGELOG: ReleaseNote[] = [
   {
     version: "0.25.0",
-    date: "2026-11-16",
+    date: "2026-11-19",
     items: [
       "The app now starts from your drones: a list with each drone's status, and one page per drone with its whole history, the connected drone on top and its settings",
       "The header always shows the connected drone and whether it is up to date; models and their templates have their own page",
